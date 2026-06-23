@@ -8,6 +8,13 @@
       "when": 1782179941707,
       "tag": "0000_noisy_namor",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1782242919089,
+      "tag": "0001_spooky_magneto",
+      "breakpoints": true
     }
   ]
 }
