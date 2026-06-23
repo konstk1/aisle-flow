@@ -11,6 +11,13 @@ export const serverEnvSchema = z.object({
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
 
+export const authEnvSchema = serverEnvSchema.pick({
+  APP_PASSWORD_HASH: true,
+  SESSION_SECRET: true,
+});
+
+export type AuthEnv = z.infer<typeof authEnvSchema>;
+
 export function parseDatabaseUrl(value: unknown): string {
   const result = databaseUrlSchema.safeParse(value);
 
@@ -33,6 +40,22 @@ export function getValidatedServerEnv(input: unknown): ServerEnv {
 
     throw new Error(
       `Invalid server environment: ${invalidKeys.join(", ")}. Update the required server variables before continuing.`,
+    );
+  }
+
+  return result.data;
+}
+
+export function getValidatedAuthEnv(input: unknown): AuthEnv {
+  const result = authEnvSchema.safeParse(input);
+
+  if (!result.success) {
+    const invalidKeys = [
+      ...new Set(result.error.issues.map((issue) => issue.path.join("."))),
+    ];
+
+    throw new Error(
+      `Invalid authentication environment: ${invalidKeys.join(", ")}. Update the required server variables before continuing.`,
     );
   }
 
