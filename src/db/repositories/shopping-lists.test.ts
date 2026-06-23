@@ -30,11 +30,19 @@ describe("shopping-list queries", () => {
   it("orders resolved items by route, section position, and user order", () => {
     const { sql: query } = buildRouteOrderedShoppingItemsQuery(
       database,
+      "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
       "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
     ).toSQL();
 
     expect(query).toContain('left join "product_locations"');
     expect(query).toContain('left join "aisle_sections"');
+    expect(query).toContain(
+      '"shopping_items"."store_id" = "product_locations"."store_id"',
+    );
+    expect(query).toContain(
+      '"product_locations"."store_id" = "aisle_sections"."store_id"',
+    );
+    expect(query).toContain('"shopping_items"."store_id" = $2');
     expect(query).toMatch(
       /order by case when "aisle_sections"\."path_order" is null then 1 else 0 end asc, "aisle_sections"\."path_order" asc, coalesce\("product_locations"\."position_within_section", 2147483647\) asc, "shopping_items"\."order_key" asc/,
     );

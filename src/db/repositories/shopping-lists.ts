@@ -27,6 +27,7 @@ export function buildActiveShoppingListQuery(db: Database, storeId: string) {
 
 export function buildRouteOrderedShoppingItemsQuery(
   db: Database,
+  storeId: string,
   shoppingListId: string,
 ) {
   return db
@@ -43,13 +44,24 @@ export function buildRouteOrderedShoppingItemsQuery(
     )
     .leftJoin(
       productLocations,
-      eq(shoppingItems.resolvedLocationId, productLocations.id),
+      and(
+        eq(shoppingItems.resolvedLocationId, productLocations.id),
+        eq(shoppingItems.storeId, productLocations.storeId),
+      ),
     )
     .leftJoin(
       aisleSections,
-      eq(productLocations.aisleSectionId, aisleSections.id),
+      and(
+        eq(productLocations.aisleSectionId, aisleSections.id),
+        eq(productLocations.storeId, aisleSections.storeId),
+      ),
     )
-    .where(eq(shoppingItems.shoppingListId, shoppingListId))
+    .where(
+      and(
+        eq(shoppingItems.shoppingListId, shoppingListId),
+        eq(shoppingItems.storeId, storeId),
+      ),
+    )
     .orderBy(
       asc(
         sql<number>`case when ${aisleSections.pathOrder} is null then 1 else 0 end`,
@@ -73,7 +85,7 @@ export async function getActiveShoppingListInRouteOrder(
     return null;
   }
 
-  const items = await buildRouteOrderedShoppingItemsQuery(db, list.id);
+  const items = await buildRouteOrderedShoppingItemsQuery(db, storeId, list.id);
 
   return { list, items };
 }
