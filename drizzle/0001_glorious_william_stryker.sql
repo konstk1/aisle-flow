@@ -1,5 +1,4 @@
 CREATE TYPE "public"."aisle_section_side" AS ENUM('left', 'right', 'center', 'endcap');--> statement-breakpoint
-CREATE TYPE "public"."aisle_traversal_direction" AS ENUM('ascending', 'descending');--> statement-breakpoint
 CREATE TYPE "public"."product_alias_scope" AS ENUM('global', 'store');--> statement-breakpoint
 CREATE TYPE "public"."product_alias_source" AS ENUM('curated', 'learned', 'imported');--> statement-breakpoint
 CREATE TYPE "public"."product_location_source" AS ENUM('curated', 'manual', 'inferred', 'imported');--> statement-breakpoint
@@ -14,16 +13,13 @@ CREATE TABLE "aisle_sections" (
 	"store_id" uuid NOT NULL,
 	"aisle_id" uuid NOT NULL,
 	"label" text,
-	"section_order" integer NOT NULL,
 	"path_order" integer NOT NULL,
 	"side" "aisle_section_side" DEFAULT 'center' NOT NULL,
 	"version" integer DEFAULT 1 NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "aisle_sections_store_id_id_unique" UNIQUE("store_id","id"),
-	CONSTRAINT "aisle_sections_aisle_section_order_unique" UNIQUE("aisle_id","section_order"),
 	CONSTRAINT "aisle_sections_store_path_order_unique" UNIQUE("store_id","path_order"),
-	CONSTRAINT "aisle_sections_section_order_non_negative" CHECK ("aisle_sections"."section_order" >= 0),
 	CONSTRAINT "aisle_sections_path_order_non_negative" CHECK ("aisle_sections"."path_order" >= 0),
 	CONSTRAINT "aisle_sections_version_positive" CHECK ("aisle_sections"."version" > 0)
 );
@@ -33,19 +29,12 @@ CREATE TABLE "aisles" (
 	"store_id" uuid NOT NULL,
 	"identifier" text NOT NULL,
 	"display_name" text,
-	"display_order" integer NOT NULL,
-	"route_order" integer NOT NULL,
-	"traversal_direction" "aisle_traversal_direction" DEFAULT 'ascending' NOT NULL,
 	"version" integer DEFAULT 1 NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "aisles_store_id_id_unique" UNIQUE("store_id","id"),
 	CONSTRAINT "aisles_store_identifier_unique" UNIQUE("store_id","identifier"),
-	CONSTRAINT "aisles_store_display_order_unique" UNIQUE("store_id","display_order"),
-	CONSTRAINT "aisles_store_route_order_unique" UNIQUE("store_id","route_order"),
 	CONSTRAINT "aisles_identifier_not_blank" CHECK (length(btrim("aisles"."identifier")) > 0),
-	CONSTRAINT "aisles_display_order_non_negative" CHECK ("aisles"."display_order" >= 0),
-	CONSTRAINT "aisles_route_order_non_negative" CHECK ("aisles"."route_order" >= 0),
 	CONSTRAINT "aisles_version_positive" CHECK ("aisles"."version" > 0)
 );
 --> statement-breakpoint
@@ -195,7 +184,6 @@ ALTER TABLE "source_connections" ADD CONSTRAINT "source_connections_store_id_sto
 ALTER TABLE "sync_operations" ADD CONSTRAINT "sync_operations_store_list_foreign_key" FOREIGN KEY ("store_id","shopping_list_id") REFERENCES "public"."shopping_lists"("store_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "sync_operations" ADD CONSTRAINT "sync_operations_store_connection_foreign_key" FOREIGN KEY ("store_id","source_connection_id") REFERENCES "public"."source_connections"("store_id","id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "aisle_sections_store_path_order_index" ON "aisle_sections" USING btree ("store_id","path_order");--> statement-breakpoint
-CREATE INDEX "aisles_store_route_order_index" ON "aisles" USING btree ("store_id","route_order");--> statement-breakpoint
 CREATE UNIQUE INDEX "product_aliases_global_normalized_text_unique" ON "product_aliases" USING btree ("normalized_text") WHERE "product_aliases"."scope" = 'global';--> statement-breakpoint
 CREATE UNIQUE INDEX "product_aliases_store_normalized_text_unique" ON "product_aliases" USING btree ("store_id","normalized_text") WHERE "product_aliases"."scope" = 'store';--> statement-breakpoint
 CREATE INDEX "product_aliases_lookup_index" ON "product_aliases" USING btree ("normalized_text","store_id");--> statement-breakpoint

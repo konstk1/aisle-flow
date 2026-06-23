@@ -1,5 +1,5 @@
 {
-  "id": "7e290518-1fc6-4dce-ba48-7283e73a668f",
+  "id": "42e25e02-678e-49bd-a17a-5fa90715ace5",
   "prevId": "7775966d-8ca1-43c0-8c32-a2000100d33d",
   "version": "7",
   "dialect": "postgresql",
@@ -32,12 +32,6 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
-        },
-        "section_order": {
-          "name": "section_order",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
         },
         "path_order": {
           "name": "path_order",
@@ -125,11 +119,6 @@
           "nullsNotDistinct": false,
           "columns": ["store_id", "id"]
         },
-        "aisle_sections_aisle_section_order_unique": {
-          "name": "aisle_sections_aisle_section_order_unique",
-          "nullsNotDistinct": false,
-          "columns": ["aisle_id", "section_order"]
-        },
         "aisle_sections_store_path_order_unique": {
           "name": "aisle_sections_store_path_order_unique",
           "nullsNotDistinct": false,
@@ -138,10 +127,6 @@
       },
       "policies": {},
       "checkConstraints": {
-        "aisle_sections_section_order_non_negative": {
-          "name": "aisle_sections_section_order_non_negative",
-          "value": "\"aisle_sections\".\"section_order\" >= 0"
-        },
         "aisle_sections_path_order_non_negative": {
           "name": "aisle_sections_path_order_non_negative",
           "value": "\"aisle_sections\".\"path_order\" >= 0"
@@ -182,26 +167,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "display_order": {
-          "name": "display_order",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "route_order": {
-          "name": "route_order",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "traversal_direction": {
-          "name": "traversal_direction",
-          "type": "aisle_traversal_direction",
-          "typeSchema": "public",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'ascending'"
-        },
         "version": {
           "name": "version",
           "type": "integer",
@@ -224,29 +189,7 @@
           "default": "now()"
         }
       },
-      "indexes": {
-        "aisles_store_route_order_index": {
-          "name": "aisles_store_route_order_index",
-          "columns": [
-            {
-              "expression": "store_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "route_order",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
         "aisles_store_id_stores_id_fk": {
           "name": "aisles_store_id_stores_id_fk",
@@ -269,16 +212,6 @@
           "name": "aisles_store_identifier_unique",
           "nullsNotDistinct": false,
           "columns": ["store_id", "identifier"]
-        },
-        "aisles_store_display_order_unique": {
-          "name": "aisles_store_display_order_unique",
-          "nullsNotDistinct": false,
-          "columns": ["store_id", "display_order"]
-        },
-        "aisles_store_route_order_unique": {
-          "name": "aisles_store_route_order_unique",
-          "nullsNotDistinct": false,
-          "columns": ["store_id", "route_order"]
         }
       },
       "policies": {},
@@ -286,14 +219,6 @@
         "aisles_identifier_not_blank": {
           "name": "aisles_identifier_not_blank",
           "value": "length(btrim(\"aisles\".\"identifier\")) > 0"
-        },
-        "aisles_display_order_non_negative": {
-          "name": "aisles_display_order_non_negative",
-          "value": "\"aisles\".\"display_order\" >= 0"
-        },
-        "aisles_route_order_non_negative": {
-          "name": "aisles_route_order_non_negative",
-          "value": "\"aisles\".\"route_order\" >= 0"
         },
         "aisles_version_positive": {
           "name": "aisles_version_positive",
@@ -1525,11 +1450,6 @@
       "name": "aisle_section_side",
       "schema": "public",
       "values": ["left", "right", "center", "endcap"]
-    },
-    "public.aisle_traversal_direction": {
-      "name": "aisle_traversal_direction",
-      "schema": "public",
-      "values": ["ascending", "descending"]
     },
     "public.product_alias_scope": {
       "name": "product_alias_scope",

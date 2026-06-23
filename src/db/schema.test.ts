@@ -2,6 +2,7 @@ import { getTableConfig } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
 
 import {
+  aisles,
   aisleSections,
   productAliases,
   productLocations,
@@ -24,16 +25,17 @@ function foreignKeyNames(table: Parameters<typeof getTableConfig>[0]) {
 }
 
 describe("data model constraints", () => {
-  it("keeps aisle sections in their owning store and gives each a unique route position", () => {
+  it("keeps aisle sections in their owning store and gives each one explicit route position", () => {
     expect(foreignKeyNames(aisleSections)).toContain(
       "aisle_sections_store_aisle_foreign_key",
     );
-    expect(checkNames(aisleSections)).toEqual(
-      expect.arrayContaining([
-        "aisle_sections_section_order_non_negative",
-        "aisle_sections_path_order_non_negative",
-      ]),
+    expect(checkNames(aisleSections)).toContain(
+      "aisle_sections_path_order_non_negative",
     );
+    expect(aisles).not.toHaveProperty("displayOrder");
+    expect(aisles).not.toHaveProperty("routeOrder");
+    expect(aisles).not.toHaveProperty("traversalDirection");
+    expect(aisleSections).not.toHaveProperty("sectionOrder");
   });
 
   it("prevents conflicting aliases within global and store scopes", () => {

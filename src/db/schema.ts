@@ -16,11 +16,6 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-export const aisleTraversalDirection = pgEnum("aisle_traversal_direction", [
-  "ascending",
-  "descending",
-]);
-
 export const aisleSectionSide = pgEnum("aisle_section_side", [
   "left",
   "right",
@@ -106,11 +101,6 @@ export const aisles = pgTable(
       .references(() => stores.id, { onDelete: "cascade" }),
     identifier: text("identifier").notNull(),
     displayName: text("display_name"),
-    displayOrder: integer("display_order").notNull(),
-    routeOrder: integer("route_order").notNull(),
-    traversalDirection: aisleTraversalDirection("traversal_direction")
-      .default("ascending")
-      .notNull(),
     version: integer("version").default(1).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -125,21 +115,10 @@ export const aisles = pgTable(
       table.storeId,
       table.identifier,
     ),
-    unique("aisles_store_display_order_unique").on(
-      table.storeId,
-      table.displayOrder,
-    ),
-    unique("aisles_store_route_order_unique").on(
-      table.storeId,
-      table.routeOrder,
-    ),
-    index("aisles_store_route_order_index").on(table.storeId, table.routeOrder),
     check(
       "aisles_identifier_not_blank",
       sql`length(btrim(${table.identifier})) > 0`,
     ),
-    check("aisles_display_order_non_negative", sql`${table.displayOrder} >= 0`),
-    check("aisles_route_order_non_negative", sql`${table.routeOrder} >= 0`),
     check("aisles_version_positive", sql`${table.version} > 0`),
   ],
 );
@@ -153,7 +132,6 @@ export const aisleSections = pgTable(
       .references(() => stores.id, { onDelete: "cascade" }),
     aisleId: uuid("aisle_id").notNull(),
     label: text("label"),
-    sectionOrder: integer("section_order").notNull(),
     pathOrder: integer("path_order").notNull(),
     side: aisleSectionSide("side").default("center").notNull(),
     version: integer("version").default(1).notNull(),
@@ -166,10 +144,6 @@ export const aisleSections = pgTable(
   },
   (table) => [
     unique("aisle_sections_store_id_id_unique").on(table.storeId, table.id),
-    unique("aisle_sections_aisle_section_order_unique").on(
-      table.aisleId,
-      table.sectionOrder,
-    ),
     unique("aisle_sections_store_path_order_unique").on(
       table.storeId,
       table.pathOrder,
@@ -183,10 +157,6 @@ export const aisleSections = pgTable(
       columns: [table.storeId, table.aisleId],
       foreignColumns: [aisles.storeId, aisles.id],
     }).onDelete("cascade"),
-    check(
-      "aisle_sections_section_order_non_negative",
-      sql`${table.sectionOrder} >= 0`,
-    ),
     check(
       "aisle_sections_path_order_non_negative",
       sql`${table.pathOrder} >= 0`,
