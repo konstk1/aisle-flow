@@ -23,6 +23,12 @@ describe("application password verification", () => {
     await expect(verifyAppPassword("incorrect password")).resolves.toBe(false);
     await expect(verifyAppPassword(null)).resolves.toBe(false);
   });
+
+  it("fails closed when authentication configuration is missing", async () => {
+    delete process.env.APP_PASSWORD_HASH;
+
+    await expect(verifyAppPassword(password)).resolves.toBe(false);
+  });
 });
 
 describe("sessions", () => {

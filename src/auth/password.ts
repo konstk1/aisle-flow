@@ -9,5 +9,10 @@ export async function verifyAppPassword(password: unknown): Promise<boolean> {
     return false;
   }
 
-  return compare(password, getAuthEnv().APP_PASSWORD_HASH);
+  try {
+    return await compare(password, getAuthEnv().APP_PASSWORD_HASH);
+  } catch {
+    // Fail closed without revealing whether authentication configuration is valid.
+    return false;
+  }
 }

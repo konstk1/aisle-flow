@@ -75,6 +75,18 @@ describe("login route", () => {
     expect(response.headers.get("set-cookie")).toBeNull();
   });
 
+  it("returns the same generic response when authentication configuration is missing", async () => {
+    delete process.env.APP_PASSWORD_HASH;
+
+    const response = await login(loginRequest(password));
+
+    expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({
+      error: "Unable to sign in. Check your password and try again.",
+    });
+    expect(response.headers.get("set-cookie")).toBeNull();
+  });
+
   it("rejects external redirect destinations", async () => {
     const response = await login(
       loginRequest(password, { accept: "text/html", next: "/\\evil.example" }),
