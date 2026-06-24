@@ -16,7 +16,3 @@ export async function requirePageSession() {
     redirect("/login");
   }
 }
-
-export async function requireApiSession() {
-  return hasValidSession();
-}

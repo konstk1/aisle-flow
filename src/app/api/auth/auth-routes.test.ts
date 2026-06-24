@@ -75,6 +75,20 @@ describe("login route", () => {
     expect(response.headers.get("set-cookie")).toBeNull();
   });
 
+  it("preserves the return path after an invalid HTML login", async () => {
+    const response = await login(
+      loginRequest("wrong password", {
+        accept: "text/html",
+        next: "/lists?view=active",
+      }),
+    );
+
+    expect(response.status).toBe(303);
+    expect(response.headers.get("location")).toBe(
+      "https://aisle-flow.example/login?error=invalid&next=%2Flists%3Fview%3Dactive",
+    );
+  });
+
   it("returns the same generic response when authentication configuration is missing", async () => {
     delete process.env.APP_PASSWORD_HASH;
 

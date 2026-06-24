@@ -19,6 +19,7 @@ function acceptsHtml(request: Request) {
 function failedLoginResponse(
   request: Request,
   status: 401 | 429,
+  nextPath: string,
   retryAfterSeconds?: number,
 ) {
   const throttled = status === 429;
@@ -29,6 +30,7 @@ function failedLoginResponse(
   if (acceptsHtml(request)) {
     const url = new URL("/login", request.url);
     url.searchParams.set("error", throttled ? "throttled" : "invalid");
+    url.searchParams.set("next", nextPath);
     return NextResponse.redirect(url, 303);
   }
 
@@ -44,27 +46,30 @@ function failedLoginResponse(
 }
 
 export async function POST(request: Request) {
+  const formData = await request.formData();
+  const nextPath = getSafeRedirectPath(formData.get("next"));
   const clientId = getLoginClientId(request);
   const rateLimit = loginRateLimiter.check(clientId);
 
   if (!rateLimit.allowed) {
-    return failedLoginResponse(request, 429, rateLimit.retryAfterSeconds);
+    return failedLoginResponse(
+      request,
+      429,
+      nextPath,
+      rateLimit.retryAfterSeconds,
+    );
   }
 
-  const formData = await request.formData();
   const passwordIsValid = await verifyAppPassword(formData.get("password"));
 
   if (!passwordIsValid) {
     loginRateLimiter.recordFailure(clientId);
-    return failedLoginResponse(request, 401);
+    return failedLoginResponse(request, 401, nextPath);
   }
 
   loginRateLimiter.reset(clientId);
 
-  const response = NextResponse.redirect(
-    new URL(getSafeRedirectPath(formData.get("next")), request.url),
-    303,
-  );
+  const response = NextResponse.redirect(new URL(nextPath, request.url), 303);
   response.cookies.set(
     SESSION_COOKIE_NAME,
     await createSession(),
