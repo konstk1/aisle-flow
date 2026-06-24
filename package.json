@@ -24,7 +24,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx src/db/migrate.ts"
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:seed-product-catalog": "tsx src/db/seed-product-catalog.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

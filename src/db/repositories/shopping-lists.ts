@@ -141,6 +141,62 @@ export async function findProductAlias(
   return match ?? null;
 }
 
+export function buildExactProductAliasLookupQuery(
+  db: Database,
+  storeId: string,
+  normalizedText: string,
+) {
+  return db
+    .select({
+      alias: productAliases,
+      productConcept: productConcepts,
+    })
+    .from(productAliases)
+    .innerJoin(
+      productConcepts,
+      eq(productAliases.productConceptId, productConcepts.id),
+    )
+    .where(
+      and(
+        eq(productAliases.normalizedText, normalizedText),
+        or(
+          eq(productAliases.source, "learned"),
+          eq(productAliases.source, "imported"),
+          eq(productAliases.isCorrection, true),
+        ),
+        or(
+          eq(productAliases.scope, "global"),
+          and(
+            eq(productAliases.scope, "store"),
+            eq(productAliases.storeId, storeId),
+          ),
+        ),
+      ),
+    )
+    .orderBy(
+      desc(productAliases.isCorrection),
+      desc(
+        sql<number>`case when ${productAliases.scope} = 'store' then 1 else 0 end`,
+      ),
+      desc(productAliases.confidence),
+    )
+    .limit(1);
+}
+
+export async function findExactProductAlias(
+  db: Database,
+  storeId: string,
+  normalizedText: string,
+) {
+  const [match] = await buildExactProductAliasLookupQuery(
+    db,
+    storeId,
+    normalizedText,
+  );
+
+  return match ?? null;
+}
+
 export function buildProductLocationLookupQuery(
   db: Database,
   storeId: string,
