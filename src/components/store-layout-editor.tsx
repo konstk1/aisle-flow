@@ -1,10 +1,34 @@
 "use client";
 
-import { Plus, Route, Save, Trash2 } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  GripVertical,
+  Plus,
+  Route,
+  Save,
+  Trash2,
+} from "lucide-react";
 import { useMemo, useState } from "react";
+import {
+  closestCenter,
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 
 import {
   getRouteSections,
+  renumberPathOrders,
   type StoreLayout,
   type StoreLayoutAisle,
   type StoreLayoutSection,
@@ -55,7 +79,17 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
     initialLayout ? null : "Create your first aisle, then save the route.",
   );
   const [isSaving, setIsSaving] = useState(false);
+  const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
+  const [collapsedAisleIds, setCollapsedAisleIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const routeSections = useMemo(() => getRouteSections(layout), [layout]);
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
 
   function errorFor(path: string) {
     return fieldErrors[path]?.[0];
@@ -105,7 +139,7 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
 
       return {
         ...current,
-        aisles: [
+        aisles: renumberPathOrders([
           ...current.aisles,
           {
             id: aisleId,
@@ -120,7 +154,7 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
               },
             ],
           },
-        ],
+        ]),
       };
     });
   }
@@ -133,15 +167,30 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
 
       return {
         ...current,
-        aisles: current.aisles.filter((aisle) => aisle.id !== aisleId),
+        aisles: renumberPathOrders(
+          current.aisles.filter((aisle) => aisle.id !== aisleId),
+        ),
       };
     });
   }
 
+  function toggleAisle(aisleId: string) {
+    setCollapsedAisleIds((current) => {
+      const next = new Set(current);
+
+      if (next.has(aisleId)) {
+        next.delete(aisleId);
+      } else {
+        next.add(aisleId);
+      }
+
+      return next;
+    });
+  }
+
   function addSection(aisleId: string) {
-    setLayout((current) => ({
-      ...current,
-      aisles: current.aisles.map((aisle) => {
+    setLayout((current) => {
+      const aisles = current.aisles.map((aisle) => {
         if (aisle.id !== aisleId) {
           return aisle;
         }
@@ -158,18 +207,19 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
                   currentAisle.sections.map((section) => section.pathOrder),
                 ),
               ),
-              side: "center",
+              side: "center" as const,
             },
           ],
         };
-      }),
-    }));
+      });
+
+      return { ...current, aisles: renumberPathOrders(aisles) };
+    });
   }
 
   function removeSection(aisleId: string, sectionId: string) {
-    setLayout((current) => ({
-      ...current,
-      aisles: current.aisles.map((aisle) => {
+    setLayout((current) => {
+      const aisles = current.aisles.map((aisle) => {
         if (aisle.id !== aisleId || aisle.sections.length === 1) {
           return aisle;
         }
@@ -180,8 +230,43 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
             (section) => section.id !== sectionId,
           ),
         };
-      }),
-    }));
+      });
+
+      return { ...current, aisles: renumberPathOrders(aisles) };
+    });
+  }
+
+  function moveSection(
+    aisleId: string,
+    sectionId: string,
+    targetSectionId: string,
+  ) {
+    setLayout((current) => {
+      const aisles = current.aisles.map((aisle) => {
+        if (aisle.id !== aisleId || sectionId === targetSectionId) {
+          return aisle;
+        }
+
+        const sourceIndex = aisle.sections.findIndex(
+          (section) => section.id === sectionId,
+        );
+        const targetIndex = aisle.sections.findIndex(
+          (section) => section.id === targetSectionId,
+        );
+
+        if (sourceIndex === -1 || targetIndex === -1) {
+          return aisle;
+        }
+
+        const sections = [...aisle.sections];
+        const [section] = sections.splice(sourceIndex, 1);
+        sections.splice(targetIndex, 0, section);
+
+        return { ...aisle, sections };
+      });
+
+      return { ...current, aisles: renumberPathOrders(aisles) };
+    });
   }
 
   async function saveLayout() {
@@ -241,9 +326,8 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
       </div>
 
       <p className="mt-4 max-w-xl text-sm leading-6 text-zinc-600">
-        Add any aisles and give every section a unique absolute path order.
-        Section side is informational only and never changes shopping-list
-        sorting.
+        Add any aisles, then arrange their sections. The path numbers are
+        assigned automatically; section side is informational only.
       </p>
 
       <label className="mt-8 block text-sm font-medium text-zinc-800">
@@ -258,147 +342,122 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
         <FieldError message={errorFor("name")} />
       </label>
 
-      <div className="mt-10 space-y-8">
-        {orderedAisles.map((aisle, aisleIndex) => (
-          <article className="border-y py-6" key={aisle.id}>
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0 flex-1">
-                <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(7rem,0.35fr)_minmax(0,1fr)]">
-                  <label className="text-sm font-medium text-zinc-800">
-                    Aisle
-                    <input
-                      className="mt-2 min-h-11 w-full border bg-white px-3 text-base transition outline-none focus:border-zinc-950"
-                      onChange={(event) =>
-                        updateAisle(aisle.id, {
-                          identifier: event.target.value,
-                        })
-                      }
-                      value={aisle.identifier}
-                    />
-                    <FieldError
-                      message={errorFor(`aisles.${aisleIndex}.identifier`)}
-                    />
-                  </label>
-                  <label className="text-sm font-medium text-zinc-800">
-                    Display name{" "}
-                    <span className="font-normal text-zinc-500">
-                      (optional)
-                    </span>
-                    <input
-                      className="mt-2 min-h-11 w-full border bg-white px-3 text-base transition outline-none focus:border-zinc-950"
-                      onChange={(event) =>
-                        updateAisle(aisle.id, {
-                          displayName: event.target.value || null,
-                        })
-                      }
-                      value={aisle.displayName ?? ""}
-                    />
-                  </label>
+      <div className="mt-10 space-y-5">
+        {orderedAisles.map((aisle, aisleIndex) => {
+          const isCollapsed = collapsedAisleIds.has(aisle.id);
+
+          return (
+            <article key={aisle.id}>
+              <div className="flex min-h-11 items-center gap-2">
+                <button
+                  aria-expanded={!isCollapsed}
+                  aria-label={isCollapsed ? "Expand aisle" : "Collapse aisle"}
+                  className="inline-flex size-8 shrink-0 items-center justify-center text-zinc-500 transition hover:text-zinc-950"
+                  onClick={() => toggleAisle(aisle.id)}
+                  type="button"
+                >
+                  {isCollapsed ? (
+                    <ChevronRight aria-hidden="true" className="size-4" />
+                  ) : (
+                    <ChevronDown aria-hidden="true" className="size-4" />
+                  )}
+                </button>
+                <label className="flex shrink-0 items-baseline gap-1 text-sm text-zinc-500">
+                  Aisle
+                  <input
+                    aria-label="Aisle number"
+                    className="w-7 bg-transparent px-0 text-base font-semibold text-zinc-950 tabular-nums outline-none focus:ring-1 focus:ring-zinc-400"
+                    onChange={(event) =>
+                      updateAisle(aisle.id, { identifier: event.target.value })
+                    }
+                    value={aisle.identifier}
+                  />
+                </label>
+                <input
+                  aria-label="Aisle display name"
+                  className="w-36 max-w-[40vw] bg-transparent px-1 text-sm text-zinc-700 outline-none placeholder:text-zinc-400 focus:ring-1 focus:ring-zinc-400"
+                  onChange={(event) =>
+                    updateAisle(aisle.id, {
+                      displayName: event.target.value || null,
+                    })
+                  }
+                  placeholder="Name (optional)"
+                  value={aisle.displayName ?? ""}
+                />
+                <div className="ml-auto shrink-0">
+                  <IconButton
+                    disabled={orderedAisles.length === 1}
+                    label="Delete aisle"
+                    onClick={() => removeAisle(aisle.id)}
+                  >
+                    <Trash2 aria-hidden="true" className="size-4" />
+                  </IconButton>
                 </div>
               </div>
 
-              <div className="flex shrink-0 items-center gap-1">
-                <IconButton
-                  disabled={orderedAisles.length === 1}
-                  label="Delete aisle"
-                  onClick={() => removeAisle(aisle.id)}
-                >
-                  <Trash2 aria-hidden="true" className="size-4" />
-                </IconButton>
-              </div>
-            </div>
-
-            <div className="mt-7 border-t pt-5">
-              <div className="flex items-center justify-between gap-4">
-                <h2 className="text-sm font-medium text-zinc-950">Sections</h2>
-                <button
-                  className="inline-flex min-h-10 items-center gap-2 text-sm font-medium text-zinc-700 underline-offset-4 hover:underline"
-                  onClick={() => addSection(aisle.id)}
-                  type="button"
-                >
-                  <Plus aria-hidden="true" className="size-4" />
-                  Add section
-                </button>
-              </div>
-
-              <div className="mt-4 space-y-4">
-                {aisle.sections.map((section, sectionIndex) => (
-                  <div
-                    className="border-l-2 border-zinc-200 pl-4"
-                    key={section.id}
+              {isCollapsed ? null : (
+                <div className="mt-1 ml-8">
+                  <DndContext
+                    collisionDetection={closestCenter}
+                    onDragCancel={() => setActiveSectionId(null)}
+                    onDragEnd={({ active, over }) => {
+                      if (over && active.id !== over.id) {
+                        moveSection(
+                          aisle.id,
+                          String(active.id),
+                          String(over.id),
+                        );
+                      }
+                      setActiveSectionId(null);
+                    }}
+                    onDragStart={({ active }) =>
+                      setActiveSectionId(String(active.id))
+                    }
+                    sensors={sensors}
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2">
-                        <label className="text-sm font-medium text-zinc-800">
-                          Label{" "}
-                          <span className="font-normal text-zinc-500">
-                            (optional)
-                          </span>
-                          <input
-                            className="mt-2 min-h-11 w-full border bg-white px-3 text-base transition outline-none focus:border-zinc-950"
-                            onChange={(event) =>
-                              updateSection(aisle.id, section.id, {
-                                label: event.target.value || null,
-                              })
+                    <SortableContext
+                      items={aisle.sections.map((section) => section.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="mt-2 space-y-1">
+                        {aisle.sections.map((section) => (
+                          <SortableSectionRow
+                            disabled={aisle.sections.length === 1}
+                            key={section.id}
+                            onDelete={() => removeSection(aisle.id, section.id)}
+                            onUpdate={(patch) =>
+                              updateSection(aisle.id, section.id, patch)
                             }
-                            value={section.label ?? ""}
+                            section={section}
                           />
-                        </label>
-                        <label className="text-sm font-medium text-zinc-800">
-                          Side
-                          <select
-                            className="mt-2 min-h-11 w-full border bg-white px-3 text-base transition outline-none focus:border-zinc-950"
-                            onChange={(event) =>
-                              updateSection(aisle.id, section.id, {
-                                side: event.target
-                                  .value as StoreLayoutSection["side"],
-                              })
-                            }
-                            value={section.side}
-                          >
-                            <option value="left">Left</option>
-                            <option value="right">Right</option>
-                            <option value="center">Center</option>
-                            <option value="endcap">Endcap</option>
-                          </select>
-                        </label>
-                        <label className="text-sm font-medium text-zinc-800">
-                          Absolute path order
-                          <input
-                            className="mt-2 min-h-11 w-full border bg-white px-3 text-base transition outline-none focus:border-zinc-950"
-                            min="0"
-                            onChange={(event) =>
-                              updateSection(aisle.id, section.id, {
-                                pathOrder: Number(event.target.value),
-                              })
-                            }
-                            type="number"
-                            value={section.pathOrder}
-                          />
-                          <FieldError
-                            message={errorFor(
-                              `aisles.${aisleIndex}.sections.${sectionIndex}.pathOrder`,
-                            )}
-                          />
-                        </label>
+                        ))}
                       </div>
-
-                      <div className="flex shrink-0 items-center gap-1 pt-7">
-                        <IconButton
-                          disabled={aisle.sections.length === 1}
-                          label="Delete section"
-                          onClick={() => removeSection(aisle.id, section.id)}
-                        >
-                          <Trash2 aria-hidden="true" className="size-4" />
-                        </IconButton>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </article>
-        ))}
+                    </SortableContext>
+                    <button
+                      className="mt-1 flex min-h-10 w-full items-center gap-2 text-sm font-medium text-zinc-500 transition hover:text-zinc-950"
+                      onClick={() => addSection(aisle.id)}
+                      type="button"
+                    >
+                      <span aria-hidden="true" className="size-8 shrink-0" />
+                      <Plus aria-hidden="true" className="size-4" />
+                      Add section
+                    </button>
+                    <DragOverlay>
+                      <SectionDragOverlay
+                        section={aisle.sections.find(
+                          (section) => section.id === activeSectionId,
+                        )}
+                      />
+                    </DragOverlay>
+                  </DndContext>
+                  <FieldError
+                    message={errorFor(`aisles.${aisleIndex}.identifier`)}
+                  />
+                </div>
+              )}
+            </article>
+          );
+        })}
       </div>
 
       <button
@@ -448,6 +507,107 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
   );
 }
 
+function SortableSectionRow({
+  disabled,
+  onDelete,
+  onUpdate,
+  section,
+}: {
+  disabled: boolean;
+  onDelete: () => void;
+  onUpdate: (patch: Partial<Omit<StoreLayoutSection, "id">>) => void;
+  section: StoreLayoutSection;
+}) {
+  const {
+    attributes,
+    isDragging,
+    listeners,
+    setActivatorNodeRef,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id: section.id });
+  const style = {
+    transform: transform
+      ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
+      : undefined,
+    transition,
+  };
+
+  return (
+    <div
+      className={`flex min-h-10 items-center gap-2 py-0.5 ${isDragging ? "opacity-0" : ""}`}
+      ref={setNodeRef}
+      style={style}
+    >
+      <button
+        aria-label={`Drag ${section.label || "section"}`}
+        className="inline-flex size-8 shrink-0 cursor-grab items-center justify-center text-zinc-400 active:cursor-grabbing"
+        ref={setActivatorNodeRef}
+        style={{ touchAction: "none" }}
+        type="button"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical aria-hidden="true" className="size-4" />
+      </button>
+      <span className="w-6 shrink-0 text-right text-sm font-medium text-zinc-500 tabular-nums">
+        {section.pathOrder + 1}.
+      </span>
+      <input
+        aria-label="Section label"
+        className="min-w-0 flex-1 bg-transparent py-1 text-base outline-none placeholder:text-zinc-400"
+        onChange={(event) => onUpdate({ label: event.target.value || null })}
+        placeholder="Section label"
+        value={section.label ?? ""}
+      />
+      <select
+        aria-label="Section side"
+        className="min-h-8 w-24 shrink-0 bg-transparent px-1 text-sm text-zinc-700 outline-none"
+        onChange={(event) =>
+          onUpdate({ side: event.target.value as StoreLayoutSection["side"] })
+        }
+        value={section.side}
+      >
+        <option value="left">Left</option>
+        <option value="right">Right</option>
+        <option value="center">Center</option>
+        <option value="endcap">Endcap</option>
+      </select>
+      <IconButton
+        compact
+        disabled={disabled}
+        label="Delete section"
+        onClick={onDelete}
+      >
+        <Trash2 aria-hidden="true" className="size-4" />
+      </IconButton>
+    </div>
+  );
+}
+
+function SectionDragOverlay({ section }: { section?: StoreLayoutSection }) {
+  if (!section) {
+    return null;
+  }
+
+  return (
+    <div className="flex min-h-12 w-[min(36rem,calc(100vw-2.5rem))] items-center gap-2 border bg-white px-2 py-2 shadow-lg">
+      <GripVertical
+        aria-hidden="true"
+        className="size-5 shrink-0 text-zinc-400"
+      />
+      <span className="w-6 shrink-0 text-right text-sm font-medium text-zinc-500 tabular-nums">
+        {section.pathOrder + 1}.
+      </span>
+      <span className="min-w-0 flex-1 truncate text-base text-zinc-900">
+        {section.label || "Section label"}
+      </span>
+      <span className="text-sm text-zinc-600">{section.side}</span>
+    </div>
+  );
+}
+
 function FieldError({ message }: { message?: string }) {
   if (!message) {
     return null;
@@ -462,11 +622,13 @@ function FieldError({ message }: { message?: string }) {
 
 function IconButton({
   children,
+  compact = false,
   disabled = false,
   label,
   onClick,
 }: {
   children: React.ReactNode;
+  compact?: boolean;
   disabled?: boolean;
   label: string;
   onClick: () => void;
@@ -474,7 +636,7 @@ function IconButton({
   return (
     <button
       aria-label={label}
-      className="inline-flex size-10 items-center justify-center border text-zinc-700 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-30"
+      className={`inline-flex items-center justify-center border text-zinc-700 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-30 ${compact ? "size-8" : "size-10"}`}
       disabled={disabled}
       onClick={onClick}
       type="button"

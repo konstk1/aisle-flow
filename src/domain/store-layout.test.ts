@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { getRouteSections, type StoreLayout } from "./store-layout";
+import {
+  getRouteSections,
+  renumberPathOrders,
+  type StoreLayout,
+} from "./store-layout";
 
 const layout: StoreLayout = {
   id: "store",
@@ -64,6 +68,37 @@ describe("getRouteSections", () => {
       "produce-start",
       "produce-end",
       "dairy",
+    ]);
+  });
+
+  it("assigns contiguous absolute paths after a section is moved, inserted, or deleted", () => {
+    const renumbered = renumberPathOrders([
+      {
+        ...layout.aisles[1],
+        sections: [layout.aisles[1].sections[1], layout.aisles[1].sections[0]],
+      },
+      {
+        ...layout.aisles[0],
+        sections: [
+          {
+            ...layout.aisles[0].sections[0],
+            id: "bakery",
+            pathOrder: 99,
+          },
+          layout.aisles[0].sections[0],
+        ],
+      },
+    ]);
+
+    expect(
+      renumbered.flatMap((aisle) =>
+        aisle.sections.map((section) => [section.id, section.pathOrder]),
+      ),
+    ).toEqual([
+      ["produce-end", 0],
+      ["produce-start", 1],
+      ["bakery", 2],
+      ["dairy", 3],
     ]);
   });
 });

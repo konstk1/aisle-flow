@@ -27,3 +27,15 @@ export function getRouteSections(layout: StoreLayout) {
       (first, second) => first.section.pathOrder - second.section.pathOrder,
     );
 }
+
+export function renumberPathOrders(aisles: StoreLayoutAisle[]) {
+  let pathOrder = 0;
+
+  return aisles.map((aisle) => ({
+    ...aisle,
+    sections: aisle.sections.map((section) => ({
+      ...section,
+      pathOrder: pathOrder++,
+    })),
+  }));
+}
