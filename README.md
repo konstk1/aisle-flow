@@ -89,5 +89,5 @@ documentation only and is never applied automatically.
 4. Run `pnpm db:migrate` against the intended database before deploying code
    that depends on a new migration.
 
-The health/readiness endpoint is intentionally deferred and is not part of the
-current deployment configuration.
+`GET /api/health` is the unauthenticated health/readiness endpoint. Every
+other application page and API route requires the signed session cookie.
