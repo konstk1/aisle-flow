@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  ArrowDown,
+  ArrowUp,
   ChevronDown,
   ChevronRight,
   GripVertical,
@@ -28,6 +30,8 @@ import {
 
 import {
   getRouteSections,
+  getNextAisleIdentifier,
+  orderAisles,
   renumberPathOrders,
   type StoreLayout,
   type StoreLayoutAisle,
@@ -53,6 +57,7 @@ function createDefaultLayout(): StoreLayout {
         id: createId(),
         identifier: "1",
         displayName: null,
+        displayOrder: 0,
         sections: [
           {
             id: createId(),
@@ -64,10 +69,6 @@ function createDefaultLayout(): StoreLayout {
       },
     ],
   };
-}
-
-function nextOrder(values: number[]) {
-  return values.length === 0 ? 0 : Math.max(...values) + 1;
 }
 
 export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
@@ -129,12 +130,7 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
 
   function addAisle() {
     setLayout((current) => {
-      const pathOrder = nextOrder(
-        current.aisles.flatMap((aisle) =>
-          aisle.sections.map((section) => section.pathOrder),
-        ),
-      );
-      const identifier = String(current.aisles.length + 1);
+      const identifier = getNextAisleIdentifier(current.aisles);
       const aisleId = createId();
 
       return {
@@ -145,11 +141,16 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
             id: aisleId,
             identifier,
             displayName: null,
+            displayOrder:
+              Math.max(
+                -1,
+                ...current.aisles.map((aisle) => aisle.displayOrder),
+              ) + 1,
             sections: [
               {
                 id: createId(),
                 label: "",
-                pathOrder,
+                pathOrder: 0,
                 side: "center",
               },
             ],
@@ -168,7 +169,33 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
       return {
         ...current,
         aisles: renumberPathOrders(
-          current.aisles.filter((aisle) => aisle.id !== aisleId),
+          orderAisles(
+            current.aisles.filter((aisle) => aisle.id !== aisleId),
+          ).map((aisle, displayOrder) => ({ ...aisle, displayOrder })),
+        ),
+      };
+    });
+  }
+
+  function moveAisle(aisleId: string, direction: -1 | 1) {
+    setLayout((current) => {
+      const aisles = orderAisles(current.aisles);
+      const index = aisles.findIndex((aisle) => aisle.id === aisleId);
+      const targetIndex = index + direction;
+
+      if (index === -1 || targetIndex < 0 || targetIndex >= aisles.length) {
+        return current;
+      }
+
+      [aisles[index], aisles[targetIndex]] = [
+        aisles[targetIndex],
+        aisles[index],
+      ];
+
+      return {
+        ...current,
+        aisles: renumberPathOrders(
+          aisles.map((aisle, displayOrder) => ({ ...aisle, displayOrder })),
         ),
       };
     });
@@ -202,11 +229,7 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
             {
               id: createId(),
               label: "",
-              pathOrder: nextOrder(
-                current.aisles.flatMap((currentAisle) =>
-                  currentAisle.sections.map((section) => section.pathOrder),
-                ),
-              ),
+              pathOrder: 0,
               side: "center" as const,
             },
           ],
@@ -288,6 +311,20 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
 
       if (!response.ok || !result.layout) {
         setFieldErrors(result.fieldErrors ?? {});
+        const invalidAisleIds = new Set(
+          Object.keys(result.fieldErrors ?? {})
+            .map((path) => path.match(/^aisles\.(\d+)\./)?.[1])
+            .flatMap((index) =>
+              index === undefined ? [] : [layout.aisles[Number(index)]?.id],
+            )
+            .filter((id): id is string => Boolean(id)),
+        );
+        if (invalidAisleIds.size > 0) {
+          setCollapsedAisleIds(
+            (current) =>
+              new Set([...current].filter((id) => !invalidAisleIds.has(id))),
+          );
+        }
         setMessage(result.error ?? "The layout could not be saved.");
         return;
       }
@@ -303,7 +340,7 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
     }
   }
 
-  const orderedAisles = layout.aisles;
+  const orderedAisles = orderAisles(layout.aisles);
 
   return (
     <section className="pt-10 pb-12 sm:pt-14">
@@ -362,6 +399,26 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
                     <ChevronDown aria-hidden="true" className="size-4" />
                   )}
                 </button>
+                <div className="flex shrink-0">
+                  <button
+                    aria-label="Move aisle earlier"
+                    className="inline-flex size-7 items-center justify-center text-zinc-400 transition hover:text-zinc-950 disabled:cursor-not-allowed disabled:opacity-30"
+                    disabled={aisleIndex === 0}
+                    onClick={() => moveAisle(aisle.id, -1)}
+                    type="button"
+                  >
+                    <ArrowUp aria-hidden="true" className="size-3.5" />
+                  </button>
+                  <button
+                    aria-label="Move aisle later"
+                    className="inline-flex size-7 items-center justify-center text-zinc-400 transition hover:text-zinc-950 disabled:cursor-not-allowed disabled:opacity-30"
+                    disabled={aisleIndex === orderedAisles.length - 1}
+                    onClick={() => moveAisle(aisle.id, 1)}
+                    type="button"
+                  >
+                    <ArrowDown aria-hidden="true" className="size-3.5" />
+                  </button>
+                </div>
                 <label className="flex shrink-0 items-baseline gap-1 text-sm text-zinc-500">
                   Aisle
                   <input

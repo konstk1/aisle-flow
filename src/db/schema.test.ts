@@ -41,8 +41,12 @@ describe("data model constraints", () => {
     expect(uniqueConstraintNames(aisleSections)).toEqual(
       expect.arrayContaining(["aisle_sections_store_path_order_unique"]),
     );
+    expect(uniqueConstraintNames(aisles)).toEqual(
+      expect.arrayContaining(["aisles_store_display_order_unique"]),
+    );
     expect(aisles).not.toHaveProperty("routeOrder");
     expect(aisles).not.toHaveProperty("traversalDirection");
+    expect(aisles).toHaveProperty("displayOrder");
     expect(aisleSections).not.toHaveProperty("sectionOrder");
   });
 

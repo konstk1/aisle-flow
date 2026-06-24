@@ -11,6 +11,7 @@ export type StoreLayoutAisle = {
   id: string;
   identifier: string;
   displayName: string | null;
+  displayOrder: number;
   sections: StoreLayoutSection[];
 };
 
@@ -31,11 +32,36 @@ export function getRouteSections(layout: StoreLayout) {
 export function renumberPathOrders(aisles: StoreLayoutAisle[]) {
   let pathOrder = 0;
 
-  return aisles.map((aisle) => ({
+  return orderAisles(aisles).map((aisle) => ({
     ...aisle,
     sections: aisle.sections.map((section) => ({
       ...section,
       pathOrder: pathOrder++,
     })),
   }));
+}
+
+export function orderAisles(aisles: StoreLayoutAisle[]) {
+  return [...aisles].sort(
+    (first, second) => first.displayOrder - second.displayOrder,
+  );
+}
+
+export function getNextAisleIdentifier(aisles: StoreLayoutAisle[]) {
+  const identifiers = new Set(aisles.map((aisle) => aisle.identifier.trim()));
+  const highestNumericIdentifier = Math.max(
+    0,
+    ...aisles.flatMap((aisle) =>
+      /^\d+$/.test(aisle.identifier.trim())
+        ? [Number(aisle.identifier.trim())]
+        : [],
+    ),
+  );
+  let nextIdentifier = highestNumericIdentifier + 1;
+
+  while (identifiers.has(String(nextIdentifier))) {
+    nextIdentifier += 1;
+  }
+
+  return String(nextIdentifier);
 }

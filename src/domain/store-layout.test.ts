@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  getNextAisleIdentifier,
   getRouteSections,
   renumberPathOrders,
   type StoreLayout,
@@ -14,6 +15,7 @@ const layout: StoreLayout = {
       id: "aisle-2",
       identifier: "2",
       displayName: null,
+      displayOrder: 1,
       sections: [
         {
           id: "dairy",
@@ -27,6 +29,7 @@ const layout: StoreLayout = {
       id: "aisle-1",
       identifier: "1",
       displayName: null,
+      displayOrder: 0,
       sections: [
         {
           id: "produce-start",
@@ -46,6 +49,28 @@ const layout: StoreLayout = {
 };
 
 describe("getRouteSections", () => {
+  it("uses the persisted aisle display order when renumbering paths", () => {
+    const reordered = renumberPathOrders([...layout.aisles].reverse());
+
+    expect(reordered.map((aisle) => aisle.identifier)).toEqual(["1", "2"]);
+    expect(
+      reordered.flatMap((aisle) =>
+        aisle.sections.map((section) => section.pathOrder),
+      ),
+    ).toEqual([0, 1, 2]);
+  });
+
+  it("creates a unique numeric aisle identifier after a middle aisle is deleted", () => {
+    const aisles = ["1", "3"].map((identifier, displayOrder) => ({
+      ...layout.aisles[0],
+      id: `${identifier}-aisle`,
+      identifier,
+      displayOrder,
+    }));
+
+    expect(getNextAisleIdentifier(aisles)).toBe("4");
+  });
+
   it("uses one absolute path order across all aisles", () => {
     expect(
       getRouteSections(layout).map(({ section }) => section.label),

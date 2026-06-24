@@ -38,6 +38,11 @@ const aisleSchema = z.object({
     .min(1, "An aisle identifier is required.")
     .max(40, "Aisle identifiers must be 40 characters or fewer."),
   displayName: optionalLabelSchema,
+  displayOrder: z
+    .number()
+    .int("Aisle order must be a whole number.")
+    .min(0, "Aisle order cannot be negative.")
+    .max(MAX_ORDER, "Aisle order is too large."),
   sections: z.array(sectionSchema).min(1, "Each aisle needs one section."),
 });
 
@@ -52,16 +57,16 @@ export const storeLayoutSchema = z
     aisles: z.array(aisleSchema).min(1, "Add at least one aisle."),
   })
   .superRefine((layout, context) => {
-    const aisleIds = new Map<string, number>();
-    const identifiers = new Map<string, number>();
-    const sectionIds = new Map<string, [number, number]>();
-    const pathOrders = new Map<number, true>();
+    const aisleIds = new Set<string>();
+    const identifiers = new Set<string>();
+    const displayOrders = new Set<number>();
+    const sectionIds = new Set<string>();
+    const pathOrders = new Set<number>();
 
     layout.aisles.forEach((aisle, aisleIndex) => {
       addDuplicateIssue(
         aisleIds,
         aisle.id,
-        aisleIndex,
         context,
         ["aisles", aisleIndex, "id"],
         "Each aisle must have a unique identifier.",
@@ -69,10 +74,16 @@ export const storeLayoutSchema = z
       addDuplicateIssue(
         identifiers,
         aisle.identifier.toLocaleLowerCase(),
-        aisleIndex,
         context,
         ["aisles", aisleIndex, "identifier"],
         "Aisle identifiers must be unique within the store.",
+      );
+      addDuplicateIssue(
+        displayOrders,
+        aisle.displayOrder,
+        context,
+        ["aisles", aisleIndex, "displayOrder"],
+        "Each aisle needs a different display order.",
       );
       aisle.sections.forEach((section, sectionIndex) => {
         const sectionPath = [
@@ -81,19 +92,14 @@ export const storeLayoutSchema = z
           "sections",
           sectionIndex,
         ] as const;
-        const priorSection = sectionIds.get(section.id);
-
-        if (priorSection) {
-          context.addIssue({
-            code: "custom",
-            message: "Each section must have a unique identifier.",
-            path: [...sectionPath, "id"],
-          });
-        } else {
-          sectionIds.set(section.id, [aisleIndex, sectionIndex]);
-        }
-
-        addDuplicatePathOrderIssue(
+        addDuplicateIssue(
+          sectionIds,
+          section.id,
+          context,
+          [...sectionPath, "id"],
+          "Each section must have a unique identifier.",
+        );
+        addDuplicateIssue(
           pathOrders,
           section.pathOrder,
           context,
@@ -105,9 +111,8 @@ export const storeLayoutSchema = z
   });
 
 function addDuplicateIssue<T>(
-  seen: Map<T, number>,
+  seen: Set<T>,
   value: T,
-  index: number,
   context: z.RefinementCtx,
   path: (string | number)[],
   message: string,
@@ -117,22 +122,7 @@ function addDuplicateIssue<T>(
     return;
   }
 
-  seen.set(value, index);
-}
-
-function addDuplicatePathOrderIssue(
-  seen: Map<number, true>,
-  value: number,
-  context: z.RefinementCtx,
-  path: (string | number)[],
-  message: string,
-) {
-  if (seen.has(value)) {
-    context.addIssue({ code: "custom", message, path });
-    return;
-  }
-
-  seen.set(value, true);
+  seen.add(value);
 }
 
 export type StoreLayoutInput = z.output<typeof storeLayoutSchema>;
@@ -160,7 +150,7 @@ export async function getStoreLayout(): Promise<StoreLayout | null> {
     .from(aisles)
     .leftJoin(aisleSections, eq(aisleSections.aisleId, aisles.id))
     .where(eq(aisles.storeId, store.id))
-    .orderBy(asc(aisles.identifier), asc(aisleSections.pathOrder));
+    .orderBy(asc(aisles.displayOrder), asc(aisleSections.pathOrder));
 
   const layoutAisles = new Map<string, StoreLayout["aisles"][number]>();
 
@@ -172,6 +162,7 @@ export async function getStoreLayout(): Promise<StoreLayout | null> {
         id: aisle.id,
         identifier: aisle.identifier,
         displayName: aisle.displayName,
+        displayOrder: aisle.displayOrder,
         sections: [],
       };
       layoutAisles.set(aisle.id, layoutAisle);
@@ -203,6 +194,7 @@ export async function replaceStoreLayout(layout: StoreLayoutInput) {
           storeId: layout.id,
           identifier: aisle.identifier,
           displayName: aisle.displayName,
+          displayOrder: aisle.displayOrder,
         })),
       ),
       db.insert(aisleSections).values(
@@ -266,6 +258,7 @@ export async function replaceStoreLayout(layout: StoreLayoutInput) {
       .update(aisles)
       .set({
         identifier: sql`concat('__pending__', ${aisles.id})`,
+        displayOrder: sql`${aisles.displayOrder} + ${ORDER_OFFSET}`,
       })
       .where(eq(aisles.storeId, layout.id)),
     ...layout.aisles
@@ -276,6 +269,7 @@ export async function replaceStoreLayout(layout: StoreLayoutInput) {
           storeId: layout.id,
           identifier: aisle.identifier,
           displayName: aisle.displayName,
+          displayOrder: aisle.displayOrder,
         }),
       ),
     ...incomingSections
@@ -330,6 +324,7 @@ export async function replaceStoreLayout(layout: StoreLayoutInput) {
           .set({
             identifier: aisle.identifier,
             displayName: aisle.displayName,
+            displayOrder: aisle.displayOrder,
             updatedAt: now,
             version: sql`${aisles.version} + 1`,
           })

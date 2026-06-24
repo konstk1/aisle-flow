@@ -28,8 +28,10 @@ Each aisle section records:
 - Side: `left`, `right`, `center`, or `endcap`
 - Optional display name
 
-Shopping order follows the store-wide absolute path order. Aisles group sections
-for editing only; their order and a section's side do not affect sorting.
+Shopping order follows the store-wide absolute path order. The editor keeps
+aisle groups in an explicit order so it can recalculate contiguous path numbers
+after a section is added, deleted, or moved. A section's side does not affect
+sorting.
 
 ## Product Matching
 
@@ -86,7 +88,7 @@ Store identity, name, and active route.
 
 ### `aisles`
 
-Store reference and aisle number/name.
+Store reference, aisle number/name, and editor group order.
 
 ### `aisle_sections`
 
