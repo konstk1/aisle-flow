@@ -3,8 +3,9 @@
 This fixture is documentation for a local or preview database. It is not a
 production seed and must not be run automatically during deployment.
 
-Create one store named **Example Market**. Assign the route directly by setting
-each section's unique `path_order`:
+Create one store named **Example Market**. Assign every section a unique,
+store-wide `path_order`; it is the complete shopping route. Aisles are only a
+way to group those sections in the editor.
 
 | Aisle | Path order | Side  | Section label |
 | ----- | ---------- | ----- | ------------- |

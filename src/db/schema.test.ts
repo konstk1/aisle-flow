@@ -14,6 +14,12 @@ function indexNames(table: Parameters<typeof getTableConfig>[0]) {
   return getTableConfig(table).indexes.map((index) => index.config.name);
 }
 
+function uniqueConstraintNames(table: Parameters<typeof getTableConfig>[0]) {
+  return getTableConfig(table).uniqueConstraints.map(
+    (constraint) => constraint.name,
+  );
+}
+
 function checkNames(table: Parameters<typeof getTableConfig>[0]) {
   return getTableConfig(table).checks.map((check) => check.name);
 }
@@ -25,14 +31,16 @@ function foreignKeyNames(table: Parameters<typeof getTableConfig>[0]) {
 }
 
 describe("data model constraints", () => {
-  it("keeps aisle sections in their owning store and gives each one explicit route position", () => {
+  it("keeps aisle sections in their owning store with one unambiguous route order", () => {
     expect(foreignKeyNames(aisleSections)).toContain(
       "aisle_sections_store_aisle_foreign_key",
     );
     expect(checkNames(aisleSections)).toContain(
       "aisle_sections_path_order_non_negative",
     );
-    expect(aisles).not.toHaveProperty("displayOrder");
+    expect(uniqueConstraintNames(aisleSections)).toEqual(
+      expect.arrayContaining(["aisle_sections_store_path_order_unique"]),
+    );
     expect(aisles).not.toHaveProperty("routeOrder");
     expect(aisles).not.toHaveProperty("traversalDirection");
     expect(aisleSections).not.toHaveProperty("sectionOrder");
