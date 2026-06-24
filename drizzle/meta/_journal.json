@@ -15,6 +15,27 @@
       "when": 1782245762019,
       "tag": "0001_glorious_william_stryker",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782262641258,
+      "tag": "0002_faithful_lightspeed",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1782264360661,
+      "tag": "0003_productive_patriot",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1782314951232,
+      "tag": "0004_fluffy_the_executioner",
+      "breakpoints": true
     }
   ]
 }

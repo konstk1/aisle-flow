@@ -6,7 +6,7 @@ export const serverEnvSchema = z.object({
   DATABASE_URL: databaseUrlSchema,
   APP_PASSWORD_HASH: z.string().min(20),
   SESSION_SECRET: z.string().min(32),
-  GITHUB_ISSUES_TOKEN: z.string().min(20),
+  GITHUB_ISSUES_TOKEN: z.string().min(20).optional(),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
@@ -17,6 +17,12 @@ export const authEnvSchema = serverEnvSchema.pick({
 });
 
 export type AuthEnv = z.infer<typeof authEnvSchema>;
+
+export const githubIssuesEnvSchema = z.object({
+  GITHUB_ISSUES_TOKEN: z.string().min(20),
+});
+
+export type GitHubIssuesEnv = z.infer<typeof githubIssuesEnvSchema>;
 
 export function parseDatabaseUrl(value: unknown): string {
   const result = databaseUrlSchema.safeParse(value);
@@ -56,6 +62,18 @@ export function getValidatedAuthEnv(input: unknown): AuthEnv {
 
     throw new Error(
       `Invalid authentication environment: ${invalidKeys.join(", ")}. Update the required server variables before continuing.`,
+    );
+  }
+
+  return result.data;
+}
+
+export function getValidatedGitHubIssuesEnv(input: unknown): GitHubIssuesEnv {
+  const result = githubIssuesEnvSchema.safeParse(input);
+
+  if (!result.success) {
+    throw new Error(
+      "Invalid feedback environment: GITHUB_ISSUES_TOKEN. Configure it before enabling in-app issue reporting.",
     );
   }
 

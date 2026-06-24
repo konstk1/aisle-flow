@@ -1,8 +1,11 @@
+import { loadEnvConfig } from "@next/env";
 import { migrate } from "drizzle-orm/neon-http/migrator";
 
 import { getValidatedServerEnv } from "@/env/schema";
 
 import { createDatabase } from "./create-client";
+
+loadEnvConfig(process.cwd());
 
 async function run() {
   const { DATABASE_URL } = getValidatedServerEnv(process.env);

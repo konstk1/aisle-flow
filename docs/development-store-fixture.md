@@ -3,14 +3,15 @@
 This fixture is documentation for a local or preview database. It is not a
 production seed and must not be run automatically during deployment.
 
-Create one store named **Example Market**. Assign the route directly by setting
-each section's unique `path_order`:
+Create one store named **Example Market**. Set aisle `display_order` values
+for the editor groups, then assign every section a unique store-wide
+`path_order`; it is the complete shopping route.
 
-| Aisle | Path order | Side  | Section label |
-| ----- | ---------- | ----- | ------------- |
-| 1     | 0          | left  | Produce       |
-| 2     | 1          | right | Dry goods     |
-| 3     | 2          | left  | Frozen        |
+| Aisle | Display order | Path order | Side  | Section label |
+| ----- | ------------- | ---------- | ----- | ------------- |
+| 1     | 0             | 0          | left  | Produce       |
+| 2     | 1             | 1          | right | Dry goods     |
+| 3     | 2             | 2          | left  | Frozen        |
 
 Useful matching records for manual testing are:
 

@@ -101,6 +101,7 @@ export const aisles = pgTable(
       .references(() => stores.id, { onDelete: "cascade" }),
     identifier: text("identifier").notNull(),
     displayName: text("display_name"),
+    displayOrder: integer("display_order").notNull(),
     version: integer("version").default(1).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -115,10 +116,15 @@ export const aisles = pgTable(
       table.storeId,
       table.identifier,
     ),
+    unique("aisles_store_display_order_unique").on(
+      table.storeId,
+      table.displayOrder,
+    ),
     check(
       "aisles_identifier_not_blank",
       sql`length(btrim(${table.identifier})) > 0`,
     ),
+    check("aisles_display_order_non_negative", sql`${table.displayOrder} >= 0`),
     check("aisles_version_positive", sql`${table.version} > 0`),
   ],
 );

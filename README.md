@@ -34,12 +34,12 @@ files from there when the application source is in `src/`.
 All variables are server-only. Do not add a `NEXT_PUBLIC_` prefix to any of
 them, and never commit real values.
 
-| Variable              | Purpose                                                                          |
-| --------------------- | -------------------------------------------------------------------------------- |
-| `DATABASE_URL`        | Neon Postgres connection string supplied by the Vercel Neon integration.         |
-| `APP_PASSWORD_HASH`   | Hash of the single application password; never a raw password.                   |
-| `SESSION_SECRET`      | At least 32 random characters used to sign the session cookie.                   |
-| `GITHUB_ISSUES_TOKEN` | Fine-grained token restricted to `konstk1/aisle-flow` with `Issues: write` only. |
+| Variable              | Purpose                                                                                                                           |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`        | Neon Postgres connection string supplied by the Vercel Neon integration.                                                          |
+| `APP_PASSWORD_HASH`   | Hash of the single application password; never a raw password.                                                                    |
+| `SESSION_SECRET`      | At least 32 random characters used to sign the session cookie.                                                                    |
+| `GITHUB_ISSUES_TOKEN` | Required only when in-app feedback is enabled; a fine-grained token restricted to `konstk1/aisle-flow` with `Issues: write` only. |
 
 The server environment is validated before database access or database
 migrations run. Validation reports only invalid variable names, never values.
@@ -83,9 +83,9 @@ documentation only and is never applied automatically.
    `vercel.json` is required for this standard App Router deployment.
 2. Add the Neon integration from the Vercel Marketplace and create or attach a
    Postgres database.
-3. Set `DATABASE_URL`, `APP_PASSWORD_HASH`, `SESSION_SECRET`, and
-   `GITHUB_ISSUES_TOKEN` for Development, Preview, and Production as
-   appropriate.
+3. Set `DATABASE_URL`, `APP_PASSWORD_HASH`, and `SESSION_SECRET` for
+   Development, Preview, and Production. Set `GITHUB_ISSUES_TOKEN` when
+   deploying in-app feedback.
 4. Run `pnpm db:migrate` against the intended database before deploying code
    that depends on a new migration.
 

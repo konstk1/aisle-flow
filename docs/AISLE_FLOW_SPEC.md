@@ -24,12 +24,14 @@ A store contains aisles, and each aisle contains one or more ordered sections. T
 Each aisle section records:
 
 - Aisle identifier and display number
-- Section order within the aisle
-- Explicit path order used for shopping-list sorting
+- One absolute path order used for shopping-list sorting
 - Side: `left`, `right`, `center`, or `endcap`
 - Optional display name
 
-The store route records aisle traversal order and direction. Shopping order follows the configured path through each aisle, moving up or down it as configured. Side is informational and does not affect sorting.
+Shopping order follows the store-wide absolute path order. The editor keeps
+aisle groups in an explicit order so it can recalculate contiguous path numbers
+after a section is added, deleted, or moved. A section's side does not affect
+sorting.
 
 ## Product Matching
 
@@ -86,11 +88,11 @@ Store identity, name, and active route.
 
 ### `aisles`
 
-Store reference, aisle number/name, route order, and traversal direction.
+Store reference, aisle number/name, and editor group order.
 
 ### `aisle_sections`
 
-Aisle reference, section order, explicit path order, informational side, and label.
+Aisle reference, one absolute path order, informational side, and label.
 
 ### `product_concepts`
 
@@ -188,7 +190,7 @@ Use a fine-grained GitHub token restricted to the repository with only `Issues: 
 - One store
 - Text-based aisle and section editor
 - Multiple ordered sections per aisle
-- Explicit section path order for route sorting
+- One absolute section path order for route sorting
 - Informational left/right/center/endcap placement
 - One persistent active shopping list with manual entry and checkoff
 - Route-sorted shopping view
@@ -218,7 +220,7 @@ Shopping-item checkboxes should resemble the Apple Notes checklist interaction:
 - Multiple shopping lists, history, and archives
 - Screenshot annotation in bug reports
 - Frequent background sync infrastructure
-- Advanced route optimization beyond configured store traversal
+- Advanced route optimization beyond the configured absolute path
 
 ## Relevant Documentation
 
