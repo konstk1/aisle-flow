@@ -59,6 +59,24 @@ migrations run. Validation reports only invalid variable names, never values.
 | `pnpm db:generate`  | Generate Drizzle SQL migrations from the schema. |
 | `pnpm db:migrate`   | Apply generated migrations to Neon.              |
 
+## Data migrations
+
+Run `pnpm db:migrate` against a fresh Neon database to apply the complete MVP
+data model. Migrations are forward-only: do not delete or edit a migration
+after it has been applied. To roll back development or preview data, discard
+the Neon branch/database and create a fresh one before re-running migrations.
+For production, restore a verified Neon backup or deploy a separate, reviewed
+forward migration that restores the intended schema and data.
+
+The schema keeps route/layout data store-scoped, supports one active list per
+store, and prevents aliases from conflicting within either global or
+store-specific scope. The query layer returns only list, product, and location
+data; source connection credentials and protected metadata remain server-side.
+
+See [the development store fixture](docs/development-store-fixture.md) for a
+small manually-created layout suitable for local or preview testing. It is
+documentation only and is never applied automatically.
+
 ## Vercel and Neon
 
 1. Import the repository into Vercel as a Next.js project. No custom
