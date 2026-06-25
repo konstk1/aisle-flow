@@ -21,7 +21,9 @@ import {
   buildActiveShoppingListQuery,
   buildRouteOrderedShoppingItemsQuery,
   buildShoppingItemCheckStateQuery,
+  buildShoppingItemsByNormalizedTextQuery,
   buildShoppingItemUpsertQuery,
+  type ShoppingItemUpsertInput,
 } from "@/db/repositories/shopping-lists";
 import type {
   Aisle,
@@ -32,10 +34,14 @@ import type {
   ShoppingList,
 } from "@/db/schema";
 
-import { resolveProductMatchForStore } from "./product-matching";
+import {
+  createStoreProductMatcher,
+  type StoreProductMatcher,
+} from "./product-matching";
 import { getStoreLayout } from "./store-layout";
 
 const mutationIdSchema = z.uuid("Provide a valid mutation id.");
+const duplicateShoppingItemMessage = "This item is already on the list.";
 
 const shoppingItemTextSchema = z
   .string()
@@ -95,6 +101,13 @@ interface RouteOrderedShoppingItemRow {
 
 export async function getActiveShoppingList(): Promise<ActiveShoppingListPayload> {
   const layout = await requireActiveStoreLayout();
+
+  return getActiveShoppingListForLayout(layout);
+}
+
+export async function getActiveShoppingListForLayout(
+  layout: StoreLayout,
+): Promise<ActiveShoppingListPayload> {
   const db = getDb();
   const list = await getOrCreateActiveShoppingList(db, layout.id);
 
@@ -108,6 +121,21 @@ export async function addActiveShoppingListItem(
   const db = getDb();
   const list = await getOrCreateActiveShoppingList(db, layout.id);
   const now = new Date();
+  const sourceIdentifier = `manual:${input.mutationId}`;
+  await ensureShoppingItemsAreNew(db, {
+    list,
+    normalizedItems: [
+      {
+        normalizedText: normalizeProductText(input.text),
+        sourceIdentifier,
+      },
+    ],
+    storeId: layout.id,
+  });
+  const resolveProductMatch = await createStoreProductMatcher({
+    db,
+    storeId: layout.id,
+  });
 
   await persistShoppingItem(db, {
     layout,
@@ -116,7 +144,8 @@ export async function addActiveShoppingListItem(
     now,
     orderIndex: 0,
     rawText: input.text,
-    sourceIdentifier: `manual:${input.mutationId}`,
+    resolveProductMatch,
+    sourceIdentifier,
   });
 
   return readActiveShoppingListPayload(db, layout, list);
@@ -138,20 +167,40 @@ export async function importActiveShoppingListItems(
   const db = getDb();
   const list = await getOrCreateActiveShoppingList(db, layout.id);
   const now = new Date();
+  const normalizedItems = parsed.lines.map((line, index) => ({
+    lineNumber: line.lineNumber,
+    normalizedText: normalizeProductText(line.rawText),
+    sourceIdentifier: `import:${input.mutationId}:${index}`,
+  }));
+  ensureImportLinesAreUnique(normalizedItems);
+  await ensureShoppingItemsAreNew(db, {
+    list,
+    normalizedItems,
+    storeId: layout.id,
+  });
+  const resolveProductMatch = await createStoreProductMatcher({
+    db,
+    storeId: layout.id,
+  });
 
-  for (const [index, line] of parsed.lines.entries()) {
-    const sourceIdentifier = `import:${input.mutationId}:${index}`;
+  const upsertInputs = await Promise.all(
+    parsed.lines.map((line, index) => {
+      const sourceIdentifier = `import:${input.mutationId}:${index}`;
 
-    await persistShoppingItem(db, {
-      layout,
-      list,
-      mutationId: deterministicUuid(sourceIdentifier),
-      now,
-      orderIndex: index,
-      rawText: line.rawText,
-      sourceIdentifier,
-    });
-  }
+      return buildShoppingItemUpsertInput({
+        layout,
+        list,
+        mutationId: deterministicUuid(sourceIdentifier),
+        now,
+        orderIndex: index,
+        rawText: line.rawText,
+        resolveProductMatch,
+        sourceIdentifier,
+      });
+    }),
+  );
+
+  await batchShoppingItemUpserts(db, upsertInputs);
 
   return readActiveShoppingListPayload(db, layout, list);
 }
@@ -216,13 +265,7 @@ async function getOrCreateActiveShoppingList(
     return created;
   }
 
-  const [fallback] = await buildActiveShoppingListQuery(db, storeId);
-
-  if (!fallback) {
-    throw new Error("Active shopping list could not be created.");
-  }
-
-  return fallback;
+  throw new Error("Active shopping list could not be created.");
 }
 
 async function persistShoppingItem(
@@ -235,15 +278,100 @@ async function persistShoppingItem(
     sourceIdentifier: string;
     now: Date;
     orderIndex: number;
+    resolveProductMatch: StoreProductMatcher;
   },
 ) {
-  const match = await resolveProductMatchForStore({
-    storeId: input.layout.id,
-    text: input.rawText,
+  const upsertInput = await buildShoppingItemUpsertInput(input);
+
+  await buildShoppingItemUpsertQuery(db, upsertInput);
+}
+
+function ensureImportLinesAreUnique(
+  normalizedItems: Array<{
+    lineNumber: number;
+    normalizedText: string;
+  }>,
+) {
+  const seenNormalizedTexts = new Set<string>();
+  const duplicateErrors: string[] = [];
+
+  for (const item of normalizedItems) {
+    if (seenNormalizedTexts.has(item.normalizedText)) {
+      duplicateErrors.push(
+        `Line ${item.lineNumber}: ${duplicateShoppingItemMessage}`,
+      );
+    }
+
+    seenNormalizedTexts.add(item.normalizedText);
+  }
+
+  if (duplicateErrors.length > 0) {
+    throw new ActiveShoppingListRequestError(
+      duplicateShoppingItemMessage,
+      { text: duplicateErrors },
+      409,
+    );
+  }
+}
+
+async function ensureShoppingItemsAreNew(
+  db: Database,
+  input: {
+    storeId: string;
+    list: ShoppingList;
+    normalizedItems: Array<{
+      normalizedText: string;
+      sourceIdentifier: string;
+      lineNumber?: number;
+    }>;
+  },
+) {
+  const uniqueNormalizedTexts = [
+    ...new Set(input.normalizedItems.map((item) => item.normalizedText)),
+  ];
+  const existingItems = await buildShoppingItemsByNormalizedTextQuery(db, {
+    storeId: input.storeId,
+    shoppingListId: input.list.id,
+    normalizedTexts: uniqueNormalizedTexts,
   });
+  const existingByNormalizedText = new Map(
+    existingItems.map((item) => [item.normalizedText, item]),
+  );
+  const duplicateErrors = input.normalizedItems.flatMap((item) => {
+    const existing = existingByNormalizedText.get(item.normalizedText);
+
+    if (!existing || existing.sourceIdentifier === item.sourceIdentifier) {
+      return [];
+    }
+
+    return item.lineNumber
+      ? [`Line ${item.lineNumber}: ${duplicateShoppingItemMessage}`]
+      : [duplicateShoppingItemMessage];
+  });
+
+  if (duplicateErrors.length > 0) {
+    throw new ActiveShoppingListRequestError(
+      duplicateShoppingItemMessage,
+      { text: duplicateErrors },
+      409,
+    );
+  }
+}
+
+async function buildShoppingItemUpsertInput(input: {
+  layout: StoreLayout;
+  list: ShoppingList;
+  rawText: string;
+  mutationId: string;
+  sourceIdentifier: string;
+  now: Date;
+  orderIndex: number;
+  resolveProductMatch: StoreProductMatcher;
+}): Promise<ShoppingItemUpsertInput> {
+  const match = await input.resolveProductMatch(input.rawText);
   const matched = match.state === "matched";
 
-  await buildShoppingItemUpsertQuery(db, {
+  return {
     storeId: input.layout.id,
     shoppingListId: input.list.id,
     rawText: input.rawText,
@@ -258,7 +386,24 @@ async function persistShoppingItem(
     sourceIdentifier: input.sourceIdentifier,
     mutationId: input.mutationId,
     now: input.now,
-  });
+  };
+}
+
+async function batchShoppingItemUpserts(
+  db: Database,
+  inputs: ShoppingItemUpsertInput[],
+) {
+  const queries = inputs.map((input) =>
+    buildShoppingItemUpsertQuery(db, input),
+  );
+
+  if (queries.length === 0) {
+    return;
+  }
+
+  await db.batch(
+    queries as [(typeof queries)[number], ...Array<(typeof queries)[number]>],
+  );
 }
 
 async function readActiveShoppingListPayload(
@@ -293,9 +438,25 @@ function toItemPayload({
   productConcept,
   productLocation,
 }: RouteOrderedShoppingItemRow): ActiveShoppingItemPayload {
-  const hasRouteLocation = Boolean(
-    productConcept && productLocation && aisleSection && aisle,
-  );
+  const location =
+    productLocation && aisleSection && aisle
+      ? {
+          id: productLocation.id,
+          aisleSectionId: productLocation.aisleSectionId,
+          positionWithinSection: productLocation.positionWithinSection,
+          confidence: productLocation.confidence,
+          source: productLocation.source,
+          aisleSection: {
+            id: aisleSection.id,
+            aisleId: aisle.id,
+            aisleIdentifier: aisle.identifier,
+            aisleDisplayName: aisle.displayName,
+            label: aisleSection.label,
+            pathOrder: aisleSection.pathOrder,
+            side: aisleSection.side,
+          },
+        }
+      : null;
 
   return {
     id: item.id,
@@ -304,7 +465,7 @@ function toItemPayload({
     isChecked: item.isChecked,
     checkedAt: item.checkedAt?.toISOString() ?? null,
     syncState: item.syncState,
-    resolutionState: hasRouteLocation
+    resolutionState: location
       ? "route-resolved"
       : productConcept
         ? "matched-unlocated"
@@ -316,25 +477,7 @@ function toItemPayload({
           normalizedName: productConcept.normalizedName,
         }
       : null,
-    location:
-      productLocation && aisleSection && aisle
-        ? {
-            id: productLocation.id,
-            aisleSectionId: productLocation.aisleSectionId,
-            positionWithinSection: productLocation.positionWithinSection,
-            confidence: productLocation.confidence,
-            source: productLocation.source,
-            aisleSection: {
-              id: aisleSection.id,
-              aisleId: aisle.id,
-              aisleIdentifier: aisle.identifier,
-              aisleDisplayName: aisle.displayName,
-              label: aisleSection.label,
-              pathOrder: aisleSection.pathOrder,
-              side: aisleSection.side,
-            },
-          }
-        : null,
+    location,
   };
 }
 

@@ -7,6 +7,7 @@ import {
   buildExactProductAliasLookupQuery,
   buildRouteOrderedShoppingItemsQuery,
   buildShoppingItemCheckStateQuery,
+  buildShoppingItemsByNormalizedTextQuery,
   buildShoppingItemUpsertQuery,
 } from "./shopping-lists";
 
@@ -130,6 +131,28 @@ describe("shopping-list queries", () => {
       "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
       "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
       "33333333-3333-4333-8333-333333333333",
+    ]);
+  });
+
+  it("looks up existing active-list items by normalized text", () => {
+    const { sql: query, params } = buildShoppingItemsByNormalizedTextQuery(
+      database,
+      {
+        storeId: "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
+        shoppingListId: "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
+        normalizedTexts: ["oatly", "rice"],
+      },
+    ).toSQL();
+
+    expect(query).toContain('from "shopping_items"');
+    expect(query).toContain('"shopping_items"."store_id" = $1');
+    expect(query).toContain('"shopping_items"."shopping_list_id" = $2');
+    expect(query).toContain('"shopping_items"."normalized_text" in ($3, $4)');
+    expect(params).toEqual([
+      "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
+      "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
+      "oatly",
+      "rice",
     ]);
   });
 

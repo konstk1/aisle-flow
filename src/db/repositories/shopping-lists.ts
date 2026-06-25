@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 
 import type { Database } from "../create-client";
 import {
@@ -30,6 +30,12 @@ export interface ShoppingItemCheckStateInput {
   itemId: string;
   isChecked: boolean;
   now?: Date;
+}
+
+export interface ShoppingItemNormalizedTextLookupInput {
+  storeId: string;
+  shoppingListId: string;
+  normalizedTexts: string[];
 }
 
 export function buildActiveShoppingListQuery(db: Database, storeId: string) {
@@ -182,19 +188,25 @@ export function buildShoppingItemCheckStateQuery(
     .returning();
 }
 
-export async function getActiveShoppingListInRouteOrder(
+export function buildShoppingItemsByNormalizedTextQuery(
   db: Database,
-  storeId: string,
+  input: ShoppingItemNormalizedTextLookupInput,
 ) {
-  const [list] = await buildActiveShoppingListQuery(db, storeId);
-
-  if (!list) {
-    return null;
-  }
-
-  const items = await buildRouteOrderedShoppingItemsQuery(db, storeId, list.id);
-
-  return { list, items };
+  return db
+    .select({
+      id: shoppingItems.id,
+      rawText: shoppingItems.rawText,
+      normalizedText: shoppingItems.normalizedText,
+      sourceIdentifier: shoppingItems.sourceIdentifier,
+    })
+    .from(shoppingItems)
+    .where(
+      and(
+        eq(shoppingItems.storeId, input.storeId),
+        eq(shoppingItems.shoppingListId, input.shoppingListId),
+        inArray(shoppingItems.normalizedText, input.normalizedTexts),
+      ),
+    );
 }
 
 export function buildExactProductAliasLookupQuery(

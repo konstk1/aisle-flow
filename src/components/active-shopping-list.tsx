@@ -8,13 +8,20 @@ import {
   RotateCw,
   Upload,
 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import type {
   ActiveShoppingItemPayload,
   ActiveShoppingListPayload,
   FieldErrors,
 } from "@/domain/active-shopping-list";
+
+import {
+  getStableMutationForText,
+  mergeActiveListSnapshotAfterCheck,
+  replaceItemInActiveList,
+  type PendingTextMutation,
+} from "./active-shopping-list-state";
 
 type ActiveShoppingListProps = {
   initialActiveList: ActiveShoppingListPayload | null;
@@ -27,6 +34,8 @@ type ActiveListResponse = {
   fieldErrors?: FieldErrors;
 };
 
+type FieldErrorScope = "add" | "import";
+
 export function ActiveShoppingList({
   hasStoreLayout,
   initialActiveList,
@@ -35,6 +44,8 @@ export function ActiveShoppingList({
   const [itemText, setItemText] = useState("");
   const [importText, setImportText] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [fieldErrorScope, setFieldErrorScope] =
+    useState<FieldErrorScope | null>(null);
   const [message, setMessage] = useState<string | null>(
     hasStoreLayout ? null : "Save a store route before adding items.",
   );
@@ -42,19 +53,55 @@ export function ActiveShoppingList({
   const [pendingCheckItemIds, setPendingCheckItemIds] = useState<Set<string>>(
     () => new Set(),
   );
+  const pendingAddMutation = useRef<PendingTextMutation | null>(null);
+  const pendingImportMutation = useRef<PendingTextMutation | null>(null);
+  const pendingCheckItemIdsRef = useRef<Set<string>>(new Set());
   const items = activeList?.items ?? [];
 
-  async function applyListResponse(response: Response) {
+  async function applyListResponse(
+    response: Response,
+    fieldScope: FieldErrorScope | null = null,
+  ) {
     const result = (await response.json()) as ActiveListResponse;
 
     if (!response.ok || !result.activeList) {
       setFieldErrors(result.fieldErrors ?? {});
+      setFieldErrorScope(fieldScope);
       setMessage(result.error ?? "The shopping list could not be updated.");
       return false;
     }
 
     setActiveList(result.activeList);
     setFieldErrors({});
+    setFieldErrorScope(null);
+    setMessage(null);
+    return true;
+  }
+
+  async function applyCheckedListResponse(
+    response: Response,
+    completedCheckItemId: string,
+  ) {
+    const result = (await response.json()) as ActiveListResponse;
+
+    if (!response.ok || !result.activeList) {
+      setFieldErrors(result.fieldErrors ?? {});
+      setFieldErrorScope(null);
+      setMessage(result.error ?? "The shopping list could not be updated.");
+      return false;
+    }
+
+    const nextList = result.activeList;
+    setActiveList((currentList) =>
+      mergeActiveListSnapshotAfterCheck({
+        completedCheckItemId,
+        currentList,
+        nextList,
+        pendingCheckItemIds: pendingCheckItemIdsRef.current,
+      }),
+    );
+    setFieldErrors({});
+    setFieldErrorScope(null);
     setMessage(null);
     return true;
   }
@@ -62,19 +109,26 @@ export function ActiveShoppingList({
   async function addItem(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPendingAction("add");
+    const mutation = getStableMutationForText(
+      pendingAddMutation.current,
+      itemText,
+      () => crypto.randomUUID(),
+    );
+    pendingAddMutation.current = mutation;
 
     try {
       const response = await fetch("/api/shopping-list", {
         body: JSON.stringify({
           text: itemText,
-          mutationId: crypto.randomUUID(),
+          mutationId: mutation.mutationId,
         }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
 
-      if (await applyListResponse(response)) {
+      if (await applyListResponse(response, "add")) {
         setItemText("");
+        pendingAddMutation.current = null;
       }
     } catch {
       setMessage("The item could not be added. Check your connection.");
@@ -86,19 +140,26 @@ export function ActiveShoppingList({
   async function importItems(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPendingAction("import");
+    const mutation = getStableMutationForText(
+      pendingImportMutation.current,
+      importText,
+      () => crypto.randomUUID(),
+    );
+    pendingImportMutation.current = mutation;
 
     try {
       const response = await fetch("/api/shopping-list/import", {
         body: JSON.stringify({
           text: importText,
-          mutationId: crypto.randomUUID(),
+          mutationId: mutation.mutationId,
         }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
 
-      if (await applyListResponse(response)) {
+      if (await applyListResponse(response, "import")) {
         setImportText("");
+        pendingImportMutation.current = null;
       }
     } catch {
       setMessage("The items could not be imported. Check your connection.");
@@ -127,7 +188,7 @@ export function ActiveShoppingList({
           }
         : current,
     );
-    setPendingCheckItemIds((current) => new Set(current).add(itemId));
+    setItemCheckPending(itemId, true);
 
     try {
       const response = await fetch(`/api/shopping-list/items/${itemId}`, {
@@ -136,7 +197,7 @@ export function ActiveShoppingList({
         method: "PATCH",
       });
 
-      if (!(await applyListResponse(response)) && previousItem) {
+      if (!(await applyCheckedListResponse(response, itemId)) && previousItem) {
         restoreItem(previousItem);
       }
     } catch {
@@ -145,25 +206,27 @@ export function ActiveShoppingList({
       }
       setMessage("The item could not be updated. Check your connection.");
     } finally {
-      setPendingCheckItemIds((current) => {
-        const next = new Set(current);
-        next.delete(itemId);
-        return next;
-      });
+      setItemCheckPending(itemId, false);
     }
   }
 
   function restoreItem(previousItem: ActiveShoppingItemPayload) {
-    setActiveList((current) =>
-      current
-        ? {
-            ...current,
-            items: current.items.map((item) =>
-              item.id === previousItem.id ? previousItem : item,
-            ),
-          }
-        : current,
+    setActiveList((currentList) =>
+      replaceItemInActiveList(currentList, previousItem),
     );
+  }
+
+  function setItemCheckPending(itemId: string, isPending: boolean) {
+    const next = new Set(pendingCheckItemIdsRef.current);
+
+    if (isPending) {
+      next.add(itemId);
+    } else {
+      next.delete(itemId);
+    }
+
+    pendingCheckItemIdsRef.current = next;
+    setPendingCheckItemIds(next);
   }
 
   async function refreshList() {
@@ -209,7 +272,9 @@ export function ActiveShoppingList({
             placeholder="Milk"
             value={itemText}
           />
-          <FieldError message={fieldErrors.text?.[0]} />
+          <FieldError
+            message={fieldErrorScope === "add" ? fieldErrors.text?.[0] : null}
+          />
         </label>
         <button
           className="inline-flex min-h-11 shrink-0 items-center gap-2 border border-zinc-950 bg-zinc-950 px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
@@ -230,6 +295,11 @@ export function ActiveShoppingList({
             onChange={(event) => setImportText(event.target.value)}
             placeholder={"Rice\nBroccoli"}
             value={importText}
+          />
+          <FieldError
+            message={
+              fieldErrorScope === "import" ? fieldErrors.text?.[0] : null
+            }
           />
         </label>
         <button
@@ -338,7 +408,7 @@ function locationLabel(item: ActiveShoppingItemPayload) {
   return "Needs correction";
 }
 
-function FieldError({ message }: { message?: string }) {
+function FieldError({ message }: { message?: string | null }) {
   if (!message) {
     return null;
   }
