@@ -30,6 +30,16 @@ export interface ProductMatchingCatalog {
   qualifierRules: readonly ProductQualifierRule[];
 }
 
+export interface PreparedProductMatchingCatalog {
+  kind: "prepared-product-matching-catalog";
+  conceptsById: ReadonlyMap<string, ProductMatchConcept>;
+  terms: readonly PreparedProductTerm[];
+  singleWordTerms: readonly PreparedProductTerm[];
+  qualifierRules: readonly PreparedQualifierRule[];
+  qualifierTerms: ReadonlySet<string>;
+  excludedTermsByConceptId: ReadonlyMap<string, readonly string[]>;
+}
+
 export interface LearnedProductAlias {
   normalizedText: string;
   productConcept: ProductMatchConcept;
@@ -60,12 +70,28 @@ export type ProductMatchResult =
   | MatchedProductResult
   | NeedsUserCorrectionResult;
 
+interface PreparedProductTerm {
+  productConcept: ProductMatchConcept;
+  term: string;
+  source: "canonical-name" | "curated-term";
+}
+
+interface PreparedQualifierRule {
+  qualifier: string;
+  productTerms: readonly string[];
+  productConcept: ProductMatchConcept;
+}
+
 interface TermCandidate {
   productConcept: ProductMatchConcept;
   matchedTerm: string;
   source: "canonical-name" | "curated-term" | "qualifier" | "typo-correction";
   confidence: number;
   qualifier?: string;
+}
+
+interface TypoCandidate extends TermCandidate {
+  distance: number;
 }
 
 export function normalizeProductText(text: string) {
@@ -79,16 +105,86 @@ export function normalizeProductText(text: string) {
     .replace(/\s+/gu, " ");
 }
 
+export function prepareProductMatchingCatalog(
+  catalog: ProductMatchingCatalog,
+): PreparedProductMatchingCatalog {
+  const conceptsById = new Map(
+    catalog.concepts.map((concept) => [concept.id, concept]),
+  );
+  const excludedTermsByConceptId = new Map(
+    catalog.concepts.map((concept) => [
+      concept.id,
+      concept.excludedTerms.map(normalizeProductText).filter(Boolean),
+    ]),
+  );
+  const termsByKey = new Map<string, PreparedProductTerm>();
+  const addTerm = (
+    productConcept: ProductMatchConcept,
+    term: string,
+    source: PreparedProductTerm["source"],
+  ) => {
+    const normalizedTerm = normalizeProductText(term);
+    if (!normalizedTerm) {
+      return;
+    }
+
+    const key = `${productConcept.id}:${normalizedTerm}`;
+    const existing = termsByKey.get(key);
+    if (!existing || source === "curated-term") {
+      termsByKey.set(key, { productConcept, term: normalizedTerm, source });
+    }
+  };
+
+  for (const concept of catalog.concepts) {
+    addTerm(concept, concept.normalizedName, "canonical-name");
+  }
+
+  for (const curatedTerm of catalog.curatedTerms) {
+    const productConcept = conceptsById.get(curatedTerm.productConceptId);
+    if (productConcept) {
+      addTerm(productConcept, curatedTerm.text, "curated-term");
+    }
+  }
+
+  const qualifierRules = catalog.qualifierRules.flatMap((rule) => {
+    const productConcept = conceptsById.get(rule.productConceptId);
+    const qualifier = normalizeProductText(rule.qualifier);
+    const productTerms = rule.productTerms
+      .map(normalizeProductText)
+      .filter(Boolean);
+
+    if (!productConcept || !qualifier || productTerms.length === 0) {
+      return [];
+    }
+
+    return [{ qualifier, productTerms, productConcept }];
+  });
+  const terms = [...termsByKey.values()];
+
+  return {
+    kind: "prepared-product-matching-catalog",
+    conceptsById,
+    terms,
+    singleWordTerms: terms.filter((term) => !term.term.includes(" ")),
+    qualifierRules,
+    qualifierTerms: new Set(qualifierRules.map((rule) => rule.qualifier)),
+    excludedTermsByConceptId,
+  };
+}
+
 export function resolveProductMatch({
   text,
   catalog,
   learnedAlias,
 }: {
   text: string;
-  catalog: ProductMatchingCatalog;
+  catalog: ProductMatchingCatalog | PreparedProductMatchingCatalog;
   learnedAlias?: LearnedProductAlias | null;
 }): ProductMatchResult {
   const normalizedText = normalizeProductText(text);
+  const preparedCatalog = isPreparedCatalog(catalog)
+    ? catalog
+    : prepareProductMatchingCatalog(catalog);
 
   if (!normalizedText) {
     return needsUserCorrection(
@@ -100,6 +196,8 @@ export function resolveProductMatch({
 
   if (
     learnedAlias &&
+    learnedAlias.confidence > 0 &&
+    learnedAlias.confidence <= 1 &&
     normalizeProductText(learnedAlias.normalizedText) === normalizedText
   ) {
     return {
@@ -113,7 +211,7 @@ export function resolveProductMatch({
     };
   }
 
-  if (hasConflictingQualifiers(normalizedText, catalog.qualifierRules)) {
+  if (hasConflictingQualifiers(normalizedText, preparedCatalog)) {
     return needsUserCorrection(
       text,
       normalizedText,
@@ -122,15 +220,15 @@ export function resolveProductMatch({
   }
 
   const directMatch = [
-    ...findTermCandidates(normalizedText, catalog),
-    ...findQualifierCandidates(normalizedText, catalog),
+    ...findTermCandidates(normalizedText, preparedCatalog),
+    ...findQualifierCandidates(normalizedText, preparedCatalog),
   ].sort(compareCandidates)[0];
 
   if (directMatch) {
     return toMatchedResult(text, normalizedText, directMatch);
   }
 
-  const typoMatch = findTypoCandidate(normalizedText, catalog);
+  const typoMatch = findTypoCandidate(normalizedText, preparedCatalog);
   if (typoMatch) {
     return toMatchedResult(text, normalizedText, typoMatch);
   }
@@ -144,46 +242,23 @@ export function resolveProductMatch({
 
 function findTermCandidates(
   normalizedText: string,
-  catalog: ProductMatchingCatalog,
+  catalog: PreparedProductMatchingCatalog,
 ) {
   const candidates: TermCandidate[] = [];
 
-  for (const concept of catalog.concepts) {
-    const canonicalName = normalizeProductText(concept.normalizedName);
+  for (const term of catalog.terms) {
     if (
-      canonicalName &&
-      containsPhrase(normalizedText, canonicalName) &&
-      !isExcluded(normalizedText, concept)
-    ) {
-      candidates.push({
-        productConcept: concept,
-        matchedTerm: canonicalName,
-        source: "canonical-name",
-        confidence: 0.95,
-      });
-    }
-  }
-
-  for (const term of catalog.curatedTerms) {
-    const concept = catalog.concepts.find(
-      (candidate) => candidate.id === term.productConceptId,
-    );
-    const normalizedTerm = normalizeProductText(term.text);
-
-    if (
-      !concept ||
-      !normalizedTerm ||
-      !containsPhrase(normalizedText, normalizedTerm) ||
-      isExcluded(normalizedText, concept)
+      !containsPhrase(normalizedText, term.term) ||
+      isExcluded(normalizedText, term.productConcept, catalog)
     ) {
       continue;
     }
 
     candidates.push({
-      productConcept: concept,
-      matchedTerm: normalizedTerm,
-      source: "curated-term",
-      confidence: 0.97,
+      productConcept: term.productConcept,
+      matchedTerm: term.term,
+      source: term.source,
+      confidence: term.source === "canonical-name" ? 0.95 : 0.97,
     });
   }
 
@@ -192,39 +267,32 @@ function findTermCandidates(
 
 function findQualifierCandidates(
   normalizedText: string,
-  catalog: ProductMatchingCatalog,
+  catalog: PreparedProductMatchingCatalog,
 ) {
   const candidates: TermCandidate[] = [];
 
   for (const rule of catalog.qualifierRules) {
-    const qualifier = normalizeProductText(rule.qualifier);
-    if (!qualifier || !containsPhrase(normalizedText, qualifier)) {
-      continue;
-    }
-
-    const concept = catalog.concepts.find(
-      (candidate) => candidate.id === rule.productConceptId,
-    );
-    if (!concept) {
+    if (!containsPhrase(normalizedText, rule.qualifier)) {
       continue;
     }
 
     const matchedTerm = rule.productTerms
-      .map(normalizeProductText)
-      .filter(Boolean)
       .filter((term) => containsPhrase(normalizedText, term))
       .sort(compareTermsBySpecificity)[0];
 
-    if (!matchedTerm || isExcluded(normalizedText, concept)) {
+    if (
+      !matchedTerm ||
+      isExcluded(normalizedText, rule.productConcept, catalog)
+    ) {
       continue;
     }
 
     candidates.push({
-      productConcept: concept,
+      productConcept: rule.productConcept,
       matchedTerm,
       source: "qualifier",
       confidence: 0.99,
-      qualifier,
+      qualifier: rule.qualifier,
     });
   }
 
@@ -233,41 +301,42 @@ function findQualifierCandidates(
 
 function findTypoCandidate(
   normalizedText: string,
-  catalog: ProductMatchingCatalog,
+  catalog: PreparedProductMatchingCatalog,
 ) {
-  const qualifierWords = new Set(
-    catalog.qualifierRules.map((rule) => normalizeProductText(rule.qualifier)),
-  );
   const inputTerms = normalizedText
     .split(" ")
-    .filter((term) => !qualifierWords.has(term));
+    .filter((term) => !catalog.qualifierTerms.has(term));
 
   if (inputTerms.length !== 1) {
     return undefined;
   }
 
   const inputTerm = inputTerms[0];
-  const candidates = findTermCandidatesForTypos(catalog)
+  const candidates = catalog.singleWordTerms
     .filter(({ term }) => term.length >= 6)
-    .filter(
-      ({ term }) =>
-        levenshteinDistance(inputTerm, term) <= maximumTypoDistance(term),
-    )
-    .filter(({ concept }) => !isExcluded(normalizedText, concept))
-    .map(({ concept, term }) => ({
-      productConcept: concept,
-      matchedTerm: term,
-      source: "typo-correction" as const,
-      confidence: 0.91,
-      qualifier: undefined,
+    .map((term) => ({
+      term,
+      distance: levenshteinDistance(inputTerm, term.term),
     }))
-    .sort((left, right) => {
-      const specificity = compareTermsBySpecificity(
-        left.matchedTerm,
-        right.matchedTerm,
-      );
-      return specificity || right.confidence - left.confidence;
-    });
+    .filter(({ term, distance }) => distance <= maximumTypoDistance(term.term))
+    .filter(
+      ({ term }) => !isExcluded(normalizedText, term.productConcept, catalog),
+    )
+    .map(
+      ({ term, distance }): TypoCandidate => ({
+        productConcept: term.productConcept,
+        matchedTerm: term.term,
+        source: "typo-correction",
+        confidence: 0.91,
+        distance,
+      }),
+    )
+    .sort(
+      (left, right) =>
+        left.distance - right.distance ||
+        compareTermsBySpecificity(left.matchedTerm, right.matchedTerm) ||
+        right.confidence - left.confidence,
+    );
 
   const candidate = candidates[0];
   if (!candidate) {
@@ -278,96 +347,60 @@ function findTypoCandidate(
     candidates.some(
       (other) =>
         other.productConcept.id !== candidate.productConcept.id &&
-        levenshteinDistance(inputTerm, other.matchedTerm) <=
-          levenshteinDistance(inputTerm, candidate.matchedTerm),
+        other.distance === candidate.distance,
     )
   ) {
     return undefined;
   }
 
-  const matchingRule = catalog.qualifierRules.find((rule) => {
-    const qualifier = normalizeProductText(rule.qualifier);
-    return (
-      qualifier &&
-      containsPhrase(normalizedText, qualifier) &&
-      rule.productTerms
-        .map(normalizeProductText)
-        .some((term) => term === candidate.matchedTerm)
-    );
-  });
-
-  if (!matchingRule) {
-    return candidate;
-  }
-
-  const qualifiedConcept = catalog.concepts.find(
-    (concept) => concept.id === matchingRule.productConceptId,
+  const matchingRule = catalog.qualifierRules.find(
+    (rule) =>
+      containsPhrase(normalizedText, rule.qualifier) &&
+      rule.productTerms.includes(candidate.matchedTerm),
   );
-  if (!qualifiedConcept || isExcluded(normalizedText, qualifiedConcept)) {
+
+  if (
+    !matchingRule ||
+    isExcluded(normalizedText, matchingRule.productConcept, catalog)
+  ) {
     return candidate;
   }
 
   return {
     ...candidate,
-    productConcept: qualifiedConcept,
-    qualifier: normalizeProductText(matchingRule.qualifier),
+    productConcept: matchingRule.productConcept,
+    qualifier: matchingRule.qualifier,
   };
-}
-
-function findTermCandidatesForTypos(catalog: ProductMatchingCatalog) {
-  const terms = new Map<
-    string,
-    {
-      concept: ProductMatchConcept;
-      term: string;
-      source: "canonical-name" | "curated-term";
-    }
-  >();
-
-  for (const concept of catalog.concepts) {
-    const term = normalizeProductText(concept.normalizedName);
-    if (term && !term.includes(" ")) {
-      terms.set(`${concept.id}:${term}`, {
-        concept,
-        term,
-        source: "canonical-name",
-      });
-    }
-  }
-
-  for (const curatedTerm of catalog.curatedTerms) {
-    const concept = catalog.concepts.find(
-      (candidate) => candidate.id === curatedTerm.productConceptId,
-    );
-    const term = normalizeProductText(curatedTerm.text);
-    if (concept && term && !term.includes(" ")) {
-      terms.set(`${concept.id}:${term}`, {
-        concept,
-        term,
-        source: "curated-term",
-      });
-    }
-  }
-
-  return [...terms.values()];
 }
 
 function hasConflictingQualifiers(
   normalizedText: string,
-  qualifierRules: readonly ProductQualifierRule[],
+  catalog: PreparedProductMatchingCatalog,
 ) {
   const qualifiers = new Set(
-    qualifierRules
-      .map((rule) => normalizeProductText(rule.qualifier))
+    catalog.qualifierRules
+      .map((rule) => rule.qualifier)
       .filter((qualifier) => containsPhrase(normalizedText, qualifier)),
   );
 
   return qualifiers.size > 1;
 }
 
-function isExcluded(normalizedText: string, concept: ProductMatchConcept) {
-  return concept.excludedTerms.some((excludedTerm) =>
-    containsPhrase(normalizedText, normalizeProductText(excludedTerm)),
+function isExcluded(
+  normalizedText: string,
+  concept: ProductMatchConcept,
+  catalog: PreparedProductMatchingCatalog,
+) {
+  return (catalog.excludedTermsByConceptId.get(concept.id) ?? []).some(
+    (excludedTerm) => containsPhrase(normalizedText, excludedTerm),
+  );
+}
+
+function isPreparedCatalog(
+  catalog: ProductMatchingCatalog | PreparedProductMatchingCatalog,
+): catalog is PreparedProductMatchingCatalog {
+  return (
+    "kind" in catalog && catalog.kind === "prepared-product-matching-catalog"
   );
 }
 

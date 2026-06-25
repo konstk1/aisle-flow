@@ -15,6 +15,12 @@ interface CuratedQualifierRuleDefinition {
   targetCanonicalName: string;
 }
 
+const produceConcept = {
+  canonicalName: "produce",
+  terms: ["broccoli", "peas"],
+  excludedTerms: [],
+} as const satisfies CuratedProductConceptDefinition;
+
 export const curatedProductConcepts = [
   {
     canonicalName: "rice",
@@ -26,11 +32,7 @@ export const curatedProductConcepts = [
     terms: ["rice vinegar", "apple cider vinegar", "white vinegar"],
     excludedTerms: [],
   },
-  {
-    canonicalName: "produce",
-    terms: ["broccoli", "peas"],
-    excludedTerms: [],
-  },
+  produceConcept,
   {
     canonicalName: "frozen vegetables",
     terms: [],
@@ -46,17 +48,17 @@ export const curatedProductConcepts = [
 export const curatedQualifierRules = [
   {
     qualifier: "fresh",
-    productTerms: ["broccoli", "peas"],
+    productTerms: produceConcept.terms,
     targetCanonicalName: "produce",
   },
   {
     qualifier: "frozen",
-    productTerms: ["broccoli", "peas"],
+    productTerms: produceConcept.terms,
     targetCanonicalName: "frozen vegetables",
   },
   {
     qualifier: "canned",
-    productTerms: ["broccoli", "peas"],
+    productTerms: produceConcept.terms,
     targetCanonicalName: "canned vegetables",
   },
 ] as const satisfies readonly CuratedQualifierRuleDefinition[];

@@ -4,9 +4,10 @@ import { and, eq, or } from "drizzle-orm";
 
 import {
   normalizeProductText,
+  prepareProductMatchingCatalog,
   resolveProductMatch,
   type ProductMatchResult,
-  type ProductMatchingCatalog,
+  type PreparedProductMatchingCatalog,
 } from "@/domain/product-matching";
 
 import { getDb } from "@/db/client";
@@ -85,7 +86,7 @@ export async function resolveProductMatchForStore({
 async function loadProductMatchingCatalog(
   db: Database,
   storeId: string,
-): Promise<ProductMatchingCatalog> {
+): Promise<PreparedProductMatchingCatalog> {
   const [concepts, curatedAliases] = await Promise.all([
     db.select().from(productConcepts),
     db
@@ -93,6 +94,8 @@ async function loadProductMatchingCatalog(
       .from(productAliases)
       .where(
         and(
+          // Imported aliases are exact-only because their source vocabulary may
+          // be store- or provider-specific rather than a globally safe term.
           eq(productAliases.source, "curated"),
           or(
             eq(productAliases.scope, "global"),
@@ -105,12 +108,12 @@ async function loadProductMatchingCatalog(
       ),
   ]);
 
-  return {
+  return prepareProductMatchingCatalog({
     concepts,
     curatedTerms: curatedAliases.map(({ alias }) => ({
       productConceptId: alias.productConceptId,
       text: alias.normalizedText,
     })),
     qualifierRules: resolveCuratedQualifierRules(concepts),
-  };
+  });
 }

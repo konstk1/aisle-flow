@@ -130,6 +130,25 @@ describe("resolveProductMatch", () => {
     });
   });
 
+  it("ignores a learned alias with non-positive confidence", () => {
+    const result = resolveProductMatch({
+      text: "wild rice",
+      catalog,
+      learnedAlias: {
+        normalizedText: "wild rice",
+        productConcept: concepts[1],
+        confidence: 0,
+      },
+    });
+
+    expect(result).toMatchObject({
+      state: "matched",
+      productConcept: { id: "rice" },
+      source: "canonical-name",
+      confidence: 0.95,
+    });
+  });
+
   it("corrects only high-confidence minor misspellings", () => {
     const result = resolveProductMatch({ text: "brocolli", catalog });
 
@@ -149,6 +168,65 @@ describe("resolveProductMatch", () => {
     expect(
       resolveProductMatch({ text: "broccolli florets", catalog }),
     ).toMatchObject({
+      state: "needs-user-correction",
+      source: "unresolved",
+    });
+  });
+
+  it("chooses the closest typo candidate before the more specific term", () => {
+    const result = resolveProductMatch({
+      text: "cheece",
+      catalog: {
+        concepts: [
+          {
+            id: "cheese",
+            canonicalName: "cheese",
+            normalizedName: "cheese",
+            excludedTerms: [],
+          },
+          {
+            id: "cheecees",
+            canonicalName: "cheecees",
+            normalizedName: "cheecees",
+            excludedTerms: [],
+          },
+        ],
+        curatedTerms: [],
+        qualifierRules: [],
+      },
+    });
+
+    expect(result).toMatchObject({
+      state: "matched",
+      productConcept: { id: "cheese" },
+      source: "typo-correction",
+    });
+  });
+
+  it("requires correction when different concepts tie for a typo correction", () => {
+    const result = resolveProductMatch({
+      text: "spoces",
+      catalog: {
+        concepts: [
+          {
+            id: "spices",
+            canonicalName: "spices",
+            normalizedName: "spices",
+            excludedTerms: [],
+          },
+          {
+            id: "spaces",
+            canonicalName: "spaces",
+            normalizedName: "spaces",
+            excludedTerms: [],
+          },
+        ],
+        curatedTerms: [],
+        qualifierRules: [],
+      },
+    });
+
+    expect(result).toMatchObject({
       state: "needs-user-correction",
       source: "unresolved",
     });
