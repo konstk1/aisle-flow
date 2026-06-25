@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, or, sql } from "drizzle-orm";
 
-import type { createDatabase } from "../create-client";
+import type { Database } from "../create-client";
 import {
   aisleSections,
   productAliases,
@@ -9,8 +9,6 @@ import {
   shoppingItems,
   shoppingLists,
 } from "../schema";
-
-export type Database = ReturnType<typeof createDatabase>;
 
 export function buildActiveShoppingListQuery(db: Database, storeId: string) {
   return db

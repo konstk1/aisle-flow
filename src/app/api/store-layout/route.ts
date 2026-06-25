@@ -1,6 +1,5 @@
-import { z } from "zod";
-
 import { hasValidSession } from "@/auth/access";
+import { isForeignKeyError } from "@/db/errors";
 import {
   getStoreLayout,
   replaceStoreLayout,
@@ -8,36 +7,10 @@ import {
   storeLayoutSchema,
 } from "@/services/store-layout";
 
-function unauthorizedResponse() {
-  return Response.json({ error: "Unauthorized" }, { status: 401 });
-}
-
-function validationResponse(error: z.ZodError) {
-  const fieldErrors: Record<string, string[]> = {};
-
-  for (const issue of error.issues) {
-    const field = issue.path.join(".") || "form";
-    fieldErrors[field] ??= [];
-    fieldErrors[field].push(issue.message);
-  }
-
-  return Response.json(
-    {
-      error: "Check the highlighted layout fields.",
-      fieldErrors,
-    },
-    { status: 422 },
-  );
-}
-
-function isForeignKeyError(error: unknown) {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "23503"
-  );
-}
+import {
+  unauthorizedResponse,
+  validationErrorResponse,
+} from "../_lib/responses";
 
 export async function GET() {
   if (!(await hasValidSession())) {
@@ -66,7 +39,10 @@ export async function PUT(request: Request) {
   const parsed = storeLayoutSchema.safeParse(body);
 
   if (!parsed.success) {
-    return validationResponse(parsed.error);
+    return validationErrorResponse(
+      parsed.error,
+      "Check the highlighted layout fields.",
+    );
   }
 
   try {

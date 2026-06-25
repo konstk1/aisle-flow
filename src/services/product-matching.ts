@@ -11,10 +11,10 @@ import {
 } from "@/domain/product-matching";
 
 import { getDb } from "@/db/client";
+import type { Database } from "@/db/create-client";
 import {
   findExactProductAlias,
   findProductLocation,
-  type Database,
 } from "@/db/repositories/shopping-lists";
 import { productAliases, productConcepts } from "@/db/schema";
 
@@ -94,8 +94,9 @@ async function loadProductMatchingCatalog(
       .from(productAliases)
       .where(
         and(
-          // Imported aliases are exact-only because their source vocabulary may
-          // be store- or provider-specific rather than a globally safe term.
+          // Learned and imported aliases are exact-only in the MVP. Imported
+          // source vocabulary may be store- or provider-specific, and learned
+          // corrections are persisted as exact aliases for manual precedence.
           eq(productAliases.source, "curated"),
           or(
             eq(productAliases.scope, "global"),
