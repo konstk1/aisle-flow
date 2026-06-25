@@ -456,6 +456,7 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
                 <div className="mt-1 ml-8">
                   <DndContext
                     collisionDetection={closestCenter}
+                    id={`store-layout-aisle-${aisle.id}`}
                     onDragCancel={() => setActiveSectionId(null)}
                     onDragEnd={({ active, over }) => {
                       if (over && active.id !== over.id) {
