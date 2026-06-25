@@ -34,6 +34,10 @@ export type StoreProductMatchResult =
     })
   | Extract<ProductMatchResult, { state: "needs-user-correction" }>;
 
+export type StoreProductMatcher = (
+  text: string,
+) => Promise<StoreProductMatchResult>;
+
 export async function resolveProductMatchForStore({
   storeId,
   text,
@@ -42,11 +46,59 @@ export async function resolveProductMatchForStore({
   text: string;
 }): Promise<StoreProductMatchResult> {
   const db = getDb();
-  const normalizedText = normalizeProductText(text);
   const [catalog, learnedAlias] = await Promise.all([
     loadProductMatchingCatalog(db, storeId),
-    findExactProductAlias(db, storeId, normalizedText),
+    findExactProductAlias(db, storeId, normalizeProductText(text)),
   ]);
+
+  return resolveProductMatchWithCatalog({
+    catalog,
+    db,
+    learnedAlias,
+    storeId,
+    text,
+  });
+}
+
+export async function createStoreProductMatcher({
+  db = getDb(),
+  storeId,
+}: {
+  db?: Database;
+  storeId: string;
+}): Promise<StoreProductMatcher> {
+  const catalog = await loadProductMatchingCatalog(db, storeId);
+
+  return async (text) => {
+    const learnedAlias = await findExactProductAlias(
+      db,
+      storeId,
+      normalizeProductText(text),
+    );
+
+    return resolveProductMatchWithCatalog({
+      catalog,
+      db,
+      learnedAlias,
+      storeId,
+      text,
+    });
+  };
+}
+
+async function resolveProductMatchWithCatalog({
+  catalog,
+  db,
+  learnedAlias,
+  storeId,
+  text,
+}: {
+  catalog: PreparedProductMatchingCatalog;
+  db: Database;
+  learnedAlias: Awaited<ReturnType<typeof findExactProductAlias>>;
+  storeId: string;
+  text: string;
+}): Promise<StoreProductMatchResult> {
   const result = resolveProductMatch({
     text,
     catalog,

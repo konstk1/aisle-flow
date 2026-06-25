@@ -1,7 +1,8 @@
-import { and, asc, desc, eq, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 
 import type { Database } from "../create-client";
 import {
+  aisles,
   aisleSections,
   productAliases,
   productConcepts,
@@ -9,6 +10,33 @@ import {
   shoppingItems,
   shoppingLists,
 } from "../schema";
+
+export interface ShoppingItemUpsertInput {
+  storeId: string;
+  shoppingListId: string;
+  rawText: string;
+  normalizedText: string;
+  productConceptId: string | null;
+  resolvedLocationId: string | null;
+  orderKey: string;
+  sourceIdentifier: string;
+  mutationId: string;
+  now?: Date;
+}
+
+export interface ShoppingItemCheckStateInput {
+  storeId: string;
+  shoppingListId: string;
+  itemId: string;
+  isChecked: boolean;
+  now?: Date;
+}
+
+export interface ShoppingItemNormalizedTextLookupInput {
+  storeId: string;
+  shoppingListId: string;
+  normalizedTexts: string[];
+}
 
 export function buildActiveShoppingListQuery(db: Database, storeId: string) {
   return db
@@ -23,6 +51,28 @@ export function buildActiveShoppingListQuery(db: Database, storeId: string) {
     .limit(1);
 }
 
+export function buildActiveShoppingListCreateQuery(
+  db: Database,
+  storeId: string,
+) {
+  return db
+    .insert(shoppingLists)
+    .values({
+      storeId,
+      source: "manual",
+      state: "active",
+      syncState: "synced",
+    })
+    .onConflictDoUpdate({
+      target: shoppingLists.storeId,
+      targetWhere: sql`${shoppingLists.state} = 'active'`,
+      set: {
+        updatedAt: sql`${shoppingLists.updatedAt}`,
+      },
+    })
+    .returning();
+}
+
 export function buildRouteOrderedShoppingItemsQuery(
   db: Database,
   storeId: string,
@@ -34,6 +84,7 @@ export function buildRouteOrderedShoppingItemsQuery(
       productConcept: productConcepts,
       productLocation: productLocations,
       aisleSection: aisleSections,
+      aisle: aisles,
     })
     .from(shoppingItems)
     .leftJoin(
@@ -52,6 +103,13 @@ export function buildRouteOrderedShoppingItemsQuery(
       and(
         eq(productLocations.aisleSectionId, aisleSections.id),
         eq(productLocations.storeId, aisleSections.storeId),
+      ),
+    )
+    .leftJoin(
+      aisles,
+      and(
+        eq(aisleSections.aisleId, aisles.id),
+        eq(aisleSections.storeId, aisles.storeId),
       ),
     )
     .where(
@@ -73,19 +131,82 @@ export function buildRouteOrderedShoppingItemsQuery(
     );
 }
 
-export async function getActiveShoppingListInRouteOrder(
+export function buildShoppingItemUpsertQuery(
   db: Database,
-  storeId: string,
+  input: ShoppingItemUpsertInput,
 ) {
-  const [list] = await buildActiveShoppingListQuery(db, storeId);
+  const now = input.now ?? new Date();
 
-  if (!list) {
-    return null;
-  }
+  return db
+    .insert(shoppingItems)
+    .values({
+      storeId: input.storeId,
+      shoppingListId: input.shoppingListId,
+      rawText: input.rawText,
+      normalizedText: input.normalizedText,
+      productConceptId: input.productConceptId,
+      resolvedLocationId: input.resolvedLocationId,
+      orderKey: input.orderKey,
+      sourceIdentifier: input.sourceIdentifier,
+      syncState: "synced",
+      mutationId: input.mutationId,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [shoppingItems.shoppingListId, shoppingItems.sourceIdentifier],
+      targetWhere: sql`${shoppingItems.sourceIdentifier} IS NOT NULL`,
+      set: {
+        updatedAt: sql`${shoppingItems.updatedAt}`,
+      },
+    })
+    .returning();
+}
 
-  const items = await buildRouteOrderedShoppingItemsQuery(db, storeId, list.id);
+export function buildShoppingItemCheckStateQuery(
+  db: Database,
+  input: ShoppingItemCheckStateInput,
+) {
+  const now = input.now ?? new Date();
 
-  return { list, items };
+  return db
+    .update(shoppingItems)
+    .set({
+      isChecked: input.isChecked,
+      checkedAt: input.isChecked
+        ? sql`coalesce(${shoppingItems.checkedAt}, ${now})`
+        : null,
+      updatedAt: sql`case when ${shoppingItems.isChecked} = ${input.isChecked} then ${shoppingItems.updatedAt} else ${now} end`,
+      version: sql`case when ${shoppingItems.isChecked} = ${input.isChecked} then ${shoppingItems.version} else ${shoppingItems.version} + 1 end`,
+    })
+    .where(
+      and(
+        eq(shoppingItems.storeId, input.storeId),
+        eq(shoppingItems.shoppingListId, input.shoppingListId),
+        eq(shoppingItems.id, input.itemId),
+      ),
+    )
+    .returning();
+}
+
+export function buildShoppingItemsByNormalizedTextQuery(
+  db: Database,
+  input: ShoppingItemNormalizedTextLookupInput,
+) {
+  return db
+    .select({
+      id: shoppingItems.id,
+      rawText: shoppingItems.rawText,
+      normalizedText: shoppingItems.normalizedText,
+      sourceIdentifier: shoppingItems.sourceIdentifier,
+    })
+    .from(shoppingItems)
+    .where(
+      and(
+        eq(shoppingItems.storeId, input.storeId),
+        eq(shoppingItems.shoppingListId, input.shoppingListId),
+        inArray(shoppingItems.normalizedText, input.normalizedTexts),
+      ),
+    );
 }
 
 export function buildExactProductAliasLookupQuery(
