@@ -90,7 +90,7 @@ export async function getActiveShoppingListInRouteOrder(
   return { list, items };
 }
 
-export function buildProductAliasLookupQuery(
+export function buildExactProductAliasLookupQuery(
   db: Database,
   storeId: string,
   normalizedText: string,
@@ -108,6 +108,10 @@ export function buildProductAliasLookupQuery(
     .where(
       and(
         eq(productAliases.normalizedText, normalizedText),
+        or(
+          eq(productAliases.source, "learned"),
+          eq(productAliases.source, "imported"),
+        ),
         or(
           eq(productAliases.scope, "global"),
           and(
@@ -127,12 +131,12 @@ export function buildProductAliasLookupQuery(
     .limit(1);
 }
 
-export async function findProductAlias(
+export async function findExactProductAlias(
   db: Database,
   storeId: string,
   normalizedText: string,
 ) {
-  const [match] = await buildProductAliasLookupQuery(
+  const [match] = await buildExactProductAliasLookupQuery(
     db,
     storeId,
     normalizedText,

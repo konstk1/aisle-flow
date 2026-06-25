@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createDatabase } from "../create-client";
 import {
   buildActiveShoppingListQuery,
-  buildProductAliasLookupQuery,
+  buildExactProductAliasLookupQuery,
   buildRouteOrderedShoppingItemsQuery,
 } from "./shopping-lists";
 
@@ -48,19 +48,21 @@ describe("shopping-list queries", () => {
     );
   });
 
-  it("prefers learned corrections, then store-scoped aliases", () => {
-    const { sql: query, params } = buildProductAliasLookupQuery(
+  it("looks up learned and imported aliases before curated matching", () => {
+    const { sql: query, params } = buildExactProductAliasLookupQuery(
       database,
       "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
       "wild rice",
     ).toSQL();
 
+    expect(query).toContain('"product_aliases"."source" = $2');
+    expect(query).toContain('"product_aliases"."source" = $3');
+    expect(query).not.toContain('"product_aliases"."is_correction" =');
     expect(query).toContain('"product_aliases"."is_correction" desc');
-    expect(query).toContain(
-      'case when "product_aliases"."scope" = \'store\' then 1 else 0 end desc',
-    );
     expect(params).toEqual([
       "wild rice",
+      "learned",
+      "imported",
       "global",
       "store",
       "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
