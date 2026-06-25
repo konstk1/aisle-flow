@@ -1,9 +1,7 @@
-import { asc, eq, sql } from "drizzle-orm";
+import { asc, eq, sql, type SQL } from "drizzle-orm";
 
-import type { createDatabase } from "../create-client";
+import type { Database } from "../create-client";
 import { productAliases, productConcepts, productLocations } from "../schema";
-
-export type Database = ReturnType<typeof createDatabase>;
 
 export interface ProductConceptCreateInput {
   canonicalName: string;
@@ -12,7 +10,7 @@ export interface ProductConceptCreateInput {
 
 export interface ManualProductAliasCorrectionInput {
   storeId: string;
-  productConceptId: string;
+  productConceptId: string | SQL;
   normalizedText: string;
   confidence?: number;
   now?: Date;
@@ -20,7 +18,7 @@ export interface ManualProductAliasCorrectionInput {
 
 export interface ManualProductLocationCorrectionInput {
   storeId: string;
-  productConceptId: string;
+  productConceptId: string | SQL;
   aisleSectionId: string;
   positionWithinSection: number | null;
   confidence?: number;
@@ -45,17 +43,6 @@ export function buildProductConceptByIdQuery(
     .limit(1);
 }
 
-export function buildProductConceptByNormalizedNameQuery(
-  db: Database,
-  normalizedName: string,
-) {
-  return db
-    .select()
-    .from(productConcepts)
-    .where(eq(productConcepts.normalizedName, normalizedName))
-    .limit(1);
-}
-
 export function buildProductConceptCreateQuery(
   db: Database,
   input: ProductConceptCreateInput,
@@ -67,8 +54,19 @@ export function buildProductConceptCreateQuery(
       normalizedName: input.normalizedName,
       excludedTerms: [],
     })
-    .onConflictDoNothing({ target: productConcepts.normalizedName })
+    .onConflictDoUpdate({
+      target: productConcepts.normalizedName,
+      set: {
+        canonicalName: sql`${productConcepts.canonicalName}`,
+      },
+    })
     .returning();
+}
+
+export function productConceptIdByNormalizedName(
+  normalizedName: string,
+): SQL<string> {
+  return sql`(select ${productConcepts.id} from ${productConcepts} where ${productConcepts.normalizedName} = ${normalizedName} limit 1)`;
 }
 
 export function buildManualProductAliasCorrectionQuery(
@@ -92,6 +90,8 @@ export function buildManualProductAliasCorrectionQuery(
     .onConflictDoUpdate({
       target: [productAliases.storeId, productAliases.normalizedText],
       targetWhere: sql`${productAliases.scope} = 'store'`,
+      // Re-correcting an exact phrase is intentionally last-writer-wins for the
+      // MVP; product_aliases has no version column yet.
       set: {
         productConceptId: sql.raw("excluded.product_concept_id"),
         confidence: sql.raw("excluded.confidence"),

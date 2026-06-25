@@ -6,14 +6,15 @@ import { normalizeProductText } from "@/domain/product-matching";
 import type { AisleSectionSide, StoreLayout } from "@/domain/store-layout";
 
 import { getDb } from "@/db/client";
+import type { Database } from "@/db/create-client";
+import { isForeignKeyError } from "@/db/errors";
 import {
   buildManualProductAliasCorrectionQuery,
   buildManualProductLocationCorrectionQuery,
   buildProductConceptByIdQuery,
-  buildProductConceptByNormalizedNameQuery,
   buildProductConceptCreateQuery,
   buildProductConceptListQuery,
-  type Database,
+  productConceptIdByNormalizedName,
 } from "@/db/repositories/product-corrections";
 import type {
   ProductAlias,
@@ -21,10 +22,7 @@ import type {
   ProductLocation,
 } from "@/db/schema";
 
-import {
-  resolveProductMatchForStore,
-  type StoreProductMatchResult,
-} from "./product-matching";
+import type { StoreProductMatchResult } from "./product-matching";
 import { getStoreLayout } from "./store-layout";
 
 const MAX_CORRECTION_TEXT_LENGTH = 120;
@@ -187,34 +185,71 @@ export async function applyProductCorrection(
   }
 
   const db = getDb();
-  const productConcept = input.productConceptId
-    ? await getExistingProductConcept(db, input.productConceptId)
-    : await getOrCreateProductConcept(db, input.canonicalName ?? "");
   const normalizedText = normalizeProductText(input.rawText);
   const now = new Date();
 
+  let productConcept: ProductConcept | undefined;
   let alias: ProductAlias | undefined;
   let location: ProductLocation | undefined;
 
   try {
-    const [aliasRows, locationRows] = await db.batch([
-      buildManualProductAliasCorrectionQuery(db, {
-        storeId: layout.id,
-        productConceptId: productConcept.id,
-        normalizedText,
-        now,
-      }),
-      buildManualProductLocationCorrectionQuery(db, {
-        storeId: layout.id,
-        productConceptId: productConcept.id,
-        aisleSectionId: aisleSection.id,
-        positionWithinSection: input.positionWithinSection ?? null,
-        now,
-      }),
-    ]);
+    if (input.productConceptId) {
+      productConcept = await getExistingProductConcept(
+        db,
+        input.productConceptId,
+      );
 
-    alias = aliasRows[0];
-    location = locationRows[0];
+      const [aliasRows, locationRows] = await db.batch([
+        buildManualProductAliasCorrectionQuery(db, {
+          storeId: layout.id,
+          productConceptId: productConcept.id,
+          normalizedText,
+          now,
+        }),
+        buildManualProductLocationCorrectionQuery(db, {
+          storeId: layout.id,
+          productConceptId: productConcept.id,
+          aisleSectionId: aisleSection.id,
+          positionWithinSection: input.positionWithinSection ?? null,
+          now,
+        }),
+      ]);
+
+      alias = aliasRows[0];
+      location = locationRows[0];
+    } else {
+      const canonicalName = input.canonicalName;
+
+      if (canonicalName === undefined) {
+        throw new Error("Product correction category was not validated.");
+      }
+
+      const normalizedName = normalizeProductText(canonicalName);
+      const productConceptId = productConceptIdByNormalizedName(normalizedName);
+      const [productConceptRows, aliasRows, locationRows] = await db.batch([
+        buildProductConceptCreateQuery(db, {
+          canonicalName,
+          normalizedName,
+        }),
+        buildManualProductAliasCorrectionQuery(db, {
+          storeId: layout.id,
+          productConceptId,
+          normalizedText,
+          now,
+        }),
+        buildManualProductLocationCorrectionQuery(db, {
+          storeId: layout.id,
+          productConceptId,
+          aisleSectionId: aisleSection.id,
+          positionWithinSection: input.positionWithinSection ?? null,
+          now,
+        }),
+      ]);
+
+      productConcept = productConceptRows[0];
+      alias = aliasRows[0];
+      location = locationRows[0];
+    }
   } catch (error) {
     if (isForeignKeyError(error)) {
       throw new ProductCorrectionRequestError(
@@ -231,7 +266,7 @@ export async function applyProductCorrection(
     throw error;
   }
 
-  if (!alias || !location) {
+  if (!productConcept || !alias || !location) {
     throw new Error("Product correction did not return saved records.");
   }
 
@@ -254,9 +289,12 @@ export async function applyProductCorrection(
       source: "manual",
       aisleSection,
     },
-    resolution: await resolveProductMatchForStore({
-      storeId: layout.id,
-      text: input.rawText,
+    resolution: toCorrectionResolution({
+      rawText: input.rawText,
+      normalizedText,
+      productConcept,
+      alias,
+      location,
     }),
   };
 }
@@ -278,40 +316,6 @@ async function getExistingProductConcept(
   }
 
   return productConcept;
-}
-
-async function getOrCreateProductConcept(db: Database, canonicalName: string) {
-  const normalizedName = normalizeProductText(canonicalName);
-
-  if (!normalizedName) {
-    throw new ProductCorrectionRequestError(
-      "Enter a shelf category name with letters or numbers.",
-      {
-        canonicalName: ["Enter a shelf category name with letters or numbers."],
-      },
-    );
-  }
-
-  const insertedConcepts = await buildProductConceptCreateQuery(db, {
-    canonicalName,
-    normalizedName,
-  });
-  const insertedConcept = insertedConcepts[0];
-
-  if (insertedConcept) {
-    return insertedConcept;
-  }
-
-  const [existingConcept] = await buildProductConceptByNormalizedNameQuery(
-    db,
-    normalizedName,
-  );
-
-  if (!existingConcept) {
-    throw new Error("Product concept conflict did not return an existing row.");
-  }
-
-  return existingConcept;
 }
 
 function listAisleSections(
@@ -342,11 +346,33 @@ function toProductConceptPayload(
   };
 }
 
-function isForeignKeyError(error: unknown) {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "23503"
-  );
+function toCorrectionResolution({
+  rawText,
+  normalizedText,
+  productConcept,
+  alias,
+  location,
+}: {
+  rawText: string;
+  normalizedText: string;
+  productConcept: ProductConcept;
+  alias: ProductAlias;
+  location: ProductLocation;
+}): StoreProductMatchResult {
+  return {
+    state: "matched",
+    rawText,
+    normalizedText,
+    productConcept,
+    confidence: alias.confidence,
+    source: "learned-alias",
+    rationale: `Used the learned exact alias “${normalizedText}”.`,
+    location: {
+      id: location.id,
+      aisleSectionId: location.aisleSectionId,
+      positionWithinSection: location.positionWithinSection,
+      confidence: location.confidence,
+      source: location.source,
+    },
+  };
 }

@@ -5,6 +5,7 @@ import {
   buildManualProductAliasCorrectionQuery,
   buildManualProductLocationCorrectionQuery,
   buildProductConceptCreateQuery,
+  productConceptIdByNormalizedName,
 } from "./product-corrections";
 
 const database = createDatabase(
@@ -17,14 +18,16 @@ const productConceptId = "22222222-2222-4222-8222-222222222222";
 const aisleSectionId = "33333333-3333-4333-8333-333333333333";
 
 describe("product correction queries", () => {
-  it("creates new categories without overwriting existing normalized concepts", () => {
+  it("returns a category when normalized concept creation conflicts", () => {
     const { sql: query, params } = buildProductConceptCreateQuery(database, {
       canonicalName: "bulk grains",
       normalizedName: "bulk grains",
     }).toSQL();
 
     expect(query).toContain('insert into "product_concepts"');
-    expect(query).toContain('on conflict ("normalized_name") do nothing');
+    expect(query).toContain(
+      'on conflict ("normalized_name") do update set "canonical_name" = "product_concepts"."canonical_name"',
+    );
     expect(query).toContain("returning");
     expect(params).toEqual(["bulk grains", "bulk grains", "{}"]);
   });
@@ -55,6 +58,36 @@ describe("product correction queries", () => {
       productConceptId,
       storeId,
       "wild rice",
+      "store",
+      1,
+      "learned",
+      true,
+      "2026-01-01T00:00:00.000Z",
+      "2026-01-01T00:00:00.000Z",
+    ]);
+  });
+
+  it("can upsert a learned alias for a concept created earlier in the same batch", () => {
+    const { sql: query, params } = buildManualProductAliasCorrectionQuery(
+      database,
+      {
+        storeId,
+        productConceptId: productConceptIdByNormalizedName("dried fruit"),
+        normalizedText: "dried mango",
+        now,
+      },
+    ).toSQL();
+
+    expect(query).toContain(
+      '(select "product_concepts"."id" from "product_concepts" where "product_concepts"."normalized_name" = $1 limit 1)',
+    );
+    expect(query).toContain(
+      '"product_concept_id" = excluded.product_concept_id',
+    );
+    expect(params).toEqual([
+      "dried fruit",
+      storeId,
+      "dried mango",
       "store",
       1,
       "learned",

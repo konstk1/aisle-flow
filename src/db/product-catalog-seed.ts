@@ -3,7 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import { normalizeProductText } from "@/domain/product-matching";
 import { curatedProductConcepts } from "@/services/product-catalog";
 
-import type { Database } from "./repositories/shopping-lists";
+import type { Database } from "./create-client";
 import { productAliases, productConcepts } from "./schema";
 
 interface CuratedProductAliasSeed {

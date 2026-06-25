@@ -6,3 +6,5 @@ import * as schema from "./schema";
 export function createDatabase(connectionString: string) {
   return drizzle({ client: neon(connectionString), schema });
 }
+
+export type Database = ReturnType<typeof createDatabase>;
