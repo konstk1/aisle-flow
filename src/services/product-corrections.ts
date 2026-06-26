@@ -15,6 +15,7 @@ import {
   buildProductConceptCreateQuery,
   buildProductConceptListQuery,
   productConceptIdByNormalizedName,
+  productLocationIdByStoreAndConcept,
 } from "@/db/repositories/product-corrections";
 import {
   buildActiveShoppingListQuery,
@@ -183,6 +184,7 @@ export async function applyProductCorrection(
   const db = getDb();
   const normalizedText = normalizeProductText(input.rawText);
   const now = new Date();
+  const [activeList] = await buildActiveShoppingListQuery(db, layout.id);
 
   let productConcept: ProductConcept | undefined;
   let alias: ProductAlias | undefined;
@@ -194,22 +196,37 @@ export async function applyProductCorrection(
         db,
         input.productConceptId,
       );
+      const aliasQuery = buildManualProductAliasCorrectionQuery(db, {
+        storeId: layout.id,
+        productConceptId: productConcept.id,
+        normalizedText,
+        now,
+      });
+      const locationQuery = buildManualProductLocationCorrectionQuery(db, {
+        storeId: layout.id,
+        productConceptId: productConcept.id,
+        aisleSectionId: aisleSection.id,
+        positionWithinSection: null,
+        now,
+      });
 
-      const [aliasRows, locationRows] = await db.batch([
-        buildManualProductAliasCorrectionQuery(db, {
-          storeId: layout.id,
-          productConceptId: productConcept.id,
-          normalizedText,
-          now,
-        }),
-        buildManualProductLocationCorrectionQuery(db, {
-          storeId: layout.id,
-          productConceptId: productConcept.id,
-          aisleSectionId: aisleSection.id,
-          positionWithinSection: null,
-          now,
-        }),
-      ]);
+      const [aliasRows, locationRows] = activeList
+        ? await db.batch([
+            aliasQuery,
+            locationQuery,
+            buildShoppingItemProductResolutionQuery(db, {
+              storeId: layout.id,
+              shoppingListId: activeList.id,
+              normalizedText,
+              productConceptId: productConcept.id,
+              resolvedLocationId: productLocationIdByStoreAndConcept({
+                storeId: layout.id,
+                productConceptId: productConcept.id,
+              }),
+              now,
+            }),
+          ])
+        : await db.batch([aliasQuery, locationQuery]);
 
       alias = aliasRows[0];
       location = locationRows[0];
@@ -222,25 +239,42 @@ export async function applyProductCorrection(
 
       const normalizedName = normalizeProductText(canonicalName);
       const productConceptId = productConceptIdByNormalizedName(normalizedName);
-      const [productConceptRows, aliasRows, locationRows] = await db.batch([
-        buildProductConceptCreateQuery(db, {
-          canonicalName,
-          normalizedName,
-        }),
-        buildManualProductAliasCorrectionQuery(db, {
-          storeId: layout.id,
-          productConceptId,
-          normalizedText,
-          now,
-        }),
-        buildManualProductLocationCorrectionQuery(db, {
-          storeId: layout.id,
-          productConceptId,
-          aisleSectionId: aisleSection.id,
-          positionWithinSection: null,
-          now,
-        }),
-      ]);
+      const conceptQuery = buildProductConceptCreateQuery(db, {
+        canonicalName,
+        normalizedName,
+      });
+      const aliasQuery = buildManualProductAliasCorrectionQuery(db, {
+        storeId: layout.id,
+        productConceptId,
+        normalizedText,
+        now,
+      });
+      const locationQuery = buildManualProductLocationCorrectionQuery(db, {
+        storeId: layout.id,
+        productConceptId,
+        aisleSectionId: aisleSection.id,
+        positionWithinSection: null,
+        now,
+      });
+
+      const [productConceptRows, aliasRows, locationRows] = activeList
+        ? await db.batch([
+            conceptQuery,
+            aliasQuery,
+            locationQuery,
+            buildShoppingItemProductResolutionQuery(db, {
+              storeId: layout.id,
+              shoppingListId: activeList.id,
+              normalizedText,
+              productConceptId,
+              resolvedLocationId: productLocationIdByStoreAndConcept({
+                storeId: layout.id,
+                productConceptId,
+              }),
+              now,
+            }),
+          ])
+        : await db.batch([conceptQuery, aliasQuery, locationQuery]);
 
       productConcept = productConceptRows[0];
       alias = aliasRows[0];
@@ -265,14 +299,6 @@ export async function applyProductCorrection(
   if (!productConcept || !alias || !location) {
     throw new Error("Product correction did not return saved records.");
   }
-
-  await relinkActiveShoppingItems(db, {
-    storeId: layout.id,
-    normalizedText,
-    productConceptId: productConcept.id,
-    resolvedLocationId: location.id,
-    now,
-  });
 
   return {
     normalizedText,
@@ -301,28 +327,6 @@ export async function applyProductCorrection(
       location,
     }),
   };
-}
-
-async function relinkActiveShoppingItems(
-  db: Database,
-  input: {
-    storeId: string;
-    normalizedText: string;
-    productConceptId: string;
-    resolvedLocationId: string;
-    now: Date;
-  },
-) {
-  const [activeList] = await buildActiveShoppingListQuery(db, input.storeId);
-
-  if (!activeList) {
-    return;
-  }
-
-  await buildShoppingItemProductResolutionQuery(db, {
-    ...input,
-    shoppingListId: activeList.id,
-  });
 }
 
 async function getExistingProductConcept(

@@ -28,6 +28,14 @@ export type ProductCorrectionRequestBuildResult =
   | { success: true; body: ProductCorrectionRequestBody }
   | { success: false; fieldErrors: FieldErrors };
 
+export function shouldSaveProductCorrectionForEdit({
+  locationTouched,
+}: {
+  locationTouched: boolean;
+}): boolean {
+  return locationTouched;
+}
+
 export function getStableMutationForText(
   current: PendingTextMutation | null,
   text: string,

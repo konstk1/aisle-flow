@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => {
     getDb: vi.fn(() => db),
     getStoreLayout: vi.fn(),
     productConceptIdByNormalizedName: vi.fn(),
+    productLocationIdByStoreAndConcept: vi.fn(),
   };
 });
 
@@ -28,6 +29,7 @@ vi.mock("@/db/repositories/product-corrections", () => ({
   buildProductConceptCreateQuery: mocks.buildProductConceptCreateQuery,
   buildProductConceptListQuery: mocks.buildProductConceptListQuery,
   productConceptIdByNormalizedName: mocks.productConceptIdByNormalizedName,
+  productLocationIdByStoreAndConcept: mocks.productLocationIdByStoreAndConcept,
 }));
 vi.mock("@/db/repositories/shopping-lists", () => ({
   buildActiveShoppingListQuery: mocks.buildActiveShoppingListQuery,
@@ -116,6 +118,7 @@ beforeEach(() => {
   mocks.getDb.mockClear();
   mocks.getStoreLayout.mockReset();
   mocks.productConceptIdByNormalizedName.mockReset();
+  mocks.productLocationIdByStoreAndConcept.mockReset();
 
   mocks.buildManualProductAliasCorrectionQuery.mockReturnValue("alias-query");
   mocks.buildManualProductLocationCorrectionQuery.mockReturnValue(
@@ -123,11 +126,12 @@ beforeEach(() => {
   );
   mocks.buildProductConceptCreateQuery.mockReturnValue("concept-query");
   mocks.buildActiveShoppingListQuery.mockResolvedValue([{ id: activeListId }]);
-  mocks.buildShoppingItemProductResolutionQuery.mockResolvedValue([
-    { id: "shopping-item-1" },
-  ]);
+  mocks.buildShoppingItemProductResolutionQuery.mockReturnValue("relink-query");
   mocks.getStoreLayout.mockResolvedValue(layout);
   mocks.productConceptIdByNormalizedName.mockReturnValue("concept-id-subquery");
+  mocks.productLocationIdByStoreAndConcept.mockReturnValue(
+    "location-id-subquery",
+  );
 });
 
 describe("productCorrectionRequestSchema", () => {
@@ -191,8 +195,13 @@ describe("productCorrectionRequestSchema", () => {
 });
 
 describe("applyProductCorrection", () => {
-  it("batches new concept creation with alias and location writes", async () => {
-    mocks.db.batch.mockResolvedValue([[productConcept], [alias], [location]]);
+  it("batches new concept creation with alias, location, and active-list relink writes", async () => {
+    mocks.db.batch.mockResolvedValue([
+      [productConcept],
+      [alias],
+      [location],
+      [{ id: "shopping-item-1" }],
+    ]);
 
     const result = await applyProductCorrection({
       rawText: "Dried Mango",
@@ -208,6 +217,7 @@ describe("applyProductCorrection", () => {
       "concept-query",
       "alias-query",
       "location-query",
+      "relink-query",
     ]);
     expect(mocks.buildManualProductAliasCorrectionQuery).toHaveBeenCalledWith(
       mocks.db,
@@ -271,10 +281,14 @@ describe("applyProductCorrection", () => {
         storeId,
         shoppingListId: activeListId,
         normalizedText: "dried mango",
-        productConceptId: validConceptId,
-        resolvedLocationId: "location-1",
+        productConceptId: "concept-id-subquery",
+        resolvedLocationId: "location-id-subquery",
       }),
     );
+    expect(mocks.productLocationIdByStoreAndConcept).toHaveBeenCalledWith({
+      storeId,
+      productConceptId: "concept-id-subquery",
+    });
   });
 
   it("maps FK failures from the batched new-concept write to a correction conflict", async () => {
@@ -299,6 +313,7 @@ describe("applyProductCorrection", () => {
       "concept-query",
       "alias-query",
       "location-query",
+      "relink-query",
     ]);
   });
 });

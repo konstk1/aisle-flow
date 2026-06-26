@@ -12,6 +12,7 @@ import {
   getStableMutationForText,
   mergeActiveListSnapshotAfterCheck,
   replaceItemInActiveList,
+  shouldSaveProductCorrectionForEdit,
 } from "./active-shopping-list-state";
 
 describe("getStableMutationForText", () => {
@@ -132,6 +133,20 @@ describe("buildProductCorrectionRequest", () => {
         aisleSectionId: ["Choose an aisle section."],
       },
     });
+  });
+});
+
+describe("shouldSaveProductCorrectionForEdit", () => {
+  it("does not infer a correction from a pure item rename", () => {
+    expect(shouldSaveProductCorrectionForEdit({ locationTouched: false })).toBe(
+      false,
+    );
+  });
+
+  it("saves a correction when the location form was changed", () => {
+    expect(shouldSaveProductCorrectionForEdit({ locationTouched: true })).toBe(
+      true,
+    );
   });
 });
 

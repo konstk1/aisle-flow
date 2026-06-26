@@ -26,6 +26,7 @@ import {
   getStableMutationForText,
   mergeActiveListSnapshotAfterCheck,
   replaceItemInActiveList,
+  shouldSaveProductCorrectionForEdit,
   type PendingTextMutation,
   type ProductCorrectionFormState,
 } from "./active-shopping-list-state";
@@ -314,6 +315,7 @@ export function ActiveShoppingList({
     setEditLocationTouched(false);
     setCorrectionFieldErrors({});
     setCorrectionMessage(null);
+    setCorrectionOptionsError(null);
     setCorrectionForm({
       ...createProductCorrectionFormState({
         productConceptId: item.productConcept?.id ?? null,
@@ -352,10 +354,9 @@ export function ActiveShoppingList({
     setCorrectionFieldErrors({});
     setCorrectionMessage(null);
 
-    const shouldSaveLocation =
-      editLocationTouched ||
-      (editItem.location !== null &&
-        editText.trim() !== editItem.rawText.trim());
+    const shouldSaveLocation = shouldSaveProductCorrectionForEdit({
+      locationTouched: editLocationTouched,
+    });
     const correctionRequest = shouldSaveLocation
       ? buildProductCorrectionRequest({
           form: correctionForm,
@@ -388,8 +389,6 @@ export function ActiveShoppingList({
         return;
       }
 
-      setActiveList(result.activeList);
-
       if (correctionRequest?.success) {
         const correctionResponse = await fetch("/api/product-corrections", {
           body: JSON.stringify(correctionRequest.body),
@@ -419,6 +418,8 @@ export function ActiveShoppingList({
         }
 
         setActiveList(listResult.activeList);
+      } else {
+        setActiveList(result.activeList);
       }
 
       closeEdit();

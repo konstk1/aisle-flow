@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 
 import type { Database } from "../create-client";
 import {
@@ -53,8 +53,8 @@ export interface ShoppingItemProductResolutionInput {
   storeId: string;
   shoppingListId: string;
   normalizedText: string;
-  productConceptId: string;
-  resolvedLocationId: string;
+  productConceptId: string | SQL;
+  resolvedLocationId: string | SQL;
   now?: Date;
 }
 

@@ -65,10 +65,14 @@ export async function PATCH(
       });
     }
 
+    if (parsed.data.isChecked === undefined) {
+      throw new Error("Shopping item update was validated without a field.");
+    }
+
     return Response.json({
       activeList: await setActiveShoppingItemChecked({
         itemId: parsedItemId.data,
-        isChecked: parsed.data.isChecked ?? false,
+        isChecked: parsed.data.isChecked,
       }),
     });
   } catch (error) {
