@@ -29,6 +29,8 @@ import {
 } from "@dnd-kit/sortable";
 
 import {
+  formatAisleLabel,
+  formatSectionLabel,
   getRouteSections,
   getNextAisleIdentifier,
   orderAisles,
@@ -84,6 +86,7 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
   const [collapsedAisleIds, setCollapsedAisleIds] = useState<Set<string>>(
     () => new Set(),
   );
+  const [routePreviewExpanded, setRoutePreviewExpanded] = useState(false);
   const routeSections = useMemo(() => getRouteSections(layout), [layout]);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -343,7 +346,7 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
   const orderedAisles = orderAisles(layout.aisles);
 
   return (
-    <section className="pt-10 pb-12 sm:pt-14">
+    <section className="pt-6 pb-12 sm:pt-8">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-sm font-medium text-zinc-500">Store layout</p>
@@ -531,29 +534,44 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
         className="mt-12 border-y py-6"
         aria-labelledby="route-preview-heading"
       >
-        <div className="flex items-center gap-3">
+        <button
+          aria-controls="route-preview-list"
+          aria-expanded={routePreviewExpanded}
+          className="flex min-h-11 w-full items-center gap-3 text-left"
+          onClick={() => setRoutePreviewExpanded((current) => !current)}
+          type="button"
+        >
           <Route aria-hidden="true" className="size-5" />
           <h2 className="font-medium text-zinc-950" id="route-preview-heading">
             Route preview
           </h2>
-        </div>
-        <ol className="mt-4 space-y-3 text-sm leading-6 text-zinc-700">
-          {routeSections.map(({ aisle, section }, index) => (
-            <li className="flex gap-3" key={section.id}>
-              <span className="font-medium text-zinc-500 tabular-nums">
-                {index + 1}
-              </span>
-              <span>
-                Aisle {aisle.identifier}
-                {aisle.displayName ? ` — ${aisle.displayName}` : ""}
-                {" · "}
-                {section.label || `Section ${section.pathOrder + 1}`}
-                {" · "}
-                <span className="text-zinc-500">{section.side}</span>
-              </span>
-            </li>
-          ))}
-        </ol>
+          {routePreviewExpanded ? (
+            <ChevronDown aria-hidden="true" className="ml-auto size-4" />
+          ) : (
+            <ChevronRight aria-hidden="true" className="ml-auto size-4" />
+          )}
+        </button>
+        {routePreviewExpanded ? (
+          <ol
+            className="mt-4 space-y-3 text-sm leading-6 text-zinc-700"
+            id="route-preview-list"
+          >
+            {routeSections.map(({ aisle, section }, index) => (
+              <li className="flex gap-3" key={section.id}>
+                <span className="font-medium text-zinc-500 tabular-nums">
+                  {index + 1}
+                </span>
+                <span>
+                  {formatAisleLabel(aisle)}
+                  {" · "}
+                  {formatSectionLabel(section)}
+                  {" · "}
+                  <span className="text-zinc-500">{section.side}</span>
+                </span>
+              </li>
+            ))}
+          </ol>
+        ) : null}
       </section>
 
       {message ? (

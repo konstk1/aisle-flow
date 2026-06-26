@@ -47,6 +47,18 @@ export function orderAisles(aisles: StoreLayoutAisle[]) {
   );
 }
 
+export function formatAisleLabel(
+  aisle: Pick<StoreLayoutAisle, "displayName" | "identifier">,
+) {
+  return aisle.displayName?.trim() || `Aisle ${aisle.identifier}`;
+}
+
+export function formatSectionLabel(
+  section: Pick<StoreLayoutSection, "label" | "pathOrder">,
+) {
+  return section.label?.trim() || `Section ${section.pathOrder + 1}`;
+}
+
 export function getNextAisleIdentifier(aisles: StoreLayoutAisle[]) {
   const identifiers = new Set(aisles.map((aisle) => aisle.identifier.trim()));
   const highestNumericIdentifier = Math.max(

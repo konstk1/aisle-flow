@@ -11,13 +11,15 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import Link from "next/link";
+import { useMemo, useRef, useState } from "react";
 
 import type {
   ActiveShoppingItemPayload,
   ActiveShoppingListPayload,
   FieldErrors,
 } from "@/domain/active-shopping-list";
+import { formatAisleLabel, formatSectionLabel } from "@/domain/store-layout";
 
 import {
   ADD_CATEGORY_OPTION_VALUE,
@@ -77,6 +79,8 @@ type ProductCorrectionAisleSection = {
 
 type FieldErrorScope = "add" | "import";
 
+const EMPTY_ITEMS: ActiveShoppingItemPayload[] = [];
+
 export function ActiveShoppingList({
   hasStoreLayout,
   initialActiveList,
@@ -84,12 +88,11 @@ export function ActiveShoppingList({
   const [activeList, setActiveList] = useState(initialActiveList);
   const [itemText, setItemText] = useState("");
   const [importText, setImportText] = useState("");
+  const [importExpanded, setImportExpanded] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [fieldErrorScope, setFieldErrorScope] =
     useState<FieldErrorScope | null>(null);
-  const [message, setMessage] = useState<string | null>(
-    hasStoreLayout ? null : "Save a store route before adding items.",
-  );
+  const [message, setMessage] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [pendingCheckItemIds, setPendingCheckItemIds] = useState<Set<string>>(
     () => new Set(),
@@ -130,7 +133,8 @@ export function ActiveShoppingList({
   const pendingAddMutation = useRef<PendingTextMutation | null>(null);
   const pendingImportMutation = useRef<PendingTextMutation | null>(null);
   const pendingCheckItemIdsRef = useRef<Set<string>>(new Set());
-  const items = activeList?.items ?? [];
+  const items = activeList?.items ?? EMPTY_ITEMS;
+  const itemGroups = useMemo(() => groupShoppingItemsByAisle(items), [items]);
   const editItem = items.find((item) => item.id === editItemId) ?? null;
   const editHasChanges = editItem
     ? editText !== editItem.rawText || editLocationTouched
@@ -237,6 +241,7 @@ export function ActiveShoppingList({
 
       if (await applyListResponse(response, "import")) {
         setImportText("");
+        setImportExpanded(false);
         pendingImportMutation.current = null;
       }
     } catch {
@@ -525,27 +530,23 @@ export function ActiveShoppingList({
     }
   }
 
-  return (
-    <section className="border-b pt-10 pb-12 sm:pt-14">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium text-zinc-500">Shopping list</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight text-zinc-950 sm:text-4xl">
-            Active list.
-          </h1>
-        </div>
-        <button
-          aria-label="Refresh shopping list"
-          className="inline-flex size-11 shrink-0 items-center justify-center border text-zinc-700 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={pendingAction !== null}
-          onClick={refreshList}
-          type="button"
-        >
-          <RotateCw aria-hidden="true" className="size-4" />
-        </button>
-      </div>
+  function openImport() {
+    setImportExpanded(true);
+    setFieldErrors({});
+    setFieldErrorScope(null);
+    setMessage(null);
+  }
 
-      <form className="mt-8 flex gap-2" onSubmit={addItem}>
+  function closeImport() {
+    setImportExpanded(false);
+    setImportText("");
+    setFieldErrors({});
+    setFieldErrorScope(null);
+  }
+
+  return (
+    <section className="pt-5 pb-12 sm:pt-7">
+      <form className="flex flex-col gap-2 sm:flex-row" onSubmit={addItem}>
         <label className="min-w-0 flex-1">
           <span className="sr-only">Item text</span>
           <input
@@ -559,75 +560,133 @@ export function ActiveShoppingList({
             message={fieldErrorScope === "add" ? fieldErrors.text?.[0] : null}
           />
         </label>
-        <button
-          className="inline-flex min-h-11 shrink-0 items-center gap-2 border border-zinc-950 bg-zinc-950 px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-          disabled={!hasStoreLayout || pendingAction !== null}
-          type="submit"
-        >
-          <Plus aria-hidden="true" className="size-4" />
-          Add
-        </button>
-      </form>
-
-      <form className="mt-5" onSubmit={importItems}>
-        <label className="block text-sm font-medium text-zinc-800">
-          Paste items
-          <textarea
-            className="mt-2 min-h-28 w-full resize-y border bg-white px-3 py-2 text-base transition outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
+        <div className="flex shrink-0 gap-2">
+          <button
+            className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 border border-zinc-950 bg-zinc-950 px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none"
             disabled={!hasStoreLayout || pendingAction !== null}
-            onChange={(event) => setImportText(event.target.value)}
-            placeholder={"Rice\nBroccoli"}
-            value={importText}
-          />
-          <FieldError
-            message={
-              fieldErrorScope === "import" ? fieldErrors.text?.[0] : null
-            }
-          />
-        </label>
-        <button
-          className="mt-2 inline-flex min-h-11 items-center gap-2 border px-4 text-sm font-medium text-zinc-800 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={!hasStoreLayout || pendingAction !== null}
-          type="submit"
-        >
-          <Upload aria-hidden="true" className="size-4" />
-          Import
-        </button>
+            type="submit"
+          >
+            <Plus aria-hidden="true" className="size-4" />
+            Add
+          </button>
+          <button
+            aria-expanded={importExpanded}
+            className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 border px-4 text-sm font-medium text-zinc-800 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none"
+            disabled={!hasStoreLayout || pendingAction !== null}
+            onClick={openImport}
+            type="button"
+          >
+            <Upload aria-hidden="true" className="size-4" />
+            Import
+          </button>
+          <button
+            aria-label="Refresh shopping list"
+            className="inline-flex size-11 shrink-0 items-center justify-center border text-zinc-700 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={pendingAction !== null}
+            onClick={refreshList}
+            type="button"
+          >
+            <RotateCw aria-hidden="true" className="size-4" />
+          </button>
+        </div>
       </form>
 
-      <div className="mt-9 divide-y border-y">
+      {!hasStoreLayout ? (
+        <p className="mt-4 text-sm text-zinc-600">
+          <Link
+            className="font-medium text-zinc-950 underline-offset-4 hover:underline"
+            href="/route"
+          >
+            Build a store route
+          </Link>{" "}
+          before adding shopping items.
+        </p>
+      ) : null}
+
+      {importExpanded ? (
+        <form className="mt-5 border-y py-4" onSubmit={importItems}>
+          <label className="block text-sm font-medium text-zinc-800">
+            Paste list
+            <textarea
+              className="mt-2 min-h-28 w-full resize-y border bg-white px-3 py-2 text-base transition outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={!hasStoreLayout || pendingAction !== null}
+              onChange={(event) => setImportText(event.target.value)}
+              placeholder={"Rice\nBroccoli"}
+              autoFocus
+              value={importText}
+            />
+            <FieldError
+              message={
+                fieldErrorScope === "import" ? fieldErrors.text?.[0] : null
+              }
+            />
+          </label>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              className="inline-flex min-h-11 items-center gap-2 border border-zinc-950 bg-zinc-950 px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={!hasStoreLayout || pendingAction !== null}
+              type="submit"
+            >
+              <Upload aria-hidden="true" className="size-4" />
+              Import
+            </button>
+            <button
+              className="inline-flex min-h-11 items-center gap-2 border px-4 text-sm font-medium text-zinc-800 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={pendingAction !== null}
+              onClick={closeImport}
+              type="button"
+            >
+              <X aria-hidden="true" className="size-4" />
+              Cancel
+            </button>
+          </div>
+        </form>
+      ) : null}
+
+      <div className="mt-8 space-y-7">
         {items.length === 0 ? (
-          <p className="py-6 text-sm text-zinc-600">No items yet.</p>
+          <p className="border-y py-6 text-sm text-zinc-600">No items yet.</p>
         ) : (
-          items.map((item) => (
-            <div key={item.id}>
-              <ShoppingItemRow
-                correctionFieldErrors={correctionFieldErrors}
-                correctionForm={correctionForm}
-                correctionMessage={correctionMessage}
-                correctionOptions={correctionOptions}
-                correctionOptionsError={correctionOptionsError}
-                correctionOptionsLoading={correctionOptionsLoading}
-                editExpanded={editItemId === item.id}
-                editFieldErrors={editFieldErrors}
-                editMessage={editMessage}
-                editText={editText}
-                item={item}
-                onCheckedChange={(isChecked) => setChecked(item.id, isChecked)}
-                onCorrectionFormChange={updateCorrectionForm}
-                onDelete={() => deleteItem(item)}
-                onEditCancel={closeEdit}
-                onEditOpen={() => openEdit(item)}
-                onEditSubmit={saveEdit}
-                onEditTextChange={setEditText}
-                onRetryCorrectionOptions={loadCorrectionOptions}
-                pending={pendingCheckItemIds.has(item.id)}
-                pendingCorrection={pendingCorrectionItemId === item.id}
-                pendingDelete={pendingDeleteItemIds.has(item.id)}
-                pendingEdit={pendingEditItemId === item.id}
-                saveDisabled={!editHasChanges}
-              />
-            </div>
+          itemGroups.map((group) => (
+            <section key={group.id}>
+              <h2 className="mb-2 text-base font-semibold text-zinc-700">
+                {group.label}
+              </h2>
+              <div>
+                {group.items.map((item) => (
+                  <div key={item.id}>
+                    <ShoppingItemRow
+                      correctionFieldErrors={correctionFieldErrors}
+                      correctionForm={correctionForm}
+                      correctionMessage={correctionMessage}
+                      correctionOptions={correctionOptions}
+                      correctionOptionsError={correctionOptionsError}
+                      correctionOptionsLoading={correctionOptionsLoading}
+                      editExpanded={editItemId === item.id}
+                      editFieldErrors={editFieldErrors}
+                      editMessage={editMessage}
+                      editText={editText}
+                      item={item}
+                      onCheckedChange={(isChecked) =>
+                        setChecked(item.id, isChecked)
+                      }
+                      onCorrectionFormChange={updateCorrectionForm}
+                      onDelete={() => deleteItem(item)}
+                      onEditCancel={closeEdit}
+                      onEditOpen={() => openEdit(item)}
+                      onEditSubmit={saveEdit}
+                      onEditTextChange={setEditText}
+                      onRetryCorrectionOptions={loadCorrectionOptions}
+                      pending={pendingCheckItemIds.has(item.id)}
+                      pendingCorrection={pendingCorrectionItemId === item.id}
+                      pendingDelete={pendingDeleteItemIds.has(item.id)}
+                      pendingEdit={pendingEditItemId === item.id}
+                      saveDisabled={!editHasChanges}
+                    />
+                  </div>
+                ))}
+              </div>
+            </section>
           ))
         )}
       </div>
@@ -1004,14 +1063,7 @@ function InlineLocationEditor({
 }
 function locationLabel(item: ActiveShoppingItemPayload) {
   if (item.location) {
-    const { aisleSection } = item.location;
-    const aisleName = aisleSection.aisleDisplayName
-      ? ` · ${aisleSection.aisleDisplayName}`
-      : "";
-    const sectionName =
-      aisleSection.label || `Section ${aisleSection.pathOrder + 1}`;
-
-    return `Aisle ${aisleSection.aisleIdentifier}${aisleName} · ${sectionName}`;
+    return formatSectionLabel(item.location.aisleSection);
   }
 
   if (item.productConcept) {
@@ -1021,13 +1073,56 @@ function locationLabel(item: ActiveShoppingItemPayload) {
   return "Needs correction";
 }
 
-function correctionSectionLabel(section: ProductCorrectionAisleSection) {
-  const aisleName = section.aisleDisplayName
-    ? ` · ${section.aisleDisplayName}`
-    : "";
-  const sectionName = section.label || `Section ${section.pathOrder + 1}`;
+type ShoppingItemGroup = {
+  id: string;
+  label: string;
+  items: ActiveShoppingItemPayload[];
+};
 
-  return `Aisle ${section.aisleIdentifier}${aisleName} · ${sectionName}`;
+function groupShoppingItemsByAisle(
+  items: ActiveShoppingItemPayload[],
+): ShoppingItemGroup[] {
+  const groups = new Map<string, ShoppingItemGroup>();
+
+  for (const item of items) {
+    const group = shoppingItemAisleGroup(item);
+    const existingGroup = groups.get(group.id);
+
+    if (existingGroup) {
+      existingGroup.items.push(item);
+    } else {
+      groups.set(group.id, { ...group, items: [item] });
+    }
+  }
+
+  return [...groups.values()];
+}
+
+function shoppingItemAisleGroup(item: ActiveShoppingItemPayload) {
+  if (item.location) {
+    const { aisleSection } = item.location;
+
+    return {
+      id: `aisle-${aisleSection.aisleId}`,
+      label: formatAisleLabel({
+        displayName: aisleSection.aisleDisplayName,
+        identifier: aisleSection.aisleIdentifier,
+      }),
+    };
+  }
+
+  if (item.productConcept) {
+    return { id: "matched-unlocated", label: "No saved location" };
+  }
+
+  return { id: "needs-correction", label: "Needs correction" };
+}
+
+function correctionSectionLabel(section: ProductCorrectionAisleSection) {
+  return `${formatAisleLabel({
+    displayName: section.aisleDisplayName,
+    identifier: section.aisleIdentifier,
+  })} · ${formatSectionLabel(section)}`;
 }
 
 function FieldError({
