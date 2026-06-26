@@ -15,7 +15,12 @@ import {
   buildProductConceptCreateQuery,
   buildProductConceptListQuery,
   productConceptIdByNormalizedName,
+  productLocationIdByStoreAndConcept,
 } from "@/db/repositories/product-corrections";
+import {
+  buildActiveShoppingListQuery,
+  buildShoppingItemProductResolutionQuery,
+} from "@/db/repositories/shopping-lists";
 import type {
   ProductAlias,
   ProductConcept,
@@ -27,7 +32,6 @@ import { getStoreLayout } from "./store-layout";
 
 const MAX_CORRECTION_TEXT_LENGTH = 120;
 const MAX_CATEGORY_NAME_LENGTH = 80;
-const MAX_POSITION_WITHIN_SECTION = 9_999;
 
 type FieldErrors = Record<string, string[]>;
 
@@ -56,13 +60,6 @@ export const productCorrectionRequestSchema = z
       })
       .optional(),
     aisleSectionId: z.uuid("Choose a valid aisle section."),
-    positionWithinSection: z
-      .number()
-      .int("Position must be a whole number.")
-      .min(0, "Position cannot be negative.")
-      .max(MAX_POSITION_WITHIN_SECTION, "Position within section is too large.")
-      .nullable()
-      .optional(),
   })
   .superRefine((input, context) => {
     const hasExistingCategory = input.productConceptId !== undefined;
@@ -187,6 +184,7 @@ export async function applyProductCorrection(
   const db = getDb();
   const normalizedText = normalizeProductText(input.rawText);
   const now = new Date();
+  const [activeList] = await buildActiveShoppingListQuery(db, layout.id);
 
   let productConcept: ProductConcept | undefined;
   let alias: ProductAlias | undefined;
@@ -198,22 +196,37 @@ export async function applyProductCorrection(
         db,
         input.productConceptId,
       );
+      const aliasQuery = buildManualProductAliasCorrectionQuery(db, {
+        storeId: layout.id,
+        productConceptId: productConcept.id,
+        normalizedText,
+        now,
+      });
+      const locationQuery = buildManualProductLocationCorrectionQuery(db, {
+        storeId: layout.id,
+        productConceptId: productConcept.id,
+        aisleSectionId: aisleSection.id,
+        positionWithinSection: null,
+        now,
+      });
 
-      const [aliasRows, locationRows] = await db.batch([
-        buildManualProductAliasCorrectionQuery(db, {
-          storeId: layout.id,
-          productConceptId: productConcept.id,
-          normalizedText,
-          now,
-        }),
-        buildManualProductLocationCorrectionQuery(db, {
-          storeId: layout.id,
-          productConceptId: productConcept.id,
-          aisleSectionId: aisleSection.id,
-          positionWithinSection: input.positionWithinSection ?? null,
-          now,
-        }),
-      ]);
+      const [aliasRows, locationRows] = activeList
+        ? await db.batch([
+            aliasQuery,
+            locationQuery,
+            buildShoppingItemProductResolutionQuery(db, {
+              storeId: layout.id,
+              shoppingListId: activeList.id,
+              normalizedText,
+              productConceptId: productConcept.id,
+              resolvedLocationId: productLocationIdByStoreAndConcept({
+                storeId: layout.id,
+                productConceptId: productConcept.id,
+              }),
+              now,
+            }),
+          ])
+        : await db.batch([aliasQuery, locationQuery]);
 
       alias = aliasRows[0];
       location = locationRows[0];
@@ -226,25 +239,42 @@ export async function applyProductCorrection(
 
       const normalizedName = normalizeProductText(canonicalName);
       const productConceptId = productConceptIdByNormalizedName(normalizedName);
-      const [productConceptRows, aliasRows, locationRows] = await db.batch([
-        buildProductConceptCreateQuery(db, {
-          canonicalName,
-          normalizedName,
-        }),
-        buildManualProductAliasCorrectionQuery(db, {
-          storeId: layout.id,
-          productConceptId,
-          normalizedText,
-          now,
-        }),
-        buildManualProductLocationCorrectionQuery(db, {
-          storeId: layout.id,
-          productConceptId,
-          aisleSectionId: aisleSection.id,
-          positionWithinSection: input.positionWithinSection ?? null,
-          now,
-        }),
-      ]);
+      const conceptQuery = buildProductConceptCreateQuery(db, {
+        canonicalName,
+        normalizedName,
+      });
+      const aliasQuery = buildManualProductAliasCorrectionQuery(db, {
+        storeId: layout.id,
+        productConceptId,
+        normalizedText,
+        now,
+      });
+      const locationQuery = buildManualProductLocationCorrectionQuery(db, {
+        storeId: layout.id,
+        productConceptId,
+        aisleSectionId: aisleSection.id,
+        positionWithinSection: null,
+        now,
+      });
+
+      const [productConceptRows, aliasRows, locationRows] = activeList
+        ? await db.batch([
+            conceptQuery,
+            aliasQuery,
+            locationQuery,
+            buildShoppingItemProductResolutionQuery(db, {
+              storeId: layout.id,
+              shoppingListId: activeList.id,
+              normalizedText,
+              productConceptId,
+              resolvedLocationId: productLocationIdByStoreAndConcept({
+                storeId: layout.id,
+                productConceptId,
+              }),
+              now,
+            }),
+          ])
+        : await db.batch([conceptQuery, aliasQuery, locationQuery]);
 
       productConcept = productConceptRows[0];
       alias = aliasRows[0];

@@ -21,6 +21,8 @@ import {
   buildActiveShoppingListQuery,
   buildRouteOrderedShoppingItemsQuery,
   buildShoppingItemCheckStateQuery,
+  buildShoppingItemDeleteQuery,
+  buildShoppingItemTextUpdateQuery,
   buildShoppingItemsByNormalizedTextQuery,
   buildShoppingItemUpsertQuery,
   type ShoppingItemUpsertInput,
@@ -63,9 +65,24 @@ export const activeShoppingListImportRequestSchema = z.object({
   mutationId: mutationIdSchema,
 });
 
-export const activeShoppingItemCheckRequestSchema = z.object({
-  isChecked: z.boolean(),
-});
+export const activeShoppingItemUpdateRequestSchema = z
+  .object({
+    isChecked: z.boolean().optional(),
+    text: shoppingItemTextSchema.optional(),
+  })
+  .strict()
+  .superRefine((input, context) => {
+    const updateCount =
+      Number(input.isChecked !== undefined) + Number(input.text !== undefined);
+
+    if (updateCount !== 1) {
+      context.addIssue({
+        code: "custom",
+        message: "Send exactly one item update.",
+        path: ["form"],
+      });
+    }
+  });
 
 export type ActiveShoppingItemCreateRequest = z.output<
   typeof activeShoppingItemCreateRequestSchema
@@ -75,8 +92,8 @@ export type ActiveShoppingListImportRequest = z.output<
   typeof activeShoppingListImportRequestSchema
 >;
 
-export type ActiveShoppingItemCheckRequest = z.output<
-  typeof activeShoppingItemCheckRequestSchema
+export type ActiveShoppingItemUpdateRequest = z.output<
+  typeof activeShoppingItemUpdateRequestSchema
 >;
 
 export class ActiveShoppingListRequestError extends Error {
@@ -233,6 +250,75 @@ export async function setActiveShoppingItemChecked({
   return readActiveShoppingListPayload(db, layout, list);
 }
 
+export async function updateActiveShoppingItemText({
+  itemId,
+  text,
+}: {
+  itemId: string;
+  text: string;
+}): Promise<ActiveShoppingListPayload> {
+  const layout = await requireActiveStoreLayout();
+  const db = getDb();
+  const list = await getOrCreateActiveShoppingList(db, layout.id);
+  const normalizedText = normalizeProductText(text);
+  await ensureShoppingItemTextIsAvailable(db, {
+    currentItemId: itemId,
+    list,
+    normalizedText,
+    storeId: layout.id,
+  });
+  const resolveProductMatch = await createStoreProductMatcher({
+    db,
+    storeId: layout.id,
+  });
+  const match = await resolveProductMatch(text);
+  const matched = match.state === "matched";
+  const [updatedItem] = await buildShoppingItemTextUpdateQuery(db, {
+    storeId: layout.id,
+    shoppingListId: list.id,
+    itemId,
+    rawText: text,
+    normalizedText,
+    productConceptId: matched ? match.productConcept.id : null,
+    resolvedLocationId: matched ? (match.location?.id ?? null) : null,
+  });
+
+  if (!updatedItem) {
+    throw new ActiveShoppingListRequestError(
+      "Choose an item in the active list.",
+      { itemId: ["Choose an item in the active list."] },
+      404,
+    );
+  }
+
+  return readActiveShoppingListPayload(db, layout, list);
+}
+
+export async function deleteActiveShoppingItem({
+  itemId,
+}: {
+  itemId: string;
+}): Promise<ActiveShoppingListPayload> {
+  const layout = await requireActiveStoreLayout();
+  const db = getDb();
+  const list = await getOrCreateActiveShoppingList(db, layout.id);
+  const [deletedItem] = await buildShoppingItemDeleteQuery(db, {
+    storeId: layout.id,
+    shoppingListId: list.id,
+    itemId,
+  });
+
+  if (!deletedItem) {
+    throw new ActiveShoppingListRequestError(
+      "Choose an item in the active list.",
+      { itemId: ["Choose an item in the active list."] },
+      404,
+    );
+  }
+
+  return readActiveShoppingListPayload(db, layout, list);
+}
+
 async function requireActiveStoreLayout(): Promise<StoreLayout> {
   const layout = await getStoreLayout();
 
@@ -353,6 +439,33 @@ async function ensureShoppingItemsAreNew(
     throw new ActiveShoppingListRequestError(
       duplicateShoppingItemMessage,
       { text: duplicateErrors },
+      409,
+    );
+  }
+}
+
+async function ensureShoppingItemTextIsAvailable(
+  db: Database,
+  input: {
+    storeId: string;
+    list: ShoppingList;
+    currentItemId: string;
+    normalizedText: string;
+  },
+) {
+  const existingItems = await buildShoppingItemsByNormalizedTextQuery(db, {
+    storeId: input.storeId,
+    shoppingListId: input.list.id,
+    normalizedTexts: [input.normalizedText],
+  });
+  const duplicateItem = existingItems.find(
+    (item) => item.id !== input.currentItemId,
+  );
+
+  if (duplicateItem) {
+    throw new ActiveShoppingListRequestError(
+      duplicateShoppingItemMessage,
+      { text: [duplicateShoppingItemMessage] },
       409,
     );
   }

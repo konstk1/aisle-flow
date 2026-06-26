@@ -2,11 +2,18 @@ import { describe, expect, it } from "vitest";
 
 import { createDatabase } from "../create-client";
 import {
+  productConceptIdByNormalizedName,
+  productLocationIdByStoreAndConcept,
+} from "./product-corrections";
+import {
   buildActiveShoppingListCreateQuery,
   buildActiveShoppingListQuery,
   buildExactProductAliasLookupQuery,
   buildRouteOrderedShoppingItemsQuery,
   buildShoppingItemCheckStateQuery,
+  buildShoppingItemDeleteQuery,
+  buildShoppingItemProductResolutionQuery,
+  buildShoppingItemTextUpdateQuery,
   buildShoppingItemsByNormalizedTextQuery,
   buildShoppingItemUpsertQuery,
 } from "./shopping-lists";
@@ -131,6 +138,117 @@ describe("shopping-list queries", () => {
       "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
       "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
       "33333333-3333-4333-8333-333333333333",
+    ]);
+  });
+
+  it("updates item text and resolution within the active list", () => {
+    const { sql: query, params } = buildShoppingItemTextUpdateQuery(database, {
+      storeId: "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
+      shoppingListId: "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
+      itemId: "33333333-3333-4333-8333-333333333333",
+      rawText: "Wild Rice",
+      normalizedText: "wild rice",
+      productConceptId: "11111111-1111-4111-8111-111111111111",
+      resolvedLocationId: "22222222-2222-4222-8222-222222222222",
+      now: new Date("2026-01-01T00:00:00Z"),
+    }).toSQL();
+
+    expect(query).toContain('update "shopping_items"');
+    expect(query).toContain('"raw_text" = $1');
+    expect(query).toContain('"normalized_text" = $2');
+    expect(query).toContain('"product_concept_id" = $3');
+    expect(query).toContain('"resolved_location_id" = $4');
+    expect(query).toContain('"version" = "shopping_items"."version" + 1');
+    expect(query).toContain('"shopping_items"."id" = $8');
+    expect(params).toEqual([
+      "Wild Rice",
+      "wild rice",
+      "11111111-1111-4111-8111-111111111111",
+      "22222222-2222-4222-8222-222222222222",
+      "2026-01-01T00:00:00.000Z",
+      "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
+      "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
+      "33333333-3333-4333-8333-333333333333",
+    ]);
+  });
+
+  it("deletes an item within the active list", () => {
+    const { sql: query, params } = buildShoppingItemDeleteQuery(database, {
+      storeId: "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
+      shoppingListId: "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
+      itemId: "33333333-3333-4333-8333-333333333333",
+    }).toSQL();
+
+    expect(query).toContain('delete from "shopping_items"');
+    expect(query).toContain('"shopping_items"."store_id" = $1');
+    expect(query).toContain('"shopping_items"."shopping_list_id" = $2');
+    expect(query).toContain('"shopping_items"."id" = $3');
+    expect(params).toEqual([
+      "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
+      "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
+      "33333333-3333-4333-8333-333333333333",
+    ]);
+  });
+
+  it("relinks a corrected product match within the active list", () => {
+    const { sql: query, params } = buildShoppingItemProductResolutionQuery(
+      database,
+      {
+        storeId: "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
+        shoppingListId: "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
+        normalizedText: "wild rice",
+        productConceptId: "11111111-1111-4111-8111-111111111111",
+        resolvedLocationId: "22222222-2222-4222-8222-222222222222",
+        now: new Date("2026-01-01T00:00:00Z"),
+      },
+    ).toSQL();
+
+    expect(query).toContain('update "shopping_items"');
+    expect(query).toContain('"product_concept_id" = $1');
+    expect(query).toContain('"resolved_location_id" = $2');
+    expect(query).toContain('"version" = "shopping_items"."version" + 1');
+    expect(query).toContain('"shopping_items"."normalized_text" = $6');
+    expect(params).toEqual([
+      "11111111-1111-4111-8111-111111111111",
+      "22222222-2222-4222-8222-222222222222",
+      "2026-01-01T00:00:00.000Z",
+      "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
+      "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
+      "wild rice",
+    ]);
+  });
+
+  it("can relink a corrected product match using correction subqueries in the same batch", () => {
+    const productConceptId = productConceptIdByNormalizedName("dried fruit");
+    const { sql: query, params } = buildShoppingItemProductResolutionQuery(
+      database,
+      {
+        storeId: "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
+        shoppingListId: "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
+        normalizedText: "dried mango",
+        productConceptId,
+        resolvedLocationId: productLocationIdByStoreAndConcept({
+          storeId: "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
+          productConceptId,
+        }),
+        now: new Date("2026-01-01T00:00:00Z"),
+      },
+    ).toSQL();
+
+    expect(query).toContain(
+      '"product_concept_id" = (select "product_concepts"."id" from "product_concepts" where "product_concepts"."normalized_name" = $1 limit 1)',
+    );
+    expect(query).toContain(
+      '"resolved_location_id" = (select "product_locations"."id" from "product_locations" where "product_locations"."store_id" = $2 and "product_locations"."product_concept_id" = (select "product_concepts"."id" from "product_concepts" where "product_concepts"."normalized_name" = $3 limit 1) limit 1)',
+    );
+    expect(params).toEqual([
+      "dried fruit",
+      "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
+      "dried fruit",
+      "2026-01-01T00:00:00.000Z",
+      "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
+      "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
+      "dried mango",
     ]);
   });
 

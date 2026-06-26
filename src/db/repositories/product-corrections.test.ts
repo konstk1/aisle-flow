@@ -97,7 +97,7 @@ describe("product correction queries", () => {
     ]);
   });
 
-  it("updates the one store-specific product location for a category", () => {
+  it("updates the one store-specific product location for a category without clobbering existing section position", () => {
     const { sql: query, params } = buildManualProductLocationCorrectionQuery(
       database,
       {
@@ -114,7 +114,7 @@ describe("product correction queries", () => {
       'on conflict ("store_id","product_concept_id") do update set',
     );
     expect(query).toContain('"aisle_section_id" = excluded.aisle_section_id');
-    expect(query).toContain(
+    expect(query).not.toContain(
       '"position_within_section" = excluded.position_within_section',
     );
     expect(query).toContain('"source" = excluded.source');

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 
 import type { Database } from "../create-client";
 import {
@@ -29,6 +29,32 @@ export interface ShoppingItemCheckStateInput {
   shoppingListId: string;
   itemId: string;
   isChecked: boolean;
+  now?: Date;
+}
+
+export interface ShoppingItemTextUpdateInput {
+  storeId: string;
+  shoppingListId: string;
+  itemId: string;
+  rawText: string;
+  normalizedText: string;
+  productConceptId: string | null;
+  resolvedLocationId: string | null;
+  now?: Date;
+}
+
+export interface ShoppingItemDeleteInput {
+  storeId: string;
+  shoppingListId: string;
+  itemId: string;
+}
+
+export interface ShoppingItemProductResolutionInput {
+  storeId: string;
+  shoppingListId: string;
+  normalizedText: string;
+  productConceptId: string | SQL;
+  resolvedLocationId: string | SQL;
   now?: Date;
 }
 
@@ -183,6 +209,72 @@ export function buildShoppingItemCheckStateQuery(
         eq(shoppingItems.storeId, input.storeId),
         eq(shoppingItems.shoppingListId, input.shoppingListId),
         eq(shoppingItems.id, input.itemId),
+      ),
+    )
+    .returning();
+}
+
+export function buildShoppingItemTextUpdateQuery(
+  db: Database,
+  input: ShoppingItemTextUpdateInput,
+) {
+  const now = input.now ?? new Date();
+
+  return db
+    .update(shoppingItems)
+    .set({
+      rawText: input.rawText,
+      normalizedText: input.normalizedText,
+      productConceptId: input.productConceptId,
+      resolvedLocationId: input.resolvedLocationId,
+      updatedAt: now,
+      version: sql`${shoppingItems.version} + 1`,
+    })
+    .where(
+      and(
+        eq(shoppingItems.storeId, input.storeId),
+        eq(shoppingItems.shoppingListId, input.shoppingListId),
+        eq(shoppingItems.id, input.itemId),
+      ),
+    )
+    .returning();
+}
+
+export function buildShoppingItemDeleteQuery(
+  db: Database,
+  input: ShoppingItemDeleteInput,
+) {
+  return db
+    .delete(shoppingItems)
+    .where(
+      and(
+        eq(shoppingItems.storeId, input.storeId),
+        eq(shoppingItems.shoppingListId, input.shoppingListId),
+        eq(shoppingItems.id, input.itemId),
+      ),
+    )
+    .returning();
+}
+
+export function buildShoppingItemProductResolutionQuery(
+  db: Database,
+  input: ShoppingItemProductResolutionInput,
+) {
+  const now = input.now ?? new Date();
+
+  return db
+    .update(shoppingItems)
+    .set({
+      productConceptId: input.productConceptId,
+      resolvedLocationId: input.resolvedLocationId,
+      updatedAt: now,
+      version: sql`${shoppingItems.version} + 1`,
+    })
+    .where(
+      and(
+        eq(shoppingItems.storeId, input.storeId),
+        eq(shoppingItems.shoppingListId, input.shoppingListId),
+        eq(shoppingItems.normalizedText, input.normalizedText),
       ),
     )
     .returning();

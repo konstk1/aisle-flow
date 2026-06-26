@@ -6,13 +6,16 @@ const mocks = vi.hoisted(() => {
   return {
     buildManualProductAliasCorrectionQuery: vi.fn(),
     buildManualProductLocationCorrectionQuery: vi.fn(),
+    buildActiveShoppingListQuery: vi.fn(),
     buildProductConceptByIdQuery: vi.fn(),
     buildProductConceptCreateQuery: vi.fn(),
     buildProductConceptListQuery: vi.fn(),
+    buildShoppingItemProductResolutionQuery: vi.fn(),
     db,
     getDb: vi.fn(() => db),
     getStoreLayout: vi.fn(),
     productConceptIdByNormalizedName: vi.fn(),
+    productLocationIdByStoreAndConcept: vi.fn(),
   };
 });
 
@@ -26,6 +29,12 @@ vi.mock("@/db/repositories/product-corrections", () => ({
   buildProductConceptCreateQuery: mocks.buildProductConceptCreateQuery,
   buildProductConceptListQuery: mocks.buildProductConceptListQuery,
   productConceptIdByNormalizedName: mocks.productConceptIdByNormalizedName,
+  productLocationIdByStoreAndConcept: mocks.productLocationIdByStoreAndConcept,
+}));
+vi.mock("@/db/repositories/shopping-lists", () => ({
+  buildActiveShoppingListQuery: mocks.buildActiveShoppingListQuery,
+  buildShoppingItemProductResolutionQuery:
+    mocks.buildShoppingItemProductResolutionQuery,
 }));
 vi.mock("./store-layout", () => ({ getStoreLayout: mocks.getStoreLayout }));
 
@@ -37,6 +46,7 @@ import {
 const validSectionId = "33333333-3333-4333-8333-333333333333";
 const validConceptId = "22222222-2222-4222-8222-222222222222";
 const storeId = "11111111-1111-4111-8111-111111111111";
+const activeListId = "44444444-4444-4444-8444-444444444444";
 const now = new Date("2026-01-01T00:00:00Z");
 
 const layout = {
@@ -88,7 +98,7 @@ const location = {
   storeId,
   productConceptId: validConceptId,
   aisleSectionId: validSectionId,
-  positionWithinSection: 2,
+  positionWithinSection: null,
   confidence: 1,
   source: "manual" as const,
   version: 1,
@@ -99,21 +109,29 @@ const location = {
 beforeEach(() => {
   mocks.buildManualProductAliasCorrectionQuery.mockReset();
   mocks.buildManualProductLocationCorrectionQuery.mockReset();
+  mocks.buildActiveShoppingListQuery.mockReset();
   mocks.buildProductConceptByIdQuery.mockReset();
   mocks.buildProductConceptCreateQuery.mockReset();
   mocks.buildProductConceptListQuery.mockReset();
+  mocks.buildShoppingItemProductResolutionQuery.mockReset();
   mocks.db.batch.mockReset();
   mocks.getDb.mockClear();
   mocks.getStoreLayout.mockReset();
   mocks.productConceptIdByNormalizedName.mockReset();
+  mocks.productLocationIdByStoreAndConcept.mockReset();
 
   mocks.buildManualProductAliasCorrectionQuery.mockReturnValue("alias-query");
   mocks.buildManualProductLocationCorrectionQuery.mockReturnValue(
     "location-query",
   );
   mocks.buildProductConceptCreateQuery.mockReturnValue("concept-query");
+  mocks.buildActiveShoppingListQuery.mockResolvedValue([{ id: activeListId }]);
+  mocks.buildShoppingItemProductResolutionQuery.mockReturnValue("relink-query");
   mocks.getStoreLayout.mockResolvedValue(layout);
   mocks.productConceptIdByNormalizedName.mockReturnValue("concept-id-subquery");
+  mocks.productLocationIdByStoreAndConcept.mockReturnValue(
+    "location-id-subquery",
+  );
 });
 
 describe("productCorrectionRequestSchema", () => {
@@ -122,14 +140,12 @@ describe("productCorrectionRequestSchema", () => {
       rawText: "Wild Rice",
       productConceptId: validConceptId,
       aisleSectionId: validSectionId,
-      positionWithinSection: null,
     });
 
     expect(result).toEqual({
       rawText: "Wild Rice",
       productConceptId: validConceptId,
       aisleSectionId: validSectionId,
-      positionWithinSection: null,
     });
   });
 
@@ -179,14 +195,18 @@ describe("productCorrectionRequestSchema", () => {
 });
 
 describe("applyProductCorrection", () => {
-  it("batches new concept creation with alias and location writes", async () => {
-    mocks.db.batch.mockResolvedValue([[productConcept], [alias], [location]]);
+  it("batches new concept creation with alias, location, and active-list relink writes", async () => {
+    mocks.db.batch.mockResolvedValue([
+      [productConcept],
+      [alias],
+      [location],
+      [{ id: "shopping-item-1" }],
+    ]);
 
     const result = await applyProductCorrection({
       rawText: "Dried Mango",
       canonicalName: "Dried fruit",
       aisleSectionId: validSectionId,
-      positionWithinSection: 2,
     });
 
     expect(mocks.buildProductConceptByIdQuery).not.toHaveBeenCalled();
@@ -197,6 +217,7 @@ describe("applyProductCorrection", () => {
       "concept-query",
       "alias-query",
       "location-query",
+      "relink-query",
     ]);
     expect(mocks.buildManualProductAliasCorrectionQuery).toHaveBeenCalledWith(
       mocks.db,
@@ -214,7 +235,7 @@ describe("applyProductCorrection", () => {
         storeId,
         productConceptId: "concept-id-subquery",
         aisleSectionId: validSectionId,
-        positionWithinSection: 2,
+        positionWithinSection: null,
       }),
     );
     expect(result).toMatchObject({
@@ -233,7 +254,7 @@ describe("applyProductCorrection", () => {
       location: {
         id: "location-1",
         aisleSectionId: validSectionId,
-        positionWithinSection: 2,
+        positionWithinSection: null,
         source: "manual",
       },
       resolution: {
@@ -246,9 +267,27 @@ describe("applyProductCorrection", () => {
         location: {
           id: "location-1",
           aisleSectionId: validSectionId,
-          positionWithinSection: 2,
+          positionWithinSection: null,
         },
       },
+    });
+    expect(mocks.buildActiveShoppingListQuery).toHaveBeenCalledWith(
+      mocks.db,
+      storeId,
+    );
+    expect(mocks.buildShoppingItemProductResolutionQuery).toHaveBeenCalledWith(
+      mocks.db,
+      expect.objectContaining({
+        storeId,
+        shoppingListId: activeListId,
+        normalizedText: "dried mango",
+        productConceptId: "concept-id-subquery",
+        resolvedLocationId: "location-id-subquery",
+      }),
+    );
+    expect(mocks.productLocationIdByStoreAndConcept).toHaveBeenCalledWith({
+      storeId,
+      productConceptId: "concept-id-subquery",
     });
   });
 
@@ -274,6 +313,7 @@ describe("applyProductCorrection", () => {
       "concept-query",
       "alias-query",
       "location-query",
+      "relink-query",
     ]);
   });
 });

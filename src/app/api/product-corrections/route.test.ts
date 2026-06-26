@@ -143,7 +143,6 @@ describe("product correction route", () => {
         rawText: "Wild Rice",
         productConceptId,
         aisleSectionId,
-        positionWithinSection: null,
       }),
     );
 
@@ -152,7 +151,6 @@ describe("product correction route", () => {
       rawText: "Wild Rice",
       productConceptId,
       aisleSectionId,
-      positionWithinSection: null,
     });
     await expect(response.json()).resolves.toEqual({
       correction: expect.objectContaining({
