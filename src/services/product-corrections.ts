@@ -16,6 +16,10 @@ import {
   buildProductConceptListQuery,
   productConceptIdByNormalizedName,
 } from "@/db/repositories/product-corrections";
+import {
+  buildActiveShoppingListQuery,
+  buildShoppingItemProductResolutionQuery,
+} from "@/db/repositories/shopping-lists";
 import type {
   ProductAlias,
   ProductConcept,
@@ -27,7 +31,6 @@ import { getStoreLayout } from "./store-layout";
 
 const MAX_CORRECTION_TEXT_LENGTH = 120;
 const MAX_CATEGORY_NAME_LENGTH = 80;
-const MAX_POSITION_WITHIN_SECTION = 9_999;
 
 type FieldErrors = Record<string, string[]>;
 
@@ -56,13 +59,6 @@ export const productCorrectionRequestSchema = z
       })
       .optional(),
     aisleSectionId: z.uuid("Choose a valid aisle section."),
-    positionWithinSection: z
-      .number()
-      .int("Position must be a whole number.")
-      .min(0, "Position cannot be negative.")
-      .max(MAX_POSITION_WITHIN_SECTION, "Position within section is too large.")
-      .nullable()
-      .optional(),
   })
   .superRefine((input, context) => {
     const hasExistingCategory = input.productConceptId !== undefined;
@@ -210,7 +206,7 @@ export async function applyProductCorrection(
           storeId: layout.id,
           productConceptId: productConcept.id,
           aisleSectionId: aisleSection.id,
-          positionWithinSection: input.positionWithinSection ?? null,
+          positionWithinSection: null,
           now,
         }),
       ]);
@@ -241,7 +237,7 @@ export async function applyProductCorrection(
           storeId: layout.id,
           productConceptId,
           aisleSectionId: aisleSection.id,
-          positionWithinSection: input.positionWithinSection ?? null,
+          positionWithinSection: null,
           now,
         }),
       ]);
@@ -270,6 +266,14 @@ export async function applyProductCorrection(
     throw new Error("Product correction did not return saved records.");
   }
 
+  await relinkActiveShoppingItems(db, {
+    storeId: layout.id,
+    normalizedText,
+    productConceptId: productConcept.id,
+    resolvedLocationId: location.id,
+    now,
+  });
+
   return {
     normalizedText,
     productConcept: toProductConceptPayload(productConcept),
@@ -297,6 +301,28 @@ export async function applyProductCorrection(
       location,
     }),
   };
+}
+
+async function relinkActiveShoppingItems(
+  db: Database,
+  input: {
+    storeId: string;
+    normalizedText: string;
+    productConceptId: string;
+    resolvedLocationId: string;
+    now: Date;
+  },
+) {
+  const [activeList] = await buildActiveShoppingListQuery(db, input.storeId);
+
+  if (!activeList) {
+    return;
+  }
+
+  await buildShoppingItemProductResolutionQuery(db, {
+    ...input,
+    shoppingListId: activeList.id,
+  });
 }
 
 async function getExistingProductConcept(

@@ -2,8 +2,10 @@ import { z } from "zod";
 
 import { hasValidSession } from "@/auth/access";
 import {
-  activeShoppingItemCheckRequestSchema,
+  activeShoppingItemUpdateRequestSchema,
+  deleteActiveShoppingItem,
   setActiveShoppingItemChecked,
+  updateActiveShoppingItemText,
 } from "@/services/active-shopping-list";
 
 import {
@@ -13,6 +15,10 @@ import {
 import { activeShoppingListErrorResponse } from "../../_lib/responses";
 
 const itemIdSchema = z.uuid("Choose a valid shopping-list item.");
+const invalidItemResponseBody = {
+  error: "Choose a valid shopping-list item.",
+  fieldErrors: { itemId: ["Choose a valid shopping-list item."] },
+};
 
 export async function PATCH(
   request: Request,
@@ -26,13 +32,7 @@ export async function PATCH(
   const parsedItemId = itemIdSchema.safeParse(itemId);
 
   if (!parsedItemId.success) {
-    return Response.json(
-      {
-        error: "Choose a valid shopping-list item.",
-        fieldErrors: { itemId: ["Choose a valid shopping-list item."] },
-      },
-      { status: 422 },
-    );
+    return Response.json(invalidItemResponseBody, { status: 422 });
   }
 
   let body: unknown;
@@ -46,7 +46,7 @@ export async function PATCH(
     );
   }
 
-  const parsed = activeShoppingItemCheckRequestSchema.safeParse(body);
+  const parsed = activeShoppingItemUpdateRequestSchema.safeParse(body);
 
   if (!parsed.success) {
     return validationErrorResponse(
@@ -56,10 +56,45 @@ export async function PATCH(
   }
 
   try {
+    if (parsed.data.text !== undefined) {
+      return Response.json({
+        activeList: await updateActiveShoppingItemText({
+          itemId: parsedItemId.data,
+          text: parsed.data.text,
+        }),
+      });
+    }
+
     return Response.json({
       activeList: await setActiveShoppingItemChecked({
         itemId: parsedItemId.data,
-        isChecked: parsed.data.isChecked,
+        isChecked: parsed.data.isChecked ?? false,
+      }),
+    });
+  } catch (error) {
+    return activeShoppingListErrorResponse(error);
+  }
+}
+
+export async function DELETE(
+  _request: Request,
+  context: { params: Promise<{ itemId: string }> },
+) {
+  if (!(await hasValidSession())) {
+    return unauthorizedResponse();
+  }
+
+  const { itemId } = await context.params;
+  const parsedItemId = itemIdSchema.safeParse(itemId);
+
+  if (!parsedItemId.success) {
+    return Response.json(invalidItemResponseBody, { status: 422 });
+  }
+
+  try {
+    return Response.json({
+      activeList: await deleteActiveShoppingItem({
+        itemId: parsedItemId.data,
       }),
     });
   } catch (error) {

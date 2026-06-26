@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => {
     buildActiveShoppingListQuery: vi.fn(),
     buildRouteOrderedShoppingItemsQuery: vi.fn(),
     buildShoppingItemCheckStateQuery: vi.fn(),
+    buildShoppingItemDeleteQuery: vi.fn(),
+    buildShoppingItemTextUpdateQuery: vi.fn(),
     buildShoppingItemsByNormalizedTextQuery: vi.fn(),
     buildShoppingItemUpsertQuery: vi.fn(),
     createStoreProductMatcher: vi.fn(),
@@ -27,6 +29,8 @@ vi.mock("@/db/repositories/shopping-lists", () => ({
   buildRouteOrderedShoppingItemsQuery:
     mocks.buildRouteOrderedShoppingItemsQuery,
   buildShoppingItemCheckStateQuery: mocks.buildShoppingItemCheckStateQuery,
+  buildShoppingItemDeleteQuery: mocks.buildShoppingItemDeleteQuery,
+  buildShoppingItemTextUpdateQuery: mocks.buildShoppingItemTextUpdateQuery,
   buildShoppingItemsByNormalizedTextQuery:
     mocks.buildShoppingItemsByNormalizedTextQuery,
   buildShoppingItemUpsertQuery: mocks.buildShoppingItemUpsertQuery,
@@ -39,9 +43,11 @@ vi.mock("./store-layout", () => ({ getStoreLayout: mocks.getStoreLayout }));
 import {
   ActiveShoppingListRequestError,
   addActiveShoppingListItem,
+  deleteActiveShoppingItem,
   getActiveShoppingList,
   importActiveShoppingListItems,
   setActiveShoppingItemChecked,
+  updateActiveShoppingItemText,
 } from "./active-shopping-list";
 
 const storeId = "11111111-1111-4111-8111-111111111111";
@@ -98,6 +104,8 @@ beforeEach(() => {
   mocks.buildActiveShoppingListQuery.mockReset();
   mocks.buildRouteOrderedShoppingItemsQuery.mockReset();
   mocks.buildShoppingItemCheckStateQuery.mockReset();
+  mocks.buildShoppingItemDeleteQuery.mockReset();
+  mocks.buildShoppingItemTextUpdateQuery.mockReset();
   mocks.buildShoppingItemsByNormalizedTextQuery.mockReset();
   mocks.buildShoppingItemUpsertQuery.mockReset();
   mocks.createStoreProductMatcher.mockReset();
@@ -117,6 +125,8 @@ beforeEach(() => {
     input,
   }));
   mocks.buildShoppingItemCheckStateQuery.mockResolvedValue([{ id: itemId }]);
+  mocks.buildShoppingItemDeleteQuery.mockResolvedValue([{ id: itemId }]);
+  mocks.buildShoppingItemTextUpdateQuery.mockResolvedValue([{ id: itemId }]);
 });
 
 describe("getActiveShoppingList", () => {
@@ -508,6 +518,125 @@ describe("setActiveShoppingItemChecked", () => {
     await expect(
       setActiveShoppingItemChecked({ itemId, isChecked: true }),
     ).rejects.toMatchObject({
+      status: 404,
+      fieldErrors: { itemId: ["Choose an item in the active list."] },
+    });
+  });
+});
+
+describe("updateActiveShoppingItemText", () => {
+  it("re-resolves text edits and preserves active-list membership", async () => {
+    await updateActiveShoppingItemText({
+      itemId,
+      text: "Rice",
+    });
+
+    expect(mocks.buildShoppingItemsByNormalizedTextQuery).toHaveBeenCalledWith(
+      mocks.db,
+      {
+        storeId,
+        shoppingListId: listId,
+        normalizedTexts: ["rice"],
+      },
+    );
+    expect(mocks.createStoreProductMatcher).toHaveBeenCalledWith({
+      db: mocks.db,
+      storeId,
+    });
+    expect(mocks.resolveProductMatch).toHaveBeenCalledWith("Rice");
+    expect(mocks.buildShoppingItemTextUpdateQuery).toHaveBeenCalledWith(
+      mocks.db,
+      expect.objectContaining({
+        storeId,
+        shoppingListId: listId,
+        itemId,
+        rawText: "Rice",
+        normalizedText: "rice",
+        productConceptId: "rice",
+        resolvedLocationId: "location-1",
+      }),
+    );
+  });
+
+  it("allows editing casing on the same item", async () => {
+    mocks.buildShoppingItemsByNormalizedTextQuery.mockResolvedValue([
+      {
+        id: itemId,
+        rawText: "rice",
+        normalizedText: "rice",
+        sourceIdentifier: "manual:existing",
+      },
+    ]);
+
+    await updateActiveShoppingItemText({
+      itemId,
+      text: "Rice",
+    });
+
+    expect(mocks.buildShoppingItemTextUpdateQuery).toHaveBeenCalledWith(
+      mocks.db,
+      expect.objectContaining({
+        itemId,
+        rawText: "Rice",
+        normalizedText: "rice",
+      }),
+    );
+  });
+
+  it("rejects editing an item into another active item", async () => {
+    mocks.buildShoppingItemsByNormalizedTextQuery.mockResolvedValue([
+      {
+        id: "55555555-5555-4555-8555-555555555555",
+        rawText: "Rice",
+        normalizedText: "rice",
+        sourceIdentifier: "manual:other",
+      },
+    ]);
+
+    await expect(
+      updateActiveShoppingItemText({
+        itemId,
+        text: "Rice",
+      }),
+    ).rejects.toMatchObject({
+      status: 409,
+      fieldErrors: { text: ["This item is already on the list."] },
+    });
+
+    expect(mocks.createStoreProductMatcher).not.toHaveBeenCalled();
+    expect(mocks.buildShoppingItemTextUpdateQuery).not.toHaveBeenCalled();
+  });
+
+  it("returns a not-found request error when editing an item outside the active list", async () => {
+    mocks.buildShoppingItemTextUpdateQuery.mockResolvedValue([]);
+
+    await expect(
+      updateActiveShoppingItemText({
+        itemId,
+        text: "Rice",
+      }),
+    ).rejects.toMatchObject({
+      status: 404,
+      fieldErrors: { itemId: ["Choose an item in the active list."] },
+    });
+  });
+});
+
+describe("deleteActiveShoppingItem", () => {
+  it("deletes the target item within the active list", async () => {
+    await deleteActiveShoppingItem({ itemId });
+
+    expect(mocks.buildShoppingItemDeleteQuery).toHaveBeenCalledWith(mocks.db, {
+      storeId,
+      shoppingListId: listId,
+      itemId,
+    });
+  });
+
+  it("returns a not-found request error when deleting an item outside the active list", async () => {
+    mocks.buildShoppingItemDeleteQuery.mockResolvedValue([]);
+
+    await expect(deleteActiveShoppingItem({ itemId })).rejects.toMatchObject({
       status: 404,
       fieldErrors: { itemId: ["Choose an item in the active list."] },
     });
