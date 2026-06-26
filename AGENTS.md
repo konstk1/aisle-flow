@@ -9,6 +9,7 @@
 - Use GitHub Issues in `konstk1/aisle-flow` to track bugs and work; do not create a separate local ticket system.
 - Treat in-app bug reports as GitHub issues and apply the `reported-in-app` label.
 - When a pull request resolves an issue, include `Closes #<issue-number>` in its description.
+- Do not prepend `[codex]` to pull request titles.
 
 ## This is NOT the Next.js you know
 
