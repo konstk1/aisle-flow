@@ -110,35 +110,25 @@ export function buildProductCorrectionRequest({
   };
 }
 
-export function mergeActiveListSnapshotAfterCheck({
+export function mergeVisibleListSnapshotAfterCheck({
   completedCheckItemId,
-  currentList,
   nextList,
   pendingCheckItemIds,
 }: {
   completedCheckItemId: string;
-  currentList: ActiveShoppingListPayload | null;
   nextList: ActiveShoppingListPayload;
   pendingCheckItemIds: ReadonlySet<string>;
 }): ActiveShoppingListPayload {
-  const preservedPendingItemIds = new Set(pendingCheckItemIds);
-  preservedPendingItemIds.delete(completedCheckItemId);
+  const hiddenPendingItemIds = new Set(pendingCheckItemIds);
+  hiddenPendingItemIds.delete(completedCheckItemId);
 
-  if (!currentList || preservedPendingItemIds.size === 0) {
+  if (hiddenPendingItemIds.size === 0) {
     return nextList;
   }
 
-  const currentItemsById = new Map(
-    currentList.items.map((item) => [item.id, item]),
-  );
-
   return {
     ...nextList,
-    items: nextList.items.map((item) =>
-      preservedPendingItemIds.has(item.id)
-        ? (currentItemsById.get(item.id) ?? item)
-        : item,
-    ),
+    items: nextList.items.filter((item) => !hiddenPendingItemIds.has(item.id)),
   };
 }
 
@@ -155,5 +145,42 @@ export function replaceItemInActiveList(
     items: currentList.items.map((item) =>
       item.id === replacementItem.id ? replacementItem : item,
     ),
+  };
+}
+
+export function removeItemFromActiveList(
+  currentList: ActiveShoppingListPayload | null,
+  itemId: string,
+): ActiveShoppingListPayload | null {
+  if (!currentList) {
+    return currentList;
+  }
+
+  return {
+    ...currentList,
+    items: currentList.items.filter((item) => item.id !== itemId),
+  };
+}
+
+export function restoreItemInActiveList(
+  currentList: ActiveShoppingListPayload | null,
+  restoredItem: ActiveShoppingItemPayload,
+  restoredIndex: number,
+): ActiveShoppingListPayload | null {
+  if (!currentList) {
+    return currentList;
+  }
+
+  if (currentList.items.some((item) => item.id === restoredItem.id)) {
+    return replaceItemInActiveList(currentList, restoredItem);
+  }
+
+  const nextItems = [...currentList.items];
+  const boundedIndex = Math.max(0, Math.min(restoredIndex, nextItems.length));
+  nextItems.splice(boundedIndex, 0, restoredItem);
+
+  return {
+    ...currentList,
+    items: nextItems,
   };
 }

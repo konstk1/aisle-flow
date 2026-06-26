@@ -19,6 +19,7 @@ import type { Database } from "@/db/create-client";
 import {
   buildActiveShoppingListCreateQuery,
   buildActiveShoppingListQuery,
+  buildCompletedShoppingItemsQuery,
   buildRouteOrderedShoppingItemsQuery,
   buildShoppingItemCheckStateQuery,
   buildShoppingItemDeleteQuery,
@@ -44,6 +45,8 @@ import { getStoreLayout } from "./store-layout";
 
 const mutationIdSchema = z.uuid("Provide a valid mutation id.");
 const duplicateShoppingItemMessage = "This item is already on the list.";
+
+export type ShoppingListView = "active" | "completed";
 
 const shoppingItemTextSchema = z
   .string()
@@ -128,7 +131,26 @@ export async function getActiveShoppingListForLayout(
   const db = getDb();
   const list = await getOrCreateActiveShoppingList(db, layout.id);
 
-  return readActiveShoppingListPayload(db, layout, list);
+  return readShoppingListPayload(db, layout, list, "active");
+}
+
+export async function getCompletedShoppingList(): Promise<ActiveShoppingListPayload | null> {
+  const layout = await requireActiveStoreLayout();
+
+  return getCompletedShoppingListForLayout(layout);
+}
+
+export async function getCompletedShoppingListForLayout(
+  layout: StoreLayout,
+): Promise<ActiveShoppingListPayload | null> {
+  const db = getDb();
+  const [list] = await buildActiveShoppingListQuery(db, layout.id);
+
+  if (!list) {
+    return null;
+  }
+
+  return readShoppingListPayload(db, layout, list, "completed");
 }
 
 export async function addActiveShoppingListItem(
@@ -165,7 +187,7 @@ export async function addActiveShoppingListItem(
     sourceIdentifier,
   });
 
-  return readActiveShoppingListPayload(db, layout, list);
+  return readShoppingListPayload(db, layout, list, "active");
 }
 
 export async function importActiveShoppingListItems(
@@ -219,15 +241,17 @@ export async function importActiveShoppingListItems(
 
   await batchShoppingItemUpserts(db, upsertInputs);
 
-  return readActiveShoppingListPayload(db, layout, list);
+  return readShoppingListPayload(db, layout, list, "active");
 }
 
 export async function setActiveShoppingItemChecked({
   itemId,
   isChecked,
+  responseView = "active",
 }: {
   itemId: string;
   isChecked: boolean;
+  responseView?: ShoppingListView;
 }): Promise<ActiveShoppingListPayload> {
   const layout = await requireActiveStoreLayout();
   const db = getDb();
@@ -247,15 +271,17 @@ export async function setActiveShoppingItemChecked({
     );
   }
 
-  return readActiveShoppingListPayload(db, layout, list);
+  return readShoppingListPayload(db, layout, list, responseView);
 }
 
 export async function updateActiveShoppingItemText({
   itemId,
   text,
+  responseView = "active",
 }: {
   itemId: string;
   text: string;
+  responseView?: ShoppingListView;
 }): Promise<ActiveShoppingListPayload> {
   const layout = await requireActiveStoreLayout();
   const db = getDb();
@@ -291,13 +317,15 @@ export async function updateActiveShoppingItemText({
     );
   }
 
-  return readActiveShoppingListPayload(db, layout, list);
+  return readShoppingListPayload(db, layout, list, responseView);
 }
 
 export async function deleteActiveShoppingItem({
   itemId,
+  responseView = "active",
 }: {
   itemId: string;
+  responseView?: ShoppingListView;
 }): Promise<ActiveShoppingListPayload> {
   const layout = await requireActiveStoreLayout();
   const db = getDb();
@@ -316,7 +344,7 @@ export async function deleteActiveShoppingItem({
     );
   }
 
-  return readActiveShoppingListPayload(db, layout, list);
+  return readShoppingListPayload(db, layout, list, responseView);
 }
 
 async function requireActiveStoreLayout(): Promise<StoreLayout> {
@@ -519,16 +547,16 @@ async function batchShoppingItemUpserts(
   );
 }
 
-async function readActiveShoppingListPayload(
+async function readShoppingListPayload(
   db: Database,
   layout: StoreLayout,
   list: ShoppingList,
+  view: ShoppingListView,
 ): Promise<ActiveShoppingListPayload> {
-  const rows = await buildRouteOrderedShoppingItemsQuery(
-    db,
-    layout.id,
-    list.id,
-  );
+  const rows =
+    view === "completed"
+      ? await buildCompletedShoppingItemsQuery(db, layout.id, list.id)
+      : await buildRouteOrderedShoppingItemsQuery(db, layout.id, list.id);
 
   return {
     store: {

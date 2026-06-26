@@ -8,6 +8,7 @@ import {
 import {
   buildActiveShoppingListCreateQuery,
   buildActiveShoppingListQuery,
+  buildCompletedShoppingItemsQuery,
   buildExactProductAliasLookupQuery,
   buildRouteOrderedShoppingItemsQuery,
   buildShoppingItemCheckStateQuery,
@@ -39,7 +40,7 @@ describe("shopping-list queries", () => {
   });
 
   it("orders resolved items by route, section position, and user order", () => {
-    const { sql: query } = buildRouteOrderedShoppingItemsQuery(
+    const { sql: query, params } = buildRouteOrderedShoppingItemsQuery(
       database,
       "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
       "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
@@ -58,9 +59,35 @@ describe("shopping-list queries", () => {
       '"aisle_sections"."store_id" = "aisles"."store_id"',
     );
     expect(query).toContain('"shopping_items"."store_id" = $2');
+    expect(query).toContain('"shopping_items"."is_checked" = $3');
     expect(query).toMatch(
       /order by case when "aisle_sections"\."path_order" is null then 1 else 0 end asc, "aisle_sections"\."path_order" asc, coalesce\("product_locations"\."position_within_section", 2147483647\) asc, "shopping_items"\."order_key" asc/,
     );
+    expect(params).toEqual([
+      "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
+      "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
+      false,
+    ]);
+  });
+
+  it("orders completed items by newest completion date first", () => {
+    const { sql: query, params } = buildCompletedShoppingItemsQuery(
+      database,
+      "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
+      "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
+    ).toSQL();
+
+    expect(query).toContain('left join "product_locations"');
+    expect(query).toContain('"shopping_items"."store_id" = $2');
+    expect(query).toContain('"shopping_items"."is_checked" = $3');
+    expect(query).toMatch(
+      /order by "shopping_items"\."checked_at" desc, "shopping_items"\."updated_at" desc, "shopping_items"\."created_at" desc/,
+    );
+    expect(params).toEqual([
+      "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
+      "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
+      true,
+    ]);
   });
 
   it("creates the active list through the one-active-per-store conflict target", () => {

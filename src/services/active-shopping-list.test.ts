@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => {
   return {
     buildActiveShoppingListCreateQuery: vi.fn(),
     buildActiveShoppingListQuery: vi.fn(),
+    buildCompletedShoppingItemsQuery: vi.fn(),
     buildRouteOrderedShoppingItemsQuery: vi.fn(),
     buildShoppingItemCheckStateQuery: vi.fn(),
     buildShoppingItemDeleteQuery: vi.fn(),
@@ -26,6 +27,7 @@ vi.mock("@/db/client", () => ({ getDb: mocks.getDb }));
 vi.mock("@/db/repositories/shopping-lists", () => ({
   buildActiveShoppingListCreateQuery: mocks.buildActiveShoppingListCreateQuery,
   buildActiveShoppingListQuery: mocks.buildActiveShoppingListQuery,
+  buildCompletedShoppingItemsQuery: mocks.buildCompletedShoppingItemsQuery,
   buildRouteOrderedShoppingItemsQuery:
     mocks.buildRouteOrderedShoppingItemsQuery,
   buildShoppingItemCheckStateQuery: mocks.buildShoppingItemCheckStateQuery,
@@ -45,6 +47,7 @@ import {
   addActiveShoppingListItem,
   deleteActiveShoppingItem,
   getActiveShoppingList,
+  getCompletedShoppingList,
   importActiveShoppingListItems,
   setActiveShoppingItemChecked,
   updateActiveShoppingItemText,
@@ -102,6 +105,7 @@ const matchedRice = {
 beforeEach(() => {
   mocks.buildActiveShoppingListCreateQuery.mockReset();
   mocks.buildActiveShoppingListQuery.mockReset();
+  mocks.buildCompletedShoppingItemsQuery.mockReset();
   mocks.buildRouteOrderedShoppingItemsQuery.mockReset();
   mocks.buildShoppingItemCheckStateQuery.mockReset();
   mocks.buildShoppingItemDeleteQuery.mockReset();
@@ -116,6 +120,7 @@ beforeEach(() => {
 
   mocks.getStoreLayout.mockResolvedValue(layout);
   mocks.buildActiveShoppingListQuery.mockResolvedValue([list]);
+  mocks.buildCompletedShoppingItemsQuery.mockResolvedValue([]);
   mocks.buildRouteOrderedShoppingItemsQuery.mockResolvedValue([]);
   mocks.buildShoppingItemsByNormalizedTextQuery.mockResolvedValue([]);
   mocks.createStoreProductMatcher.mockResolvedValue(mocks.resolveProductMatch);
@@ -305,6 +310,68 @@ describe("getActiveShoppingList", () => {
         },
       },
     });
+  });
+});
+
+describe("getCompletedShoppingList", () => {
+  it("does not create a shopping list when no list exists", async () => {
+    mocks.buildActiveShoppingListQuery.mockResolvedValue([]);
+
+    const result = await getCompletedShoppingList();
+
+    expect(result).toBeNull();
+    expect(mocks.buildActiveShoppingListCreateQuery).not.toHaveBeenCalled();
+    expect(mocks.buildCompletedShoppingItemsQuery).not.toHaveBeenCalled();
+  });
+
+  it("returns completed items from the active shopping list", async () => {
+    const completedAt = new Date("2026-01-02T00:00:00Z");
+    mocks.buildCompletedShoppingItemsQuery.mockResolvedValue([
+      {
+        item: {
+          id: itemId,
+          storeId,
+          shoppingListId: listId,
+          rawText: "Rice",
+          normalizedText: "rice",
+          productConceptId: null,
+          resolvedLocationId: null,
+          isChecked: true,
+          checkedAt: completedAt,
+          orderKey: "1",
+          sourceIdentifier: "manual:1",
+          syncState: "synced",
+          mutationId,
+          version: 1,
+          createdAt: now,
+          updatedAt: completedAt,
+        },
+        productConcept: null,
+        productLocation: null,
+        aisleSection: null,
+        aisle: null,
+      },
+    ]);
+
+    const result = await getCompletedShoppingList();
+
+    expect(mocks.buildCompletedShoppingItemsQuery).toHaveBeenCalledWith(
+      mocks.db,
+      storeId,
+      listId,
+    );
+    expect(mocks.buildRouteOrderedShoppingItemsQuery).not.toHaveBeenCalled();
+    expect(result).not.toBeNull();
+    if (!result) {
+      throw new Error("Expected completed shopping list result.");
+    }
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        id: itemId,
+        isChecked: true,
+        checkedAt: "2026-01-02T00:00:00.000Z",
+      }),
+    ]);
   });
 });
 
@@ -509,6 +576,29 @@ describe("setActiveShoppingItemChecked", () => {
         itemId,
         isChecked: true,
       },
+    );
+  });
+
+  it("can return the completed view after a completed-screen update", async () => {
+    await setActiveShoppingItemChecked({
+      itemId,
+      isChecked: false,
+      responseView: "completed",
+    });
+
+    expect(mocks.buildShoppingItemCheckStateQuery).toHaveBeenCalledWith(
+      mocks.db,
+      {
+        storeId,
+        shoppingListId: listId,
+        itemId,
+        isChecked: false,
+      },
+    );
+    expect(mocks.buildCompletedShoppingItemsQuery).toHaveBeenCalledWith(
+      mocks.db,
+      storeId,
+      listId,
     );
   });
 
