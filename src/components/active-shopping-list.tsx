@@ -2,6 +2,8 @@
 
 import {
   AlertTriangle,
+  ArrowLeft,
+  ArrowRight,
   Check,
   MapPin,
   Pencil,
@@ -26,8 +28,9 @@ import {
   buildProductCorrectionRequest,
   createProductCorrectionFormState,
   getStableMutationForText,
-  mergeActiveListSnapshotAfterCheck,
-  replaceItemInActiveList,
+  mergeVisibleListSnapshotAfterCheck,
+  removeItemFromActiveList,
+  restoreItemInActiveList,
   shouldSaveProductCorrectionForEdit,
   type PendingTextMutation,
   type ProductCorrectionFormState,
@@ -38,8 +41,23 @@ type ActiveShoppingListProps = {
   hasStoreLayout: boolean;
 };
 
-type ActiveListResponse = {
+type CompletedShoppingListProps = {
+  initialCompletedList: ActiveShoppingListPayload | null;
+  hasStoreLayout: boolean;
+};
+
+type ShoppingListMode = "active" | "completed";
+
+type ShoppingListViewProps = {
+  initialList: ActiveShoppingListPayload | null;
+  hasStoreLayout: boolean;
+  mode: ShoppingListMode;
+};
+
+type ShoppingListResponse = {
   activeList?: ActiveShoppingListPayload;
+  completedList?: ActiveShoppingListPayload | null;
+  list?: ActiveShoppingListPayload | null;
   error?: string;
   fieldErrors?: FieldErrors;
 };
@@ -80,12 +98,42 @@ type ProductCorrectionAisleSection = {
 type FieldErrorScope = "add" | "import";
 
 const EMPTY_ITEMS: ActiveShoppingItemPayload[] = [];
+const completedDateFormatter = new Intl.DateTimeFormat(undefined, {
+  dateStyle: "medium",
+});
 
 export function ActiveShoppingList({
   hasStoreLayout,
   initialActiveList,
 }: ActiveShoppingListProps) {
-  const [activeList, setActiveList] = useState(initialActiveList);
+  return (
+    <ShoppingListView
+      hasStoreLayout={hasStoreLayout}
+      initialList={initialActiveList}
+      mode="active"
+    />
+  );
+}
+
+export function CompletedShoppingList({
+  hasStoreLayout,
+  initialCompletedList,
+}: CompletedShoppingListProps) {
+  return (
+    <ShoppingListView
+      hasStoreLayout={hasStoreLayout}
+      initialList={initialCompletedList}
+      mode="completed"
+    />
+  );
+}
+
+function ShoppingListView({
+  hasStoreLayout,
+  initialList,
+  mode,
+}: ShoppingListViewProps) {
+  const [activeList, setActiveList] = useState(initialList);
   const [itemText, setItemText] = useState("");
   const [importText, setImportText] = useState("");
   const [importExpanded, setImportExpanded] = useState(false);
@@ -133,6 +181,10 @@ export function ActiveShoppingList({
   const pendingAddMutation = useRef<PendingTextMutation | null>(null);
   const pendingImportMutation = useRef<PendingTextMutation | null>(null);
   const pendingCheckItemIdsRef = useRef<Set<string>>(new Set());
+  const isCompletedMode = mode === "completed";
+  const listEndpoint = isCompletedMode
+    ? "/api/shopping-list/completed"
+    : "/api/shopping-list";
   const items = activeList?.items ?? EMPTY_ITEMS;
   const itemGroups = useMemo(() => groupShoppingItemsByAisle(items), [items]);
   const editItem = items.find((item) => item.id === editItemId) ?? null;
@@ -140,20 +192,43 @@ export function ActiveShoppingList({
     ? editText !== editItem.rawText || editLocationTouched
     : false;
 
+  function getListFromResponse(result: ShoppingListResponse) {
+    if ("list" in result) {
+      return { found: true, list: result.list ?? null };
+    }
+
+    if (isCompletedMode && "completedList" in result) {
+      return { found: true, list: result.completedList ?? null };
+    }
+
+    if (!isCompletedMode && "activeList" in result) {
+      return { found: true, list: result.activeList ?? null };
+    }
+
+    return { found: false, list: null };
+  }
+
+  function itemEndpoint(itemId: string) {
+    const view = isCompletedMode ? "?view=completed" : "";
+
+    return `/api/shopping-list/items/${itemId}${view}`;
+  }
+
   async function applyListResponse(
     response: Response,
     fieldScope: FieldErrorScope | null = null,
   ) {
-    const result = (await response.json()) as ActiveListResponse;
+    const result = (await response.json()) as ShoppingListResponse;
+    const listResult = getListFromResponse(result);
 
-    if (!response.ok || !result.activeList) {
+    if (!response.ok || !listResult.found) {
       setFieldErrors(result.fieldErrors ?? {});
       setFieldErrorScope(fieldScope);
       setMessage(result.error ?? "The shopping list could not be updated.");
       return false;
     }
 
-    setActiveList(result.activeList);
+    setActiveList(listResult.list);
     setFieldErrors({});
     setFieldErrorScope(null);
     setMessage(null);
@@ -164,23 +239,24 @@ export function ActiveShoppingList({
     response: Response,
     completedCheckItemId: string,
   ) {
-    const result = (await response.json()) as ActiveListResponse;
+    const result = (await response.json()) as ShoppingListResponse;
+    const listResult = getListFromResponse(result);
 
-    if (!response.ok || !result.activeList) {
+    if (!response.ok || !listResult.found) {
       setFieldErrors(result.fieldErrors ?? {});
       setFieldErrorScope(null);
       setMessage(result.error ?? "The shopping list could not be updated.");
       return false;
     }
 
-    const nextList = result.activeList;
-    setActiveList((currentList) =>
-      mergeActiveListSnapshotAfterCheck({
-        completedCheckItemId,
-        currentList,
-        nextList,
-        pendingCheckItemIds: pendingCheckItemIdsRef.current,
-      }),
+    setActiveList(
+      listResult.list
+        ? mergeVisibleListSnapshotAfterCheck({
+            completedCheckItemId,
+            nextList: listResult.list,
+            pendingCheckItemIds: pendingCheckItemIdsRef.current,
+          })
+        : null,
     );
     setFieldErrors({});
     setFieldErrorScope(null);
@@ -252,40 +328,47 @@ export function ActiveShoppingList({
   }
 
   async function setChecked(itemId: string, isChecked: boolean) {
-    const previousItem = activeList?.items.find((item) => item.id === itemId);
+    const previousItemIndex =
+      activeList?.items.findIndex((item) => item.id === itemId) ?? -1;
+    const previousItem =
+      previousItemIndex >= 0 ? activeList?.items[previousItemIndex] : undefined;
+    const shouldRemoveFromVisibleList =
+      (isCompletedMode && !isChecked) || (!isCompletedMode && isChecked);
 
     setMessage(null);
     setActiveList((current) =>
       current
-        ? {
-            ...current,
-            items: current.items.map((item) =>
-              item.id === itemId
-                ? {
-                    ...item,
-                    isChecked,
-                    checkedAt: isChecked ? new Date().toISOString() : null,
-                  }
-                : item,
-            ),
-          }
+        ? shouldRemoveFromVisibleList
+          ? removeItemFromActiveList(current, itemId)
+          : {
+              ...current,
+              items: current.items.map((item) =>
+                item.id === itemId
+                  ? {
+                      ...item,
+                      isChecked,
+                      checkedAt: isChecked ? new Date().toISOString() : null,
+                    }
+                  : item,
+              ),
+            }
         : current,
     );
     setItemCheckPending(itemId, true);
 
     try {
-      const response = await fetch(`/api/shopping-list/items/${itemId}`, {
+      const response = await fetch(itemEndpoint(itemId), {
         body: JSON.stringify({ isChecked }),
         headers: { "Content-Type": "application/json" },
         method: "PATCH",
       });
 
       if (!(await applyCheckedListResponse(response, itemId)) && previousItem) {
-        restoreItem(previousItem);
+        restoreItem(previousItem, previousItemIndex);
       }
     } catch {
       if (previousItem) {
-        restoreItem(previousItem);
+        restoreItem(previousItem, previousItemIndex);
       }
       setMessage("The item could not be updated. Check your connection.");
     } finally {
@@ -293,9 +376,12 @@ export function ActiveShoppingList({
     }
   }
 
-  function restoreItem(previousItem: ActiveShoppingItemPayload) {
+  function restoreItem(
+    previousItem: ActiveShoppingItemPayload,
+    previousItemIndex: number,
+  ) {
     setActiveList((currentList) =>
-      replaceItemInActiveList(currentList, previousItem),
+      restoreItemInActiveList(currentList, previousItem, previousItemIndex),
     );
   }
 
@@ -381,14 +467,15 @@ export function ActiveShoppingList({
     }
 
     try {
-      const response = await fetch(`/api/shopping-list/items/${editItem.id}`, {
+      const response = await fetch(itemEndpoint(editItem.id), {
         body: JSON.stringify({ text: editText }),
         headers: { "Content-Type": "application/json" },
         method: "PATCH",
       });
-      const result = (await response.json()) as ActiveListResponse;
+      const result = (await response.json()) as ShoppingListResponse;
+      const listResult = getListFromResponse(result);
 
-      if (!response.ok || !result.activeList) {
+      if (!response.ok || !listResult.found) {
         setEditFieldErrors(result.fieldErrors ?? {});
         setEditMessage(result.error ?? "The item could not be updated.");
         return;
@@ -411,20 +498,22 @@ export function ActiveShoppingList({
           return;
         }
 
-        const listResponse = await fetch("/api/shopping-list");
-        const listResult = (await listResponse.json()) as ActiveListResponse;
+        const refreshResponse = await fetch(listEndpoint);
+        const refreshResult =
+          (await refreshResponse.json()) as ShoppingListResponse;
+        const refreshedList = getListFromResponse(refreshResult);
 
-        if (!listResponse.ok || !listResult.activeList) {
+        if (!refreshResponse.ok || !refreshedList.found) {
           setCorrectionMessage(
-            listResult.error ??
+            refreshResult.error ??
               "Location saved, but the list could not refresh.",
           );
           return;
         }
 
-        setActiveList(listResult.activeList);
+        setActiveList(refreshedList.list);
       } else {
-        setActiveList(result.activeList);
+        setActiveList(listResult.list);
       }
 
       closeEdit();
@@ -448,7 +537,7 @@ export function ActiveShoppingList({
     }
 
     try {
-      const response = await fetch(`/api/shopping-list/items/${item.id}`, {
+      const response = await fetch(itemEndpoint(item.id), {
         method: "DELETE",
       });
       await applyListResponse(response);
@@ -521,7 +610,7 @@ export function ActiveShoppingList({
     setPendingAction("refresh");
 
     try {
-      const response = await fetch("/api/shopping-list");
+      const response = await fetch(listEndpoint);
       await applyListResponse(response);
     } catch {
       setMessage("The shopping list could not be loaded.");
@@ -544,43 +633,53 @@ export function ActiveShoppingList({
     setFieldErrorScope(null);
   }
 
+  function renderShoppingItemRow(item: ActiveShoppingItemPayload) {
+    return (
+      <div key={item.id}>
+        <ShoppingItemRow
+          correctionFieldErrors={correctionFieldErrors}
+          correctionForm={correctionForm}
+          correctionMessage={correctionMessage}
+          correctionOptions={correctionOptions}
+          correctionOptionsError={correctionOptionsError}
+          correctionOptionsLoading={correctionOptionsLoading}
+          editExpanded={editItemId === item.id}
+          editFieldErrors={editFieldErrors}
+          editMessage={editMessage}
+          editText={editText}
+          item={item}
+          onCheckedChange={(isChecked) => setChecked(item.id, isChecked)}
+          onCorrectionFormChange={updateCorrectionForm}
+          onDelete={() => deleteItem(item)}
+          onEditCancel={closeEdit}
+          onEditOpen={() => openEdit(item)}
+          onEditSubmit={saveEdit}
+          onEditTextChange={setEditText}
+          onRetryCorrectionOptions={loadCorrectionOptions}
+          pending={pendingCheckItemIds.has(item.id)}
+          pendingCorrection={pendingCorrectionItemId === item.id}
+          pendingDelete={pendingDeleteItemIds.has(item.id)}
+          pendingEdit={pendingEditItemId === item.id}
+          saveDisabled={!editHasChanges}
+          showCompletedAt={isCompletedMode}
+        />
+      </div>
+    );
+  }
+
   return (
     <section className="pt-5 pb-12 sm:pt-7">
-      <form className="flex flex-col gap-2 sm:flex-row" onSubmit={addItem}>
-        <label className="min-w-0 flex-1">
-          <span className="sr-only">Item text</span>
-          <input
-            className="min-h-11 w-full border bg-white px-3 text-base transition outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={!hasStoreLayout || pendingAction !== null}
-            onChange={(event) => setItemText(event.target.value)}
-            placeholder="Milk"
-            value={itemText}
-          />
-          <FieldError
-            message={fieldErrorScope === "add" ? fieldErrors.text?.[0] : null}
-          />
-        </label>
-        <div className="flex shrink-0 gap-2">
-          <button
-            className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 border border-zinc-950 bg-zinc-950 px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none"
-            disabled={!hasStoreLayout || pendingAction !== null}
-            type="submit"
+      {isCompletedMode ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <Link
+            className="inline-flex min-h-11 items-center gap-2 border px-4 text-sm font-medium text-zinc-800 hover:border-zinc-950"
+            href="/"
           >
-            <Plus aria-hidden="true" className="size-4" />
-            Add
-          </button>
+            <ArrowLeft aria-hidden="true" className="size-4" />
+            List
+          </Link>
           <button
-            aria-expanded={importExpanded}
-            className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 border px-4 text-sm font-medium text-zinc-800 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none"
-            disabled={!hasStoreLayout || pendingAction !== null}
-            onClick={openImport}
-            type="button"
-          >
-            <Upload aria-hidden="true" className="size-4" />
-            Import
-          </button>
-          <button
-            aria-label="Refresh shopping list"
+            aria-label="Refresh completed items"
             className="inline-flex size-11 shrink-0 items-center justify-center border text-zinc-700 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
             disabled={pendingAction !== null}
             onClick={refreshList}
@@ -589,7 +688,52 @@ export function ActiveShoppingList({
             <RotateCw aria-hidden="true" className="size-4" />
           </button>
         </div>
-      </form>
+      ) : (
+        <form className="flex flex-col gap-2 sm:flex-row" onSubmit={addItem}>
+          <label className="min-w-0 flex-1">
+            <span className="sr-only">Item text</span>
+            <input
+              className="min-h-11 w-full border bg-white px-3 text-base transition outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={!hasStoreLayout || pendingAction !== null}
+              onChange={(event) => setItemText(event.target.value)}
+              placeholder="Milk"
+              value={itemText}
+            />
+            <FieldError
+              message={fieldErrorScope === "add" ? fieldErrors.text?.[0] : null}
+            />
+          </label>
+          <div className="flex shrink-0 gap-2">
+            <button
+              className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 border border-zinc-950 bg-zinc-950 px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none"
+              disabled={!hasStoreLayout || pendingAction !== null}
+              type="submit"
+            >
+              <Plus aria-hidden="true" className="size-4" />
+              Add
+            </button>
+            <button
+              aria-expanded={importExpanded}
+              className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 border px-4 text-sm font-medium text-zinc-800 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none"
+              disabled={!hasStoreLayout || pendingAction !== null}
+              onClick={openImport}
+              type="button"
+            >
+              <Upload aria-hidden="true" className="size-4" />
+              Import
+            </button>
+            <button
+              aria-label="Refresh shopping list"
+              className="inline-flex size-11 shrink-0 items-center justify-center border text-zinc-700 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={pendingAction !== null}
+              onClick={refreshList}
+              type="button"
+            >
+              <RotateCw aria-hidden="true" className="size-4" />
+            </button>
+          </div>
+        </form>
+      )}
 
       {!hasStoreLayout ? (
         <p className="mt-4 text-sm text-zinc-600">
@@ -599,11 +743,11 @@ export function ActiveShoppingList({
           >
             Build a store route
           </Link>{" "}
-          before adding shopping items.
+          before using shopping items.
         </p>
       ) : null}
 
-      {importExpanded ? (
+      {!isCompletedMode && importExpanded ? (
         <form className="mt-5 border-y py-4" onSubmit={importItems}>
           <label className="block text-sm font-medium text-zinc-800">
             Paste list
@@ -645,47 +789,18 @@ export function ActiveShoppingList({
 
       <div className="mt-8 space-y-7">
         {items.length === 0 ? (
-          <p className="border-y py-6 text-sm text-zinc-600">No items yet.</p>
+          <p className="border-y py-6 text-sm text-zinc-600">
+            {isCompletedMode ? "No completed items." : "No items yet."}
+          </p>
+        ) : isCompletedMode ? (
+          <div>{items.map(renderShoppingItemRow)}</div>
         ) : (
           itemGroups.map((group) => (
             <section key={group.id}>
               <h2 className="mb-2 text-base font-semibold text-zinc-700">
                 {group.label}
               </h2>
-              <div>
-                {group.items.map((item) => (
-                  <div key={item.id}>
-                    <ShoppingItemRow
-                      correctionFieldErrors={correctionFieldErrors}
-                      correctionForm={correctionForm}
-                      correctionMessage={correctionMessage}
-                      correctionOptions={correctionOptions}
-                      correctionOptionsError={correctionOptionsError}
-                      correctionOptionsLoading={correctionOptionsLoading}
-                      editExpanded={editItemId === item.id}
-                      editFieldErrors={editFieldErrors}
-                      editMessage={editMessage}
-                      editText={editText}
-                      item={item}
-                      onCheckedChange={(isChecked) =>
-                        setChecked(item.id, isChecked)
-                      }
-                      onCorrectionFormChange={updateCorrectionForm}
-                      onDelete={() => deleteItem(item)}
-                      onEditCancel={closeEdit}
-                      onEditOpen={() => openEdit(item)}
-                      onEditSubmit={saveEdit}
-                      onEditTextChange={setEditText}
-                      onRetryCorrectionOptions={loadCorrectionOptions}
-                      pending={pendingCheckItemIds.has(item.id)}
-                      pendingCorrection={pendingCorrectionItemId === item.id}
-                      pendingDelete={pendingDeleteItemIds.has(item.id)}
-                      pendingEdit={pendingEditItemId === item.id}
-                      saveDisabled={!editHasChanges}
-                    />
-                  </div>
-                ))}
-              </div>
+              <div>{group.items.map(renderShoppingItemRow)}</div>
             </section>
           ))
         )}
@@ -695,6 +810,19 @@ export function ActiveShoppingList({
         <p className="mt-5 text-sm text-zinc-700" role="status">
           {message}
         </p>
+      ) : null}
+
+      {!isCompletedMode ? (
+        <div className="mt-8 border-t pt-4">
+          <Link
+            className="inline-flex min-h-11 items-center gap-2 border px-4 text-sm font-medium text-zinc-800 hover:border-zinc-950"
+            href="/completed"
+          >
+            <Check aria-hidden="true" className="size-4" />
+            Completed
+            <ArrowRight aria-hidden="true" className="size-4" />
+          </Link>
+        </div>
       ) : null}
     </section>
   );
@@ -725,6 +853,7 @@ function ShoppingItemRow({
   pendingDelete,
   pendingEdit,
   saveDisabled,
+  showCompletedAt,
 }: {
   correctionFieldErrors: FieldErrors;
   correctionForm: ProductCorrectionFormState;
@@ -750,6 +879,7 @@ function ShoppingItemRow({
   pendingDelete: boolean;
   pendingEdit: boolean;
   saveDisabled: boolean;
+  showCompletedAt: boolean;
 }) {
   const needsAttention = item.resolutionState !== "route-resolved";
   const editFormId = `edit-${item.id}`;
@@ -863,6 +993,9 @@ function ShoppingItemRow({
                 <MapPin aria-hidden="true" className="size-4 shrink-0" />
               )}
               <span>{locationLabel(item)}</span>
+              {showCompletedAt && item.checkedAt ? (
+                <span>{formatCompletedAt(item.checkedAt)}</span>
+              ) : null}
               {item.syncState !== "synced" ? (
                 <span>{item.syncState}</span>
               ) : null}
@@ -1071,6 +1204,16 @@ function locationLabel(item: ActiveShoppingItemPayload) {
   }
 
   return "Needs correction";
+}
+
+function formatCompletedAt(checkedAt: string) {
+  const completedAt = new Date(checkedAt);
+
+  if (Number.isNaN(completedAt.getTime())) {
+    return "Completed";
+  }
+
+  return `Completed ${completedDateFormatter.format(completedAt)}`;
 }
 
 type ShoppingItemGroup = {

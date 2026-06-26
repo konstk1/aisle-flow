@@ -11,6 +11,45 @@ import {
   shoppingLists,
 } from "../schema";
 
+const shoppingItemRouteSelection = {
+  item: shoppingItems,
+  productConcept: productConcepts,
+  productLocation: productLocations,
+  aisleSection: aisleSections,
+  aisle: aisles,
+};
+
+function buildShoppingItemRouteRowsQuery(db: Database) {
+  return db
+    .select(shoppingItemRouteSelection)
+    .from(shoppingItems)
+    .leftJoin(
+      productConcepts,
+      eq(shoppingItems.productConceptId, productConcepts.id),
+    )
+    .leftJoin(
+      productLocations,
+      and(
+        eq(shoppingItems.resolvedLocationId, productLocations.id),
+        eq(shoppingItems.storeId, productLocations.storeId),
+      ),
+    )
+    .leftJoin(
+      aisleSections,
+      and(
+        eq(productLocations.aisleSectionId, aisleSections.id),
+        eq(productLocations.storeId, aisleSections.storeId),
+      ),
+    )
+    .leftJoin(
+      aisles,
+      and(
+        eq(aisleSections.aisleId, aisles.id),
+        eq(aisleSections.storeId, aisles.storeId),
+      ),
+    );
+}
+
 export interface ShoppingItemUpsertInput {
   storeId: string;
   shoppingListId: string;
@@ -104,44 +143,12 @@ export function buildRouteOrderedShoppingItemsQuery(
   storeId: string,
   shoppingListId: string,
 ) {
-  return db
-    .select({
-      item: shoppingItems,
-      productConcept: productConcepts,
-      productLocation: productLocations,
-      aisleSection: aisleSections,
-      aisle: aisles,
-    })
-    .from(shoppingItems)
-    .leftJoin(
-      productConcepts,
-      eq(shoppingItems.productConceptId, productConcepts.id),
-    )
-    .leftJoin(
-      productLocations,
-      and(
-        eq(shoppingItems.resolvedLocationId, productLocations.id),
-        eq(shoppingItems.storeId, productLocations.storeId),
-      ),
-    )
-    .leftJoin(
-      aisleSections,
-      and(
-        eq(productLocations.aisleSectionId, aisleSections.id),
-        eq(productLocations.storeId, aisleSections.storeId),
-      ),
-    )
-    .leftJoin(
-      aisles,
-      and(
-        eq(aisleSections.aisleId, aisles.id),
-        eq(aisleSections.storeId, aisles.storeId),
-      ),
-    )
+  return buildShoppingItemRouteRowsQuery(db)
     .where(
       and(
         eq(shoppingItems.shoppingListId, shoppingListId),
         eq(shoppingItems.storeId, storeId),
+        eq(shoppingItems.isChecked, false),
       ),
     )
     .orderBy(
@@ -154,6 +161,26 @@ export function buildRouteOrderedShoppingItemsQuery(
       ),
       asc(shoppingItems.orderKey),
       asc(shoppingItems.createdAt),
+    );
+}
+
+export function buildCompletedShoppingItemsQuery(
+  db: Database,
+  storeId: string,
+  shoppingListId: string,
+) {
+  return buildShoppingItemRouteRowsQuery(db)
+    .where(
+      and(
+        eq(shoppingItems.shoppingListId, shoppingListId),
+        eq(shoppingItems.storeId, storeId),
+        eq(shoppingItems.isChecked, true),
+      ),
+    )
+    .orderBy(
+      desc(shoppingItems.checkedAt),
+      desc(shoppingItems.updatedAt),
+      desc(shoppingItems.createdAt),
     );
 }
 

@@ -39,9 +39,36 @@ function checkRequest(body: unknown) {
   );
 }
 
+function completedCheckRequest(body: unknown) {
+  return new Request(
+    `https://aisle-flow.example/api/shopping-list/items/${itemId}?view=completed`,
+    {
+      body: JSON.stringify(body),
+      method: "PATCH",
+    },
+  );
+}
+
+function completedTextRequest(body: unknown) {
+  return new Request(
+    `https://aisle-flow.example/api/shopping-list/items/${itemId}?view=completed`,
+    {
+      body: JSON.stringify(body),
+      method: "PATCH",
+    },
+  );
+}
+
 function deleteRequest() {
   return new Request(
     `https://aisle-flow.example/api/shopping-list/items/${itemId}`,
+    { method: "DELETE" },
+  );
+}
+
+function completedDeleteRequest() {
+  return new Request(
+    `https://aisle-flow.example/api/shopping-list/items/${itemId}?view=completed`,
     { method: "DELETE" },
   );
 }
@@ -130,6 +157,35 @@ describe("shopping list item route", () => {
     expect(setActiveShoppingItemChecked).toHaveBeenCalledWith({
       itemId,
       isChecked: true,
+      responseView: "active",
+    });
+  });
+
+  it("returns the list for completed-screen check updates", async () => {
+    hasValidSession.mockResolvedValue(true);
+    setActiveShoppingItemChecked.mockResolvedValue({
+      store: { id: "store-1", name: "Example Market" },
+      list: { id: "list-1", source: "manual", syncState: "synced" },
+      items: [],
+    });
+
+    const response = await PATCH(
+      completedCheckRequest({ isChecked: false }),
+      params(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(setActiveShoppingItemChecked).toHaveBeenCalledWith({
+      itemId,
+      isChecked: false,
+      responseView: "completed",
+    });
+    await expect(response.json()).resolves.toEqual({
+      list: {
+        store: { id: "store-1", name: "Example Market" },
+        list: { id: "list-1", source: "manual", syncState: "synced" },
+        items: [],
+      },
     });
   });
 
@@ -146,9 +202,38 @@ describe("shopping list item route", () => {
     expect(response.status).toBe(200);
     expect(updateActiveShoppingItemText).toHaveBeenCalledWith({
       itemId,
+      responseView: "active",
       text: "Wild Rice",
     });
     expect(setActiveShoppingItemChecked).not.toHaveBeenCalled();
+  });
+
+  it("returns the list for completed-screen text updates", async () => {
+    hasValidSession.mockResolvedValue(true);
+    updateActiveShoppingItemText.mockResolvedValue({
+      store: { id: "store-1", name: "Example Market" },
+      list: { id: "list-1", source: "manual", syncState: "synced" },
+      items: [],
+    });
+
+    const response = await PATCH(
+      completedTextRequest({ text: "Wild Rice" }),
+      params(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(updateActiveShoppingItemText).toHaveBeenCalledWith({
+      itemId,
+      responseView: "completed",
+      text: "Wild Rice",
+    });
+    await expect(response.json()).resolves.toEqual({
+      list: {
+        store: { id: "store-1", name: "Example Market" },
+        list: { id: "list-1", source: "manual", syncState: "synced" },
+        items: [],
+      },
+    });
   });
 
   it("rejects unauthenticated deletes", async () => {
@@ -170,6 +255,33 @@ describe("shopping list item route", () => {
     const response = await DELETE(deleteRequest(), params());
 
     expect(response.status).toBe(200);
-    expect(deleteActiveShoppingItem).toHaveBeenCalledWith({ itemId });
+    expect(deleteActiveShoppingItem).toHaveBeenCalledWith({
+      itemId,
+      responseView: "active",
+    });
+  });
+
+  it("returns the list for completed-screen deletes", async () => {
+    hasValidSession.mockResolvedValue(true);
+    deleteActiveShoppingItem.mockResolvedValue({
+      store: { id: "store-1", name: "Example Market" },
+      list: { id: "list-1", source: "manual", syncState: "synced" },
+      items: [],
+    });
+
+    const response = await DELETE(completedDeleteRequest(), params());
+
+    expect(response.status).toBe(200);
+    expect(deleteActiveShoppingItem).toHaveBeenCalledWith({
+      itemId,
+      responseView: "completed",
+    });
+    await expect(response.json()).resolves.toEqual({
+      list: {
+        store: { id: "store-1", name: "Example Market" },
+        list: { id: "list-1", source: "manual", syncState: "synced" },
+        items: [],
+      },
+    });
   });
 });

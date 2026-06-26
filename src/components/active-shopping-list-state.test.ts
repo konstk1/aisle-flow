@@ -10,8 +10,10 @@ import {
   buildProductCorrectionRequest,
   createProductCorrectionFormState,
   getStableMutationForText,
-  mergeActiveListSnapshotAfterCheck,
+  mergeVisibleListSnapshotAfterCheck,
+  removeItemFromActiveList,
   replaceItemInActiveList,
+  restoreItemInActiveList,
   shouldSaveProductCorrectionForEdit,
 } from "./active-shopping-list-state";
 
@@ -150,27 +152,23 @@ describe("shouldSaveProductCorrectionForEdit", () => {
   });
 });
 
-describe("mergeActiveListSnapshotAfterCheck", () => {
-  it("keeps other in-flight checkbox changes when a server snapshot returns", () => {
-    const currentList = listWithItems([
-      itemWithState("item-a", true),
-      itemWithState("item-b", true),
-    ]);
+describe("mergeVisibleListSnapshotAfterCheck", () => {
+  it("keeps other in-flight checkbox changes hidden when a server snapshot returns", () => {
     const serverSnapshot = listWithItems([
-      itemWithState("item-a", true),
+      itemWithState("item-a", false),
       itemWithState("item-b", false),
+      itemWithState("item-c", false),
     ]);
 
-    const merged = mergeActiveListSnapshotAfterCheck({
+    const merged = mergeVisibleListSnapshotAfterCheck({
       completedCheckItemId: "item-a",
-      currentList,
       nextList: serverSnapshot,
       pendingCheckItemIds: new Set(["item-a", "item-b"]),
     });
 
     expect(merged.items.map((item) => [item.id, item.isChecked])).toEqual([
-      ["item-a", true],
-      ["item-b", true],
+      ["item-a", false],
+      ["item-c", false],
     ]);
   });
 });
@@ -185,6 +183,58 @@ describe("replaceItemInActiveList", () => {
     const restored = replaceItemInActiveList(
       list,
       itemWithState("item-a", false),
+    );
+
+    expect(restored?.items.map((item) => [item.id, item.isChecked])).toEqual([
+      ["item-a", false],
+      ["item-b", true],
+    ]);
+  });
+});
+
+describe("removeItemFromActiveList", () => {
+  it("removes a pending item from the visible list", () => {
+    const list = listWithItems([
+      itemWithState("item-a", true),
+      itemWithState("item-b", true),
+    ]);
+
+    const updated = removeItemFromActiveList(list, "item-a");
+
+    expect(updated?.items.map((item) => item.id)).toEqual(["item-b"]);
+  });
+});
+
+describe("restoreItemInActiveList", () => {
+  it("inserts a removed item back at the previous visible index", () => {
+    const list = listWithItems([
+      itemWithState("item-a", true),
+      itemWithState("item-c", true),
+    ]);
+
+    const restored = restoreItemInActiveList(
+      list,
+      itemWithState("item-b", true),
+      1,
+    );
+
+    expect(restored?.items.map((item) => item.id)).toEqual([
+      "item-a",
+      "item-b",
+      "item-c",
+    ]);
+  });
+
+  it("replaces an existing item instead of duplicating it", () => {
+    const list = listWithItems([
+      itemWithState("item-a", true),
+      itemWithState("item-b", true),
+    ]);
+
+    const restored = restoreItemInActiveList(
+      list,
+      itemWithState("item-a", false),
+      0,
     );
 
     expect(restored?.items.map((item) => [item.id, item.isChecked])).toEqual([
