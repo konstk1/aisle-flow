@@ -33,6 +33,7 @@ export interface ActiveShoppingItemPayload {
   normalizedText: string;
   isChecked: boolean;
   checkedAt: string | null;
+  snoozedUntil: string | null;
   syncState: "synced" | "pending" | "error";
   resolutionState: "route-resolved" | "matched-unlocated" | "needs-correction";
   productConcept: {

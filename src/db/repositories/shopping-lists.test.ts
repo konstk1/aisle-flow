@@ -14,9 +14,11 @@ import {
   buildShoppingItemCheckStateQuery,
   buildShoppingItemDeleteQuery,
   buildShoppingItemProductResolutionQuery,
+  buildShoppingItemSnoozeStateQuery,
   buildShoppingItemTextUpdateQuery,
   buildShoppingItemsByNormalizedTextQuery,
   buildShoppingItemUpsertQuery,
+  buildSnoozedShoppingItemsQuery,
 } from "./shopping-lists";
 
 const database = createDatabase(
@@ -44,6 +46,7 @@ describe("shopping-list queries", () => {
       database,
       "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
       "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
+      new Date("2026-01-01T00:00:00Z"),
     ).toSQL();
 
     expect(query).toContain('left join "product_locations"');
@@ -60,6 +63,9 @@ describe("shopping-list queries", () => {
     );
     expect(query).toContain('"shopping_items"."store_id" = $2');
     expect(query).toContain('"shopping_items"."is_checked" = $3');
+    expect(query).toContain(
+      '("shopping_items"."snoozed_until" is null or "shopping_items"."snoozed_until" <= $4)',
+    );
     expect(query).toMatch(
       /order by case when "aisle_sections"\."path_order" is null then 1 else 0 end asc, "aisle_sections"\."path_order" asc, coalesce\("product_locations"\."position_within_section", 2147483647\) asc, "shopping_items"\."order_key" asc/,
     );
@@ -67,6 +73,29 @@ describe("shopping-list queries", () => {
       "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
       "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
       false,
+      "2026-01-01T00:00:00.000Z",
+    ]);
+  });
+
+  it("orders snoozed items by soonest resurfacing first", () => {
+    const { sql: query, params } = buildSnoozedShoppingItemsQuery(
+      database,
+      "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
+      "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
+      new Date("2026-01-01T00:00:00Z"),
+    ).toSQL();
+
+    expect(query).toContain('"shopping_items"."is_checked" = $3');
+    expect(query).toContain('"shopping_items"."snoozed_until" is not null');
+    expect(query).toContain('"shopping_items"."snoozed_until" > $4');
+    expect(query).toMatch(
+      /order by "shopping_items"\."snoozed_until" asc, "shopping_items"\."order_key" asc, "shopping_items"\."created_at" asc/,
+    );
+    expect(params).toEqual([
+      "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
+      "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
+      false,
+      "2026-01-01T00:00:00.000Z",
     ]);
   });
 
@@ -153,12 +182,16 @@ describe("shopping-list queries", () => {
     expect(query).toContain('update "shopping_items"');
     expect(query).toContain('coalesce("shopping_items"."checked_at", $2)');
     expect(query).toContain(
-      'case when "shopping_items"."is_checked" = $4 then "shopping_items"."updated_at" else $5 end',
+      'case when "shopping_items"."is_checked" = $3 then "shopping_items"."snoozed_until" else null end',
     );
-    expect(query).toContain('"shopping_items"."shopping_list_id" = $7');
+    expect(query).toContain(
+      'case when "shopping_items"."is_checked" = $5 then "shopping_items"."updated_at" else $6 end',
+    );
+    expect(query).toContain('"shopping_items"."shopping_list_id" = $8');
     expect(params).toEqual([
       true,
       new Date("2026-01-01T00:00:00Z"),
+      true,
       true,
       true,
       new Date("2026-01-01T00:00:00Z"),
@@ -166,6 +199,41 @@ describe("shopping-list queries", () => {
       "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
       "33333333-3333-4333-8333-333333333333",
     ]);
+  });
+
+  it("snoozes an unchecked item within the active list", () => {
+    const { sql: query, params } = buildShoppingItemSnoozeStateQuery(database, {
+      storeId: "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
+      shoppingListId: "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
+      itemId: "33333333-3333-4333-8333-333333333333",
+      snoozedUntil: new Date("2026-01-01T01:00:00Z"),
+      now: new Date("2026-01-01T00:00:00Z"),
+    }).toSQL();
+
+    expect(query).toContain('update "shopping_items"');
+    expect(query).toContain('"snoozed_until" = $1');
+    expect(query).toContain('"version" = "shopping_items"."version" + 1');
+    expect(query).toContain('"shopping_items"."is_checked" = $6');
+    expect(params).toEqual([
+      "2026-01-01T01:00:00.000Z",
+      "2026-01-01T00:00:00.000Z",
+      "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
+      "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
+      "33333333-3333-4333-8333-333333333333",
+      false,
+    ]);
+  });
+
+  it("clears a snooze to resurface an item", () => {
+    const { params } = buildShoppingItemSnoozeStateQuery(database, {
+      storeId: "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
+      shoppingListId: "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
+      itemId: "33333333-3333-4333-8333-333333333333",
+      snoozedUntil: null,
+      now: new Date("2026-01-01T00:00:00Z"),
+    }).toSQL();
+
+    expect(params[0]).toBeNull();
   });
 
   it("updates item text and resolution within the active list", () => {

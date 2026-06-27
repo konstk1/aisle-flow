@@ -23,9 +23,11 @@ import {
   buildRouteOrderedShoppingItemsQuery,
   buildShoppingItemCheckStateQuery,
   buildShoppingItemDeleteQuery,
+  buildShoppingItemSnoozeStateQuery,
   buildShoppingItemTextUpdateQuery,
   buildShoppingItemsByNormalizedTextQuery,
   buildShoppingItemUpsertQuery,
+  buildSnoozedShoppingItemsQuery,
   type ShoppingItemUpsertInput,
 } from "@/db/repositories/shopping-lists";
 import type {
@@ -46,7 +48,9 @@ import { getStoreLayout } from "./store-layout";
 const mutationIdSchema = z.uuid("Provide a valid mutation id.");
 const duplicateShoppingItemMessage = "This item is already on the list.";
 
-export type ShoppingListView = "active" | "completed";
+export const SNOOZE_DURATION_MS = 60 * 60 * 1000;
+
+export type ShoppingListView = "active" | "completed" | "snoozed";
 
 const shoppingItemTextSchema = z
   .string()
@@ -71,12 +75,15 @@ export const activeShoppingListImportRequestSchema = z.object({
 export const activeShoppingItemUpdateRequestSchema = z
   .object({
     isChecked: z.boolean().optional(),
+    snoozed: z.boolean().optional(),
     text: shoppingItemTextSchema.optional(),
   })
   .strict()
   .superRefine((input, context) => {
     const updateCount =
-      Number(input.isChecked !== undefined) + Number(input.text !== undefined);
+      Number(input.isChecked !== undefined) +
+      Number(input.snoozed !== undefined) +
+      Number(input.text !== undefined);
 
     if (updateCount !== 1) {
       context.addIssue({
@@ -140,8 +147,27 @@ export async function getCompletedShoppingList(): Promise<ActiveShoppingListPayl
   return getCompletedShoppingListForLayout(layout);
 }
 
-export async function getCompletedShoppingListForLayout(
+export function getCompletedShoppingListForLayout(
   layout: StoreLayout,
+): Promise<ActiveShoppingListPayload | null> {
+  return readExistingShoppingList(layout, "completed");
+}
+
+export async function getSnoozedShoppingList(): Promise<ActiveShoppingListPayload | null> {
+  const layout = await requireActiveStoreLayout();
+
+  return getSnoozedShoppingListForLayout(layout);
+}
+
+export function getSnoozedShoppingListForLayout(
+  layout: StoreLayout,
+): Promise<ActiveShoppingListPayload | null> {
+  return readExistingShoppingList(layout, "snoozed");
+}
+
+async function readExistingShoppingList(
+  layout: StoreLayout,
+  view: ShoppingListView,
 ): Promise<ActiveShoppingListPayload | null> {
   const db = getDb();
   const [list] = await buildActiveShoppingListQuery(db, layout.id);
@@ -150,7 +176,7 @@ export async function getCompletedShoppingListForLayout(
     return null;
   }
 
-  return readShoppingListPayload(db, layout, list, "completed");
+  return readShoppingListPayload(db, layout, list, view);
 }
 
 export async function addActiveShoppingListItem(
@@ -261,6 +287,41 @@ export async function setActiveShoppingItemChecked({
     shoppingListId: list.id,
     itemId,
     isChecked,
+  });
+
+  if (!updatedItem) {
+    throw new ActiveShoppingListRequestError(
+      "Choose an item in the active list.",
+      { itemId: ["Choose an item in the active list."] },
+      404,
+    );
+  }
+
+  return readShoppingListPayload(db, layout, list, responseView);
+}
+
+export async function snoozeActiveShoppingItem({
+  itemId,
+  snoozed,
+  responseView = "active",
+}: {
+  itemId: string;
+  snoozed: boolean;
+  responseView?: ShoppingListView;
+}): Promise<ActiveShoppingListPayload> {
+  const layout = await requireActiveStoreLayout();
+  const db = getDb();
+  const list = await getOrCreateActiveShoppingList(db, layout.id);
+  const now = new Date();
+  const snoozedUntil = snoozed
+    ? new Date(now.getTime() + SNOOZE_DURATION_MS)
+    : null;
+  const [updatedItem] = await buildShoppingItemSnoozeStateQuery(db, {
+    storeId: layout.id,
+    shoppingListId: list.id,
+    itemId,
+    snoozedUntil,
+    now,
   });
 
   if (!updatedItem) {
@@ -553,10 +614,18 @@ async function readShoppingListPayload(
   list: ShoppingList,
   view: ShoppingListView,
 ): Promise<ActiveShoppingListPayload> {
+  const now = new Date();
   const rows =
     view === "completed"
       ? await buildCompletedShoppingItemsQuery(db, layout.id, list.id)
-      : await buildRouteOrderedShoppingItemsQuery(db, layout.id, list.id);
+      : view === "snoozed"
+        ? await buildSnoozedShoppingItemsQuery(db, layout.id, list.id, now)
+        : await buildRouteOrderedShoppingItemsQuery(
+            db,
+            layout.id,
+            list.id,
+            now,
+          );
 
   return {
     store: {
@@ -605,6 +674,7 @@ function toItemPayload({
     normalizedText: item.normalizedText,
     isChecked: item.isChecked,
     checkedAt: item.checkedAt?.toISOString() ?? null,
+    snoozedUntil: item.snoozedUntil?.toISOString() ?? null,
     syncState: item.syncState,
     resolutionState: location
       ? "route-resolved"

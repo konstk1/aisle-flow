@@ -401,6 +401,7 @@ export const shoppingItems = pgTable(
     resolvedLocationId: uuid("resolved_location_id"),
     isChecked: boolean("is_checked").default(false).notNull(),
     checkedAt: timestamp("checked_at", { withTimezone: true }),
+    snoozedUntil: timestamp("snoozed_until", { withTimezone: true }),
     orderKey: text("order_key").notNull(),
     sourceIdentifier: text("source_identifier"),
     syncState: synchronizationState("sync_state").default("synced").notNull(),
@@ -426,6 +427,9 @@ export const shoppingItems = pgTable(
       table.isChecked,
       table.orderKey,
     ),
+    index("shopping_items_snoozed_index")
+      .on(table.shoppingListId, table.snoozedUntil)
+      .where(sql`${table.snoozedUntil} IS NOT NULL`),
     index("shopping_items_normalized_text_index").on(table.normalizedText),
     foreignKey({
       name: "shopping_items_store_list_foreign_key",

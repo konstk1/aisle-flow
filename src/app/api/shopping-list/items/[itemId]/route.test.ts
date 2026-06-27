@@ -4,11 +4,13 @@ const {
   deleteActiveShoppingItem,
   hasValidSession,
   setActiveShoppingItemChecked,
+  snoozeActiveShoppingItem,
   updateActiveShoppingItemText,
 } = vi.hoisted(() => ({
   deleteActiveShoppingItem: vi.fn(),
   hasValidSession: vi.fn(),
   setActiveShoppingItemChecked: vi.fn(),
+  snoozeActiveShoppingItem: vi.fn(),
   updateActiveShoppingItemText: vi.fn(),
 }));
 
@@ -21,6 +23,7 @@ vi.mock("@/services/active-shopping-list", async (importOriginal) => {
     ...actual,
     deleteActiveShoppingItem,
     setActiveShoppingItemChecked,
+    snoozeActiveShoppingItem,
     updateActiveShoppingItemText,
   };
 });
@@ -59,6 +62,16 @@ function completedTextRequest(body: unknown) {
   );
 }
 
+function snoozedPatchRequest(body: unknown) {
+  return new Request(
+    `https://aisle-flow.example/api/shopping-list/items/${itemId}?view=snoozed`,
+    {
+      body: JSON.stringify(body),
+      method: "PATCH",
+    },
+  );
+}
+
 function deleteRequest() {
   return new Request(
     `https://aisle-flow.example/api/shopping-list/items/${itemId}`,
@@ -82,6 +95,7 @@ describe("shopping list item route", () => {
     hasValidSession.mockResolvedValue(false);
     deleteActiveShoppingItem.mockReset();
     setActiveShoppingItemChecked.mockReset();
+    snoozeActiveShoppingItem.mockReset();
     updateActiveShoppingItemText.mockReset();
   });
 
@@ -187,6 +201,28 @@ describe("shopping list item route", () => {
         items: [],
       },
     });
+  });
+
+  it("snoozes an item for authenticated callers", async () => {
+    hasValidSession.mockResolvedValue(true);
+    snoozeActiveShoppingItem.mockResolvedValue({
+      store: { id: "store-1", name: "Example Market" },
+      list: { id: "list-1", source: "manual", syncState: "synced" },
+      items: [],
+    });
+
+    const response = await PATCH(
+      snoozedPatchRequest({ snoozed: true }),
+      params(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(snoozeActiveShoppingItem).toHaveBeenCalledWith({
+      itemId,
+      responseView: "snoozed",
+      snoozed: true,
+    });
+    expect(setActiveShoppingItemChecked).not.toHaveBeenCalled();
   });
 
   it("updates item text for authenticated callers", async () => {

@@ -6,6 +6,7 @@ import {
   activeShoppingItemUpdateRequestSchema,
   deleteActiveShoppingItem,
   setActiveShoppingItemChecked,
+  snoozeActiveShoppingItem,
   type ShoppingListView,
   updateActiveShoppingItemText,
 } from "@/services/active-shopping-list";
@@ -25,7 +26,15 @@ const invalidItemResponseBody = {
 function responseViewFromRequest(request: Request): ShoppingListView {
   const view = new URL(request.url).searchParams.get("view");
 
-  return view === "completed" ? "completed" : "active";
+  if (view === "completed") {
+    return "completed";
+  }
+
+  if (view === "snoozed") {
+    return "snoozed";
+  }
+
+  return "active";
 }
 
 function shoppingListResponse(list: ActiveShoppingListPayload) {
@@ -75,6 +84,16 @@ export async function PATCH(
         itemId: parsedItemId.data,
         responseView,
         text: parsed.data.text,
+      });
+
+      return Response.json(shoppingListResponse(list));
+    }
+
+    if (parsed.data.snoozed !== undefined) {
+      const list = await snoozeActiveShoppingItem({
+        itemId: parsedItemId.data,
+        responseView,
+        snoozed: parsed.data.snoozed,
       });
 
       return Response.json(shoppingListResponse(list));

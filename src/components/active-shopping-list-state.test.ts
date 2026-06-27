@@ -271,6 +271,7 @@ function itemWithState(
     normalizedText: id,
     isChecked,
     checkedAt: isChecked ? "2026-01-01T00:00:00.000Z" : null,
+    snoozedUntil: null,
     syncState: "synced",
     resolutionState: "needs-correction",
     productConcept: null,
