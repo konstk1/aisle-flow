@@ -12,9 +12,11 @@ const mocks = vi.hoisted(() => {
     buildRouteOrderedShoppingItemsQuery: vi.fn(),
     buildShoppingItemCheckStateQuery: vi.fn(),
     buildShoppingItemDeleteQuery: vi.fn(),
+    buildShoppingItemSnoozeStateQuery: vi.fn(),
     buildShoppingItemTextUpdateQuery: vi.fn(),
     buildShoppingItemsByNormalizedTextQuery: vi.fn(),
     buildShoppingItemUpsertQuery: vi.fn(),
+    buildSnoozedShoppingItemsQuery: vi.fn(),
     createStoreProductMatcher: vi.fn(),
     db,
     getDb: vi.fn(() => db),
@@ -32,10 +34,12 @@ vi.mock("@/db/repositories/shopping-lists", () => ({
     mocks.buildRouteOrderedShoppingItemsQuery,
   buildShoppingItemCheckStateQuery: mocks.buildShoppingItemCheckStateQuery,
   buildShoppingItemDeleteQuery: mocks.buildShoppingItemDeleteQuery,
+  buildShoppingItemSnoozeStateQuery: mocks.buildShoppingItemSnoozeStateQuery,
   buildShoppingItemTextUpdateQuery: mocks.buildShoppingItemTextUpdateQuery,
   buildShoppingItemsByNormalizedTextQuery:
     mocks.buildShoppingItemsByNormalizedTextQuery,
   buildShoppingItemUpsertQuery: mocks.buildShoppingItemUpsertQuery,
+  buildSnoozedShoppingItemsQuery: mocks.buildSnoozedShoppingItemsQuery,
 }));
 vi.mock("./product-matching", () => ({
   createStoreProductMatcher: mocks.createStoreProductMatcher,
@@ -48,8 +52,11 @@ import {
   deleteActiveShoppingItem,
   getActiveShoppingList,
   getCompletedShoppingList,
+  getSnoozedShoppingList,
   importActiveShoppingListItems,
   setActiveShoppingItemChecked,
+  SNOOZE_DURATION_MS,
+  snoozeActiveShoppingItem,
   updateActiveShoppingItemText,
 } from "./active-shopping-list";
 
@@ -109,9 +116,11 @@ beforeEach(() => {
   mocks.buildRouteOrderedShoppingItemsQuery.mockReset();
   mocks.buildShoppingItemCheckStateQuery.mockReset();
   mocks.buildShoppingItemDeleteQuery.mockReset();
+  mocks.buildShoppingItemSnoozeStateQuery.mockReset();
   mocks.buildShoppingItemTextUpdateQuery.mockReset();
   mocks.buildShoppingItemsByNormalizedTextQuery.mockReset();
   mocks.buildShoppingItemUpsertQuery.mockReset();
+  mocks.buildSnoozedShoppingItemsQuery.mockReset();
   mocks.createStoreProductMatcher.mockReset();
   mocks.db.batch.mockReset();
   mocks.getDb.mockClear();
@@ -122,6 +131,7 @@ beforeEach(() => {
   mocks.buildActiveShoppingListQuery.mockResolvedValue([list]);
   mocks.buildCompletedShoppingItemsQuery.mockResolvedValue([]);
   mocks.buildRouteOrderedShoppingItemsQuery.mockResolvedValue([]);
+  mocks.buildSnoozedShoppingItemsQuery.mockResolvedValue([]);
   mocks.buildShoppingItemsByNormalizedTextQuery.mockResolvedValue([]);
   mocks.createStoreProductMatcher.mockResolvedValue(mocks.resolveProductMatch);
   mocks.db.batch.mockResolvedValue([]);
@@ -131,6 +141,7 @@ beforeEach(() => {
   }));
   mocks.buildShoppingItemCheckStateQuery.mockResolvedValue([{ id: itemId }]);
   mocks.buildShoppingItemDeleteQuery.mockResolvedValue([{ id: itemId }]);
+  mocks.buildShoppingItemSnoozeStateQuery.mockResolvedValue([{ id: itemId }]);
   mocks.buildShoppingItemTextUpdateQuery.mockResolvedValue([{ id: itemId }]);
 });
 
@@ -611,6 +622,118 @@ describe("setActiveShoppingItemChecked", () => {
       status: 404,
       fieldErrors: { itemId: ["Choose an item in the active list."] },
     });
+  });
+});
+
+describe("snoozeActiveShoppingItem", () => {
+  it("snoozes an item one hour into the future", async () => {
+    const before = Date.now();
+
+    await snoozeActiveShoppingItem({ itemId, snoozed: true });
+
+    expect(mocks.buildShoppingItemSnoozeStateQuery).toHaveBeenCalledWith(
+      mocks.db,
+      expect.objectContaining({
+        storeId,
+        shoppingListId: listId,
+        itemId,
+        snoozedUntil: expect.any(Date),
+      }),
+    );
+
+    const call = mocks.buildShoppingItemSnoozeStateQuery.mock.calls[0][1];
+    const snoozedUntilMs = (call.snoozedUntil as Date).getTime();
+    expect(snoozedUntilMs).toBeGreaterThanOrEqual(before + SNOOZE_DURATION_MS);
+    expect(snoozedUntilMs).toBeLessThanOrEqual(Date.now() + SNOOZE_DURATION_MS);
+  });
+
+  it("clears the snooze when restoring an item to the list", async () => {
+    await snoozeActiveShoppingItem({
+      itemId,
+      snoozed: false,
+      responseView: "snoozed",
+    });
+
+    expect(mocks.buildShoppingItemSnoozeStateQuery).toHaveBeenCalledWith(
+      mocks.db,
+      expect.objectContaining({ snoozedUntil: null }),
+    );
+    expect(mocks.buildSnoozedShoppingItemsQuery).toHaveBeenCalledWith(
+      mocks.db,
+      storeId,
+      listId,
+      expect.any(Date),
+    );
+  });
+
+  it("returns a not-found request error when the item is outside the active list", async () => {
+    mocks.buildShoppingItemSnoozeStateQuery.mockResolvedValue([]);
+
+    await expect(
+      snoozeActiveShoppingItem({ itemId, snoozed: true }),
+    ).rejects.toMatchObject({
+      status: 404,
+      fieldErrors: { itemId: ["Choose an item in the active list."] },
+    });
+  });
+});
+
+describe("getSnoozedShoppingList", () => {
+  it("does not create a shopping list when no list exists", async () => {
+    mocks.buildActiveShoppingListQuery.mockResolvedValue([]);
+
+    const result = await getSnoozedShoppingList();
+
+    expect(result).toBeNull();
+    expect(mocks.buildActiveShoppingListCreateQuery).not.toHaveBeenCalled();
+    expect(mocks.buildSnoozedShoppingItemsQuery).not.toHaveBeenCalled();
+  });
+
+  it("reads snoozed items relative to the current time", async () => {
+    const snoozedUntil = new Date("2026-01-01T01:00:00Z");
+    mocks.buildSnoozedShoppingItemsQuery.mockResolvedValue([
+      {
+        item: {
+          id: itemId,
+          storeId,
+          shoppingListId: listId,
+          rawText: "Rice",
+          normalizedText: "rice",
+          productConceptId: null,
+          resolvedLocationId: null,
+          isChecked: false,
+          checkedAt: null,
+          snoozedUntil,
+          orderKey: "1",
+          sourceIdentifier: "manual:1",
+          syncState: "synced",
+          mutationId,
+          version: 1,
+          createdAt: now,
+          updatedAt: now,
+        },
+        productConcept: null,
+        productLocation: null,
+        aisleSection: null,
+        aisle: null,
+      },
+    ]);
+
+    const result = await getSnoozedShoppingList();
+
+    expect(mocks.buildSnoozedShoppingItemsQuery).toHaveBeenCalledWith(
+      mocks.db,
+      storeId,
+      listId,
+      expect.any(Date),
+    );
+    expect(result?.items).toEqual([
+      expect.objectContaining({
+        id: itemId,
+        isChecked: false,
+        snoozedUntil: "2026-01-01T01:00:00.000Z",
+      }),
+    ]);
   });
 });
 

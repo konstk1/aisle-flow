@@ -4,6 +4,7 @@ import {
   ActiveShoppingListRequestError,
   getActiveShoppingListForLayout,
   getCompletedShoppingListForLayout,
+  getSnoozedShoppingListForLayout,
 } from "@/services/active-shopping-list";
 import { getStoreLayout } from "@/services/store-layout";
 
@@ -11,7 +12,7 @@ import { withDataTimeout } from "./data-timeout";
 
 const PAGE_DATA_TIMEOUT_MS = 5_000;
 
-type ShoppingListPageDataKey = "activeList" | "completedList";
+type ShoppingListPageDataKey = "activeList" | "completedList" | "snoozedList";
 
 export async function loadShoppingListPageData() {
   return loadShoppingItemsPageData({
@@ -26,6 +27,14 @@ export async function loadCompletedShoppingListPageData() {
     loadList: getCompletedShoppingListForLayout,
     pageName: "Completed items",
     resultKey: "completedList",
+  });
+}
+
+export async function loadSnoozedShoppingListPageData() {
+  return loadShoppingItemsPageData({
+    loadList: getSnoozedShoppingListForLayout,
+    pageName: "Snoozed items",
+    resultKey: "snoozedList",
   });
 }
 

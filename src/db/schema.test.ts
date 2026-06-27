@@ -82,8 +82,11 @@ describe("data model constraints", () => {
         "shopping_lists_active_store_index",
       ]),
     );
-    expect(indexNames(shoppingItems)).toContain(
-      "shopping_items_active_list_read_index",
+    expect(indexNames(shoppingItems)).toEqual(
+      expect.arrayContaining([
+        "shopping_items_active_list_read_index",
+        "shopping_items_snoozed_index",
+      ]),
     );
   });
 });

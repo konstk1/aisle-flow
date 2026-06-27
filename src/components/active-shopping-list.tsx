@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  Clock,
   MapPin,
   Pencil,
   Plus,
@@ -46,7 +47,12 @@ type CompletedShoppingListProps = {
   hasStoreLayout: boolean;
 };
 
-type ShoppingListMode = "active" | "completed";
+type SnoozedShoppingListProps = {
+  initialSnoozedList: ActiveShoppingListPayload | null;
+  hasStoreLayout: boolean;
+};
+
+type ShoppingListMode = "active" | "completed" | "snoozed";
 
 type ShoppingListViewProps = {
   initialList: ActiveShoppingListPayload | null;
@@ -57,6 +63,7 @@ type ShoppingListViewProps = {
 type ShoppingListResponse = {
   activeList?: ActiveShoppingListPayload;
   completedList?: ActiveShoppingListPayload | null;
+  snoozedList?: ActiveShoppingListPayload | null;
   list?: ActiveShoppingListPayload | null;
   error?: string;
   fieldErrors?: FieldErrors;
@@ -101,6 +108,39 @@ const EMPTY_ITEMS: ActiveShoppingItemPayload[] = [];
 const completedDateFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
 });
+const SNOOZE_LONG_PRESS_MS = 500;
+
+type ShoppingListModeConfig = {
+  listEndpoint: string;
+  viewParam: string;
+  responseKey: "activeList" | "completedList" | "snoozedList";
+  emptyText: string;
+  refreshLabel: string;
+};
+
+const MODE_CONFIG: Record<ShoppingListMode, ShoppingListModeConfig> = {
+  active: {
+    listEndpoint: "/api/shopping-list",
+    viewParam: "",
+    responseKey: "activeList",
+    emptyText: "No items yet.",
+    refreshLabel: "Refresh shopping list",
+  },
+  completed: {
+    listEndpoint: "/api/shopping-list/completed",
+    viewParam: "?view=completed",
+    responseKey: "completedList",
+    emptyText: "No completed items.",
+    refreshLabel: "Refresh completed items",
+  },
+  snoozed: {
+    listEndpoint: "/api/shopping-list/snoozed",
+    viewParam: "?view=snoozed",
+    responseKey: "snoozedList",
+    emptyText: "No snoozed items.",
+    refreshLabel: "Refresh snoozed items",
+  },
+};
 
 export function ActiveShoppingList({
   hasStoreLayout,
@@ -128,6 +168,19 @@ export function CompletedShoppingList({
   );
 }
 
+export function SnoozedShoppingList({
+  hasStoreLayout,
+  initialSnoozedList,
+}: SnoozedShoppingListProps) {
+  return (
+    <ShoppingListView
+      hasStoreLayout={hasStoreLayout}
+      initialList={initialSnoozedList}
+      mode="snoozed"
+    />
+  );
+}
+
 function ShoppingListView({
   hasStoreLayout,
   initialList,
@@ -142,9 +195,9 @@ function ShoppingListView({
     useState<FieldErrorScope | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
-  const [pendingCheckItemIds, setPendingCheckItemIds] = useState<Set<string>>(
-    () => new Set(),
-  );
+  const [pendingRemovalItemIds, setPendingRemovalItemIds] = useState<
+    Set<string>
+  >(() => new Set());
   const [correctionOptions, setCorrectionOptions] =
     useState<ProductCorrectionOptions | null>(null);
   const [correctionOptionsLoading, setCorrectionOptionsLoading] =
@@ -180,11 +233,12 @@ function ShoppingListView({
   );
   const pendingAddMutation = useRef<PendingTextMutation | null>(null);
   const pendingImportMutation = useRef<PendingTextMutation | null>(null);
-  const pendingCheckItemIdsRef = useRef<Set<string>>(new Set());
+  const pendingRemovalItemIdsRef = useRef<Set<string>>(new Set());
   const isCompletedMode = mode === "completed";
-  const listEndpoint = isCompletedMode
-    ? "/api/shopping-list/completed"
-    : "/api/shopping-list";
+  const isSnoozedMode = mode === "snoozed";
+  const isActiveMode = mode === "active";
+  const modeConfig = MODE_CONFIG[mode];
+  const listEndpoint = modeConfig.listEndpoint;
   const items = activeList?.items ?? EMPTY_ITEMS;
   const itemGroups = useMemo(() => groupShoppingItemsByAisle(items), [items]);
   const editItem = items.find((item) => item.id === editItemId) ?? null;
@@ -197,21 +251,15 @@ function ShoppingListView({
       return { found: true, list: result.list ?? null };
     }
 
-    if (isCompletedMode && "completedList" in result) {
-      return { found: true, list: result.completedList ?? null };
-    }
-
-    if (!isCompletedMode && "activeList" in result) {
-      return { found: true, list: result.activeList ?? null };
+    if (modeConfig.responseKey in result) {
+      return { found: true, list: result[modeConfig.responseKey] ?? null };
     }
 
     return { found: false, list: null };
   }
 
   function itemEndpoint(itemId: string) {
-    const view = isCompletedMode ? "?view=completed" : "";
-
-    return `/api/shopping-list/items/${itemId}${view}`;
+    return `/api/shopping-list/items/${itemId}${modeConfig.viewParam}`;
   }
 
   async function applyListResponse(
@@ -235,9 +283,9 @@ function ShoppingListView({
     return true;
   }
 
-  async function applyCheckedListResponse(
+  async function applyRemovalListResponse(
     response: Response,
-    completedCheckItemId: string,
+    completedItemId: string,
   ) {
     const result = (await response.json()) as ShoppingListResponse;
     const listResult = getListFromResponse(result);
@@ -252,9 +300,9 @@ function ShoppingListView({
     setActiveList(
       listResult.list
         ? mergeVisibleListSnapshotAfterCheck({
-            completedCheckItemId,
+            completedCheckItemId: completedItemId,
             nextList: listResult.list,
-            pendingCheckItemIds: pendingCheckItemIdsRef.current,
+            pendingCheckItemIds: pendingRemovalItemIdsRef.current,
           })
         : null,
     );
@@ -327,13 +375,25 @@ function ShoppingListView({
     }
   }
 
-  async function setChecked(itemId: string, isChecked: boolean) {
+  async function mutateItemRemoval({
+    itemId,
+    body,
+    shouldRemoveFromVisibleList,
+    updateVisibleItem,
+    errorMessage,
+  }: {
+    itemId: string;
+    body: Record<string, boolean>;
+    shouldRemoveFromVisibleList: boolean;
+    updateVisibleItem: (
+      item: ActiveShoppingItemPayload,
+    ) => ActiveShoppingItemPayload;
+    errorMessage: string;
+  }) {
     const previousItemIndex =
       activeList?.items.findIndex((item) => item.id === itemId) ?? -1;
     const previousItem =
       previousItemIndex >= 0 ? activeList?.items[previousItemIndex] : undefined;
-    const shouldRemoveFromVisibleList =
-      (isCompletedMode && !isChecked) || (!isCompletedMode && isChecked);
 
     setMessage(null);
     setActiveList((current) =>
@@ -343,37 +403,59 @@ function ShoppingListView({
           : {
               ...current,
               items: current.items.map((item) =>
-                item.id === itemId
-                  ? {
-                      ...item,
-                      isChecked,
-                      checkedAt: isChecked ? new Date().toISOString() : null,
-                    }
-                  : item,
+                item.id === itemId ? updateVisibleItem(item) : item,
               ),
             }
         : current,
     );
-    setItemCheckPending(itemId, true);
+    setItemRemovalPending(itemId, true);
 
     try {
       const response = await fetch(itemEndpoint(itemId), {
-        body: JSON.stringify({ isChecked }),
+        body: JSON.stringify(body),
         headers: { "Content-Type": "application/json" },
         method: "PATCH",
       });
 
-      if (!(await applyCheckedListResponse(response, itemId)) && previousItem) {
+      if (!(await applyRemovalListResponse(response, itemId)) && previousItem) {
         restoreItem(previousItem, previousItemIndex);
       }
     } catch {
       if (previousItem) {
         restoreItem(previousItem, previousItemIndex);
       }
-      setMessage("The item could not be updated. Check your connection.");
+      setMessage(errorMessage);
     } finally {
-      setItemCheckPending(itemId, false);
+      setItemRemovalPending(itemId, false);
     }
+  }
+
+  function setChecked(itemId: string, isChecked: boolean) {
+    return mutateItemRemoval({
+      itemId,
+      body: { isChecked },
+      shouldRemoveFromVisibleList:
+        (isCompletedMode && !isChecked) || (!isCompletedMode && isChecked),
+      updateVisibleItem: (item) => ({
+        ...item,
+        isChecked,
+        checkedAt: isChecked ? new Date().toISOString() : null,
+      }),
+      errorMessage: "The item could not be updated. Check your connection.",
+    });
+  }
+
+  function setSnoozed(itemId: string, snoozed: boolean) {
+    return mutateItemRemoval({
+      itemId,
+      body: { snoozed },
+      shouldRemoveFromVisibleList:
+        (isSnoozedMode && !snoozed) || (!isSnoozedMode && snoozed),
+      updateVisibleItem: (item) => item,
+      errorMessage: snoozed
+        ? "The item could not be snoozed. Check your connection."
+        : "The item could not be restored. Check your connection.",
+    });
   }
 
   function restoreItem(
@@ -385,8 +467,8 @@ function ShoppingListView({
     );
   }
 
-  function setItemCheckPending(itemId: string, isPending: boolean) {
-    const next = new Set(pendingCheckItemIdsRef.current);
+  function setItemRemovalPending(itemId: string, isPending: boolean) {
+    const next = new Set(pendingRemovalItemIdsRef.current);
 
     if (isPending) {
       next.add(itemId);
@@ -394,8 +476,8 @@ function ShoppingListView({
       next.delete(itemId);
     }
 
-    pendingCheckItemIdsRef.current = next;
-    setPendingCheckItemIds(next);
+    pendingRemovalItemIdsRef.current = next;
+    setPendingRemovalItemIds(next);
   }
 
   function openEdit(item: ActiveShoppingItemPayload) {
@@ -648,6 +730,7 @@ function ShoppingListView({
           editMessage={editMessage}
           editText={editText}
           item={item}
+          mode={mode}
           onCheckedChange={(isChecked) => setChecked(item.id, isChecked)}
           onCorrectionFormChange={updateCorrectionForm}
           onDelete={() => deleteItem(item)}
@@ -656,7 +739,8 @@ function ShoppingListView({
           onEditSubmit={saveEdit}
           onEditTextChange={setEditText}
           onRetryCorrectionOptions={loadCorrectionOptions}
-          pending={pendingCheckItemIds.has(item.id)}
+          onSnoozeChange={(snoozed) => setSnoozed(item.id, snoozed)}
+          pending={pendingRemovalItemIds.has(item.id)}
           pendingCorrection={pendingCorrectionItemId === item.id}
           pendingDelete={pendingDeleteItemIds.has(item.id)}
           pendingEdit={pendingEditItemId === item.id}
@@ -669,7 +753,7 @@ function ShoppingListView({
 
   return (
     <section className="pt-5 pb-12 sm:pt-7">
-      {isCompletedMode ? (
+      {!isActiveMode ? (
         <div className="flex flex-wrap items-center justify-between gap-2">
           <Link
             className="inline-flex min-h-11 items-center gap-2 border px-4 text-sm font-medium text-zinc-800 hover:border-zinc-950"
@@ -679,7 +763,7 @@ function ShoppingListView({
             List
           </Link>
           <button
-            aria-label="Refresh completed items"
+            aria-label={modeConfig.refreshLabel}
             className="inline-flex size-11 shrink-0 items-center justify-center border text-zinc-700 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
             disabled={pendingAction !== null}
             onClick={refreshList}
@@ -723,7 +807,7 @@ function ShoppingListView({
               Import
             </button>
             <button
-              aria-label="Refresh shopping list"
+              aria-label={modeConfig.refreshLabel}
               className="inline-flex size-11 shrink-0 items-center justify-center border text-zinc-700 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={pendingAction !== null}
               onClick={refreshList}
@@ -747,7 +831,7 @@ function ShoppingListView({
         </p>
       ) : null}
 
-      {!isCompletedMode && importExpanded ? (
+      {isActiveMode && importExpanded ? (
         <form className="mt-5 border-y py-4" onSubmit={importItems}>
           <label className="block text-sm font-medium text-zinc-800">
             Paste list
@@ -790,9 +874,9 @@ function ShoppingListView({
       <div className="mt-8 space-y-7">
         {items.length === 0 ? (
           <p className="border-y py-6 text-sm text-zinc-600">
-            {isCompletedMode ? "No completed items." : "No items yet."}
+            {modeConfig.emptyText}
           </p>
-        ) : isCompletedMode ? (
+        ) : !isActiveMode ? (
           <div>{items.map(renderShoppingItemRow)}</div>
         ) : (
           itemGroups.map((group) => (
@@ -812,8 +896,16 @@ function ShoppingListView({
         </p>
       ) : null}
 
-      {!isCompletedMode ? (
-        <div className="mt-8 border-t pt-4">
+      {isActiveMode ? (
+        <div className="mt-8 flex flex-wrap gap-2 border-t pt-4">
+          <Link
+            className="inline-flex min-h-11 items-center gap-2 border px-4 text-sm font-medium text-zinc-800 hover:border-zinc-950"
+            href="/snoozed"
+          >
+            <Clock aria-hidden="true" className="size-4" />
+            Snoozed
+            <ArrowRight aria-hidden="true" className="size-4" />
+          </Link>
           <Link
             className="inline-flex min-h-11 items-center gap-2 border px-4 text-sm font-medium text-zinc-800 hover:border-zinc-950"
             href="/completed"
@@ -840,6 +932,7 @@ function ShoppingItemRow({
   editMessage,
   editText,
   item,
+  mode,
   onCheckedChange,
   onCorrectionFormChange,
   onDelete,
@@ -848,6 +941,7 @@ function ShoppingItemRow({
   onEditSubmit,
   onEditTextChange,
   onRetryCorrectionOptions,
+  onSnoozeChange,
   pending,
   pendingCorrection,
   pendingDelete,
@@ -866,6 +960,7 @@ function ShoppingItemRow({
   editMessage: string | null;
   editText: string;
   item: ActiveShoppingItemPayload;
+  mode: ShoppingListMode;
   onCheckedChange: (isChecked: boolean) => void;
   onCorrectionFormChange: (patch: Partial<ProductCorrectionFormState>) => void;
   onDelete: () => void;
@@ -874,6 +969,7 @@ function ShoppingItemRow({
   onEditSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
   onEditTextChange: (text: string) => void;
   onRetryCorrectionOptions: () => void;
+  onSnoozeChange: (snoozed: boolean) => void;
   pending: boolean;
   pendingCorrection: boolean;
   pendingDelete: boolean;
@@ -884,24 +980,43 @@ function ShoppingItemRow({
   const needsAttention = item.resolutionState !== "route-resolved";
   const editFormId = `edit-${item.id}`;
   const editPending = pendingEdit || pendingCorrection;
+  const isActiveRow = mode === "active";
+  const isSnoozedRow = mode === "snoozed";
+  const longPressHandlers = useLongPress(
+    () => onSnoozeChange(true),
+    isActiveRow && !editExpanded && !pending && !pendingEdit && !pendingDelete,
+  );
 
   return (
     <div className="flex min-h-16 items-center gap-3 py-3">
-      <button
-        aria-label={
-          item.isChecked ? "Mark item unchecked" : "Mark item checked"
-        }
-        className={`inline-flex size-8 shrink-0 items-center justify-center rounded-full border transition ${
-          item.isChecked
-            ? "border-zinc-950 bg-zinc-950 text-white"
-            : "border-zinc-400 bg-transparent text-transparent hover:border-zinc-950"
-        }`}
-        disabled={pending}
-        onClick={() => onCheckedChange(!item.isChecked)}
-        type="button"
-      >
-        <Check aria-hidden="true" className="size-4" />
-      </button>
+      {isSnoozedRow ? (
+        <button
+          aria-label="Restore item to list"
+          className="inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-zinc-400 text-zinc-600 transition hover:border-zinc-950 hover:text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={pending}
+          onClick={() => onSnoozeChange(false)}
+          title="Restore to list"
+          type="button"
+        >
+          <Clock aria-hidden="true" className="size-4" />
+        </button>
+      ) : (
+        <button
+          aria-label={
+            item.isChecked ? "Mark item unchecked" : "Mark item checked"
+          }
+          className={`inline-flex size-8 shrink-0 items-center justify-center rounded-full border transition ${
+            item.isChecked
+              ? "border-zinc-950 bg-zinc-950 text-white"
+              : "border-zinc-400 bg-transparent text-transparent hover:border-zinc-950"
+          }`}
+          disabled={pending}
+          onClick={() => onCheckedChange(!item.isChecked)}
+          type="button"
+        >
+          <Check aria-hidden="true" className="size-4" />
+        </button>
+      )}
 
       {editExpanded ? (
         <>
@@ -975,7 +1090,10 @@ function ShoppingItemRow({
         </>
       ) : (
         <>
-          <div className="min-w-0 flex-1">
+          <div
+            className={`min-w-0 flex-1 ${isActiveRow ? "touch-manipulation select-none" : ""}`}
+            {...longPressHandlers}
+          >
             <p
               className={`text-base leading-6 break-words ${
                 item.isChecked ? "text-zinc-400 line-through" : "text-zinc-950"
@@ -996,12 +1114,27 @@ function ShoppingItemRow({
               {showCompletedAt && item.checkedAt ? (
                 <span>{formatCompletedAt(item.checkedAt)}</span>
               ) : null}
+              {isSnoozedRow && item.snoozedUntil ? (
+                <span>{formatSnoozedUntil(item.snoozedUntil)}</span>
+              ) : null}
               {item.syncState !== "synced" ? (
                 <span>{item.syncState}</span>
               ) : null}
             </p>
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-2">
+            {isActiveRow ? (
+              <button
+                aria-label="Snooze item"
+                className="inline-flex size-10 items-center justify-center border text-zinc-700 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={pending || pendingEdit || pendingDelete}
+                onClick={() => onSnoozeChange(true)}
+                title="Snooze"
+                type="button"
+              >
+                <Clock aria-hidden="true" className="size-4" />
+              </button>
+            ) : null}
             <button
               aria-controls={editFormId}
               aria-expanded={editExpanded}
@@ -1214,6 +1347,83 @@ function formatCompletedAt(checkedAt: string) {
   }
 
   return `Completed ${completedDateFormatter.format(completedAt)}`;
+}
+
+function formatSnoozedUntil(snoozedUntil: string) {
+  const target = new Date(snoozedUntil);
+
+  if (Number.isNaN(target.getTime())) {
+    return "Snoozed";
+  }
+
+  const minutes = Math.round((target.getTime() - Date.now()) / 60_000);
+
+  if (minutes <= 0) {
+    return "Resurfacing now";
+  }
+
+  if (minutes === 1) {
+    return "Resurfaces in 1 min";
+  }
+
+  return `Resurfaces in ${minutes} min`;
+}
+
+function useLongPress(onLongPress: () => void, enabled: boolean) {
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startRef = useRef<{ x: number; y: number } | null>(null);
+  const firedRef = useRef(false);
+
+  function cancel() {
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+
+    startRef.current = null;
+  }
+
+  return {
+    onPointerDown(event: React.PointerEvent) {
+      if (!enabled) {
+        return;
+      }
+
+      if (event.pointerType === "mouse" && event.button !== 0) {
+        return;
+      }
+
+      cancel();
+      firedRef.current = false;
+      startRef.current = { x: event.clientX, y: event.clientY };
+      timerRef.current = setTimeout(() => {
+        timerRef.current = null;
+        startRef.current = null;
+        firedRef.current = true;
+        onLongPress();
+      }, SNOOZE_LONG_PRESS_MS);
+    },
+    onPointerMove(event: React.PointerEvent) {
+      if (!startRef.current) {
+        return;
+      }
+
+      const deltaX = event.clientX - startRef.current.x;
+      const deltaY = event.clientY - startRef.current.y;
+
+      if (Math.hypot(deltaX, deltaY) > 10) {
+        cancel();
+      }
+    },
+    onPointerUp: cancel,
+    onPointerCancel: cancel,
+    onPointerLeave: cancel,
+    onContextMenu(event: React.MouseEvent) {
+      if (firedRef.current) {
+        event.preventDefault();
+      }
+    },
+  };
 }
 
 type ShoppingItemGroup = {

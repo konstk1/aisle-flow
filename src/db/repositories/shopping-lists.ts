@@ -1,4 +1,17 @@
-import { and, asc, desc, eq, inArray, or, sql, type SQL } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 
 import type { Database } from "../create-client";
 import {
@@ -68,6 +81,14 @@ export interface ShoppingItemCheckStateInput {
   shoppingListId: string;
   itemId: string;
   isChecked: boolean;
+  now?: Date;
+}
+
+export interface ShoppingItemSnoozeStateInput {
+  storeId: string;
+  shoppingListId: string;
+  itemId: string;
+  snoozedUntil: Date | null;
   now?: Date;
 }
 
@@ -142,6 +163,7 @@ export function buildRouteOrderedShoppingItemsQuery(
   db: Database,
   storeId: string,
   shoppingListId: string,
+  now: Date,
 ) {
   return buildShoppingItemRouteRowsQuery(db)
     .where(
@@ -149,6 +171,10 @@ export function buildRouteOrderedShoppingItemsQuery(
         eq(shoppingItems.shoppingListId, shoppingListId),
         eq(shoppingItems.storeId, storeId),
         eq(shoppingItems.isChecked, false),
+        or(
+          isNull(shoppingItems.snoozedUntil),
+          lte(shoppingItems.snoozedUntil, now),
+        ),
       ),
     )
     .orderBy(
@@ -181,6 +207,29 @@ export function buildCompletedShoppingItemsQuery(
       desc(shoppingItems.checkedAt),
       desc(shoppingItems.updatedAt),
       desc(shoppingItems.createdAt),
+    );
+}
+
+export function buildSnoozedShoppingItemsQuery(
+  db: Database,
+  storeId: string,
+  shoppingListId: string,
+  now: Date,
+) {
+  return buildShoppingItemRouteRowsQuery(db)
+    .where(
+      and(
+        eq(shoppingItems.shoppingListId, shoppingListId),
+        eq(shoppingItems.storeId, storeId),
+        eq(shoppingItems.isChecked, false),
+        isNotNull(shoppingItems.snoozedUntil),
+        gt(shoppingItems.snoozedUntil, now),
+      ),
+    )
+    .orderBy(
+      asc(shoppingItems.snoozedUntil),
+      asc(shoppingItems.orderKey),
+      asc(shoppingItems.createdAt),
     );
 }
 
@@ -228,6 +277,7 @@ export function buildShoppingItemCheckStateQuery(
       checkedAt: input.isChecked
         ? sql`coalesce(${shoppingItems.checkedAt}, ${now})`
         : null,
+      snoozedUntil: sql`case when ${shoppingItems.isChecked} = ${input.isChecked} then ${shoppingItems.snoozedUntil} else null end`,
       updatedAt: sql`case when ${shoppingItems.isChecked} = ${input.isChecked} then ${shoppingItems.updatedAt} else ${now} end`,
       version: sql`case when ${shoppingItems.isChecked} = ${input.isChecked} then ${shoppingItems.version} else ${shoppingItems.version} + 1 end`,
     })
@@ -236,6 +286,31 @@ export function buildShoppingItemCheckStateQuery(
         eq(shoppingItems.storeId, input.storeId),
         eq(shoppingItems.shoppingListId, input.shoppingListId),
         eq(shoppingItems.id, input.itemId),
+      ),
+    )
+    .returning();
+}
+
+export function buildShoppingItemSnoozeStateQuery(
+  db: Database,
+  input: ShoppingItemSnoozeStateInput,
+) {
+  const now = input.now ?? new Date();
+  const snoozedUntil = input.snoozedUntil;
+
+  return db
+    .update(shoppingItems)
+    .set({
+      snoozedUntil,
+      updatedAt: now,
+      version: sql`${shoppingItems.version} + 1`,
+    })
+    .where(
+      and(
+        eq(shoppingItems.storeId, input.storeId),
+        eq(shoppingItems.shoppingListId, input.shoppingListId),
+        eq(shoppingItems.id, input.itemId),
+        eq(shoppingItems.isChecked, false),
       ),
     )
     .returning();
