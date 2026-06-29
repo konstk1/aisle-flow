@@ -16,12 +16,19 @@ export function zodErrorToFieldErrors(error: ZodError) {
   return fieldErrors;
 }
 
-export function validationErrorResponse(error: ZodError, message: string) {
+export function fieldErrorsResponse(
+  fieldErrors: Record<string, string[]>,
+  message: string,
+) {
   return Response.json(
     {
       error: message,
-      fieldErrors: zodErrorToFieldErrors(error),
+      fieldErrors,
     },
     { status: 422 },
   );
+}
+
+export function validationErrorResponse(error: ZodError, message: string) {
+  return fieldErrorsResponse(zodErrorToFieldErrors(error), message);
 }
