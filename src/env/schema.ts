@@ -4,16 +4,22 @@ const databaseUrlSchema = z.string().url();
 
 export const serverEnvSchema = z.object({
   DATABASE_URL: databaseUrlSchema,
-  APP_PASSWORD_HASH: z.string().min(20),
-  SESSION_SECRET: z.string().min(32),
+  BETTER_AUTH_SECRET: z.string().min(32),
+  BETTER_AUTH_URL: z.string().url(),
+  GOOGLE_CLIENT_ID: z.string().min(1),
+  GOOGLE_CLIENT_SECRET: z.string().min(1),
+  ALLOWED_EMAILS: z.string().min(1),
   GITHUB_ISSUES_TOKEN: z.string().min(20).optional(),
 });
 
 export type ServerEnv = z.infer<typeof serverEnvSchema>;
 
 export const authEnvSchema = serverEnvSchema.pick({
-  APP_PASSWORD_HASH: true,
-  SESSION_SECRET: true,
+  BETTER_AUTH_SECRET: true,
+  BETTER_AUTH_URL: true,
+  GOOGLE_CLIENT_ID: true,
+  GOOGLE_CLIENT_SECRET: true,
+  ALLOWED_EMAILS: true,
 });
 
 export type AuthEnv = z.infer<typeof authEnvSchema>;

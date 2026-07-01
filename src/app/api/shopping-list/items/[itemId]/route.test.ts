@@ -2,19 +2,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   deleteActiveShoppingItem,
-  hasValidSession,
+  requireSessionUserId,
   setActiveShoppingItemChecked,
   snoozeActiveShoppingItem,
   updateActiveShoppingItemText,
 } = vi.hoisted(() => ({
   deleteActiveShoppingItem: vi.fn(),
-  hasValidSession: vi.fn(),
+  requireSessionUserId: vi.fn(),
   setActiveShoppingItemChecked: vi.fn(),
   snoozeActiveShoppingItem: vi.fn(),
   updateActiveShoppingItemText: vi.fn(),
 }));
 
-vi.mock("@/auth/access", () => ({ hasValidSession }));
+vi.mock("@/auth/access", () => ({ requireSessionUserId }));
 vi.mock("@/services/active-shopping-list", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@/services/active-shopping-list")>();
@@ -31,6 +31,7 @@ vi.mock("@/services/active-shopping-list", async (importOriginal) => {
 import { DELETE, PATCH } from "./route";
 
 const itemId = "33333333-3333-4333-8333-333333333333";
+const userId = "user-a";
 
 function checkRequest(body: unknown) {
   return new Request(
@@ -92,8 +93,9 @@ function params(id = itemId) {
 
 describe("shopping list item route", () => {
   beforeEach(() => {
-    hasValidSession.mockResolvedValue(false);
     deleteActiveShoppingItem.mockReset();
+    requireSessionUserId.mockReset();
+    requireSessionUserId.mockResolvedValue(null);
     setActiveShoppingItemChecked.mockReset();
     snoozeActiveShoppingItem.mockReset();
     updateActiveShoppingItemText.mockReset();
@@ -117,7 +119,7 @@ describe("shopping list item route", () => {
   });
 
   it("returns validation errors for invalid item ids", async () => {
-    hasValidSession.mockResolvedValue(true);
+    requireSessionUserId.mockResolvedValue(userId);
 
     const response = await PATCH(
       checkRequest({ isChecked: true }),
@@ -132,7 +134,7 @@ describe("shopping list item route", () => {
   });
 
   it("returns validation errors for invalid checked state", async () => {
-    hasValidSession.mockResolvedValue(true);
+    requireSessionUserId.mockResolvedValue(userId);
 
     const response = await PATCH(checkRequest({ isChecked: "yes" }), params());
 
@@ -141,7 +143,7 @@ describe("shopping list item route", () => {
   });
 
   it("returns validation errors for ambiguous item updates", async () => {
-    hasValidSession.mockResolvedValue(true);
+    requireSessionUserId.mockResolvedValue(userId);
 
     const response = await PATCH(
       checkRequest({ isChecked: true, text: "Rice" }),
@@ -158,7 +160,7 @@ describe("shopping list item route", () => {
   });
 
   it("updates checked state for authenticated callers", async () => {
-    hasValidSession.mockResolvedValue(true);
+    requireSessionUserId.mockResolvedValue(userId);
     setActiveShoppingItemChecked.mockResolvedValue({
       store: { id: "store-1", name: "Example Market" },
       list: { id: "list-1", source: "manual", syncState: "synced" },
@@ -169,6 +171,7 @@ describe("shopping list item route", () => {
 
     expect(response.status).toBe(200);
     expect(setActiveShoppingItemChecked).toHaveBeenCalledWith({
+      userId,
       itemId,
       isChecked: true,
       responseView: "active",
@@ -176,7 +179,7 @@ describe("shopping list item route", () => {
   });
 
   it("returns the list for completed-screen check updates", async () => {
-    hasValidSession.mockResolvedValue(true);
+    requireSessionUserId.mockResolvedValue(userId);
     setActiveShoppingItemChecked.mockResolvedValue({
       store: { id: "store-1", name: "Example Market" },
       list: { id: "list-1", source: "manual", syncState: "synced" },
@@ -190,6 +193,7 @@ describe("shopping list item route", () => {
 
     expect(response.status).toBe(200);
     expect(setActiveShoppingItemChecked).toHaveBeenCalledWith({
+      userId,
       itemId,
       isChecked: false,
       responseView: "completed",
@@ -204,7 +208,7 @@ describe("shopping list item route", () => {
   });
 
   it("snoozes an item for authenticated callers", async () => {
-    hasValidSession.mockResolvedValue(true);
+    requireSessionUserId.mockResolvedValue(userId);
     snoozeActiveShoppingItem.mockResolvedValue({
       store: { id: "store-1", name: "Example Market" },
       list: { id: "list-1", source: "manual", syncState: "synced" },
@@ -218,6 +222,7 @@ describe("shopping list item route", () => {
 
     expect(response.status).toBe(200);
     expect(snoozeActiveShoppingItem).toHaveBeenCalledWith({
+      userId,
       itemId,
       responseView: "snoozed",
       snoozed: true,
@@ -226,7 +231,7 @@ describe("shopping list item route", () => {
   });
 
   it("updates item text for authenticated callers", async () => {
-    hasValidSession.mockResolvedValue(true);
+    requireSessionUserId.mockResolvedValue(userId);
     updateActiveShoppingItemText.mockResolvedValue({
       store: { id: "store-1", name: "Example Market" },
       list: { id: "list-1", source: "manual", syncState: "synced" },
@@ -237,6 +242,7 @@ describe("shopping list item route", () => {
 
     expect(response.status).toBe(200);
     expect(updateActiveShoppingItemText).toHaveBeenCalledWith({
+      userId,
       itemId,
       responseView: "active",
       text: "Wild Rice",
@@ -245,7 +251,7 @@ describe("shopping list item route", () => {
   });
 
   it("returns the list for completed-screen text updates", async () => {
-    hasValidSession.mockResolvedValue(true);
+    requireSessionUserId.mockResolvedValue(userId);
     updateActiveShoppingItemText.mockResolvedValue({
       store: { id: "store-1", name: "Example Market" },
       list: { id: "list-1", source: "manual", syncState: "synced" },
@@ -259,6 +265,7 @@ describe("shopping list item route", () => {
 
     expect(response.status).toBe(200);
     expect(updateActiveShoppingItemText).toHaveBeenCalledWith({
+      userId,
       itemId,
       responseView: "completed",
       text: "Wild Rice",
@@ -281,7 +288,7 @@ describe("shopping list item route", () => {
   });
 
   it("deletes an item for authenticated callers", async () => {
-    hasValidSession.mockResolvedValue(true);
+    requireSessionUserId.mockResolvedValue(userId);
     deleteActiveShoppingItem.mockResolvedValue({
       store: { id: "store-1", name: "Example Market" },
       list: { id: "list-1", source: "manual", syncState: "synced" },
@@ -292,13 +299,14 @@ describe("shopping list item route", () => {
 
     expect(response.status).toBe(200);
     expect(deleteActiveShoppingItem).toHaveBeenCalledWith({
+      userId,
       itemId,
       responseView: "active",
     });
   });
 
   it("returns the list for completed-screen deletes", async () => {
-    hasValidSession.mockResolvedValue(true);
+    requireSessionUserId.mockResolvedValue(userId);
     deleteActiveShoppingItem.mockResolvedValue({
       store: { id: "store-1", name: "Example Market" },
       list: { id: "list-1", source: "manual", syncState: "synced" },
@@ -309,6 +317,7 @@ describe("shopping list item route", () => {
 
     expect(response.status).toBe(200);
     expect(deleteActiveShoppingItem).toHaveBeenCalledWith({
+      userId,
       itemId,
       responseView: "completed",
     });

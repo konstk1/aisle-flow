@@ -1,5 +1,6 @@
 import { AppNav } from "@/components/app-nav";
 import { FeedbackButton } from "@/components/feedback-button";
+import { SignOutButton } from "@/components/sign-out-button";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
@@ -7,14 +8,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <header>
         <div className="flex items-center justify-between gap-4">
           <AppNav />
-          <form action="/api/auth/logout" method="post">
-            <button
-              className="text-sm text-zinc-500 underline-offset-4 hover:underline"
-              type="submit"
-            >
-              Sign out
-            </button>
-          </form>
+          <SignOutButton />
         </div>
       </header>
       {children}

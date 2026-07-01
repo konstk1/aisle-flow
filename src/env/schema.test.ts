@@ -4,8 +4,11 @@ import { getValidatedGitHubIssuesEnv, getValidatedServerEnv } from "./schema";
 
 const validEnvironment = {
   DATABASE_URL: "postgresql://user:password@example.com:5432/aisle_flow",
-  APP_PASSWORD_HASH: "a".repeat(20),
-  SESSION_SECRET: "b".repeat(32),
+  BETTER_AUTH_SECRET: "b".repeat(32),
+  BETTER_AUTH_URL: "https://aisle-flow.example",
+  GOOGLE_CLIENT_ID: "google-client-id",
+  GOOGLE_CLIENT_SECRET: "google-client-secret",
+  ALLOWED_EMAILS: "kon.klitenik@gmail.com,friend@example.com",
   GITHUB_ISSUES_TOKEN: "c".repeat(20),
 };
 
@@ -19,9 +22,9 @@ describe("getValidatedServerEnv", () => {
       getValidatedServerEnv({
         ...validEnvironment,
         DATABASE_URL: "not-a-url",
-        SESSION_SECRET: "too-short",
+        BETTER_AUTH_SECRET: "too-short",
       }),
-    ).toThrow(/DATABASE_URL, SESSION_SECRET/);
+    ).toThrow(/DATABASE_URL, BETTER_AUTH_SECRET/);
   });
 
   it("does not require a GitHub token for routes that do not report feedback", () => {

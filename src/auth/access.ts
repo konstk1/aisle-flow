@@ -1,18 +1,38 @@
 import "server-only";
 
-import { cookies } from "next/headers";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { SESSION_COOKIE_NAME, verifySession } from "./session";
+import { auth, emailIsAllowed } from "./better-auth";
+
+export async function getServerSession() {
+  const session = await auth.api.getSession({
+    headers: await headers(),
+  });
+
+  if (!emailIsAllowed(session?.user.email)) {
+    return null;
+  }
+
+  return session;
+}
+
+export async function requireSessionUserId() {
+  const session = await getServerSession();
+
+  return session?.user.id ?? null;
+}
 
 export async function hasValidSession() {
-  const session = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
-
-  return verifySession(session);
+  return (await requireSessionUserId()) !== null;
 }
 
 export async function requirePageSession() {
-  if (!(await hasValidSession())) {
+  const userId = await requireSessionUserId();
+
+  if (!userId) {
     redirect("/login");
   }
+
+  return userId;
 }

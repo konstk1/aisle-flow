@@ -1,13 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { applyProductCorrection, getProductCorrectionOptions, hasValidSession } =
-  vi.hoisted(() => ({
-    applyProductCorrection: vi.fn(),
-    getProductCorrectionOptions: vi.fn(),
-    hasValidSession: vi.fn(),
-  }));
+const {
+  applyProductCorrection,
+  getProductCorrectionOptions,
+  requireSessionUserId,
+} = vi.hoisted(() => ({
+  applyProductCorrection: vi.fn(),
+  getProductCorrectionOptions: vi.fn(),
+  requireSessionUserId: vi.fn(),
+}));
 
-vi.mock("@/auth/access", () => ({ hasValidSession }));
+vi.mock("@/auth/access", () => ({ requireSessionUserId }));
 vi.mock("@/services/product-corrections", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@/services/product-corrections")>();
@@ -25,6 +28,7 @@ import { GET, POST } from "./route";
 
 const productConceptId = "22222222-2222-4222-8222-222222222222";
 const aisleSectionId = "33333333-3333-4333-8333-333333333333";
+const userId = "user-a";
 
 function correctionRequest(body: unknown) {
   return new Request("https://aisle-flow.example/api/product-corrections", {
@@ -37,7 +41,8 @@ describe("product correction route", () => {
   beforeEach(() => {
     applyProductCorrection.mockReset();
     getProductCorrectionOptions.mockReset();
-    hasValidSession.mockResolvedValue(false);
+    requireSessionUserId.mockReset();
+    requireSessionUserId.mockResolvedValue(null);
   });
 
   it("rejects unauthenticated option reads", async () => {
@@ -62,7 +67,7 @@ describe("product correction route", () => {
   });
 
   it("returns correction option payloads for authenticated callers", async () => {
-    hasValidSession.mockResolvedValue(true);
+    requireSessionUserId.mockResolvedValue(userId);
     getProductCorrectionOptions.mockResolvedValue({
       store: { id: "store-1", name: "Example Market" },
       productConcepts: [],
@@ -82,7 +87,7 @@ describe("product correction route", () => {
   });
 
   it("returns field errors for invalid correction input", async () => {
-    hasValidSession.mockResolvedValue(true);
+    requireSessionUserId.mockResolvedValue(userId);
 
     const response = await POST(
       correctionRequest({ rawText: "", aisleSectionId: "not-a-uuid" }),
@@ -103,7 +108,7 @@ describe("product correction route", () => {
   });
 
   it("saves valid corrections and returns the typed payload", async () => {
-    hasValidSession.mockResolvedValue(true);
+    requireSessionUserId.mockResolvedValue(userId);
     applyProductCorrection.mockResolvedValue({
       normalizedText: "wild rice",
       productConcept: {
@@ -147,7 +152,7 @@ describe("product correction route", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(applyProductCorrection).toHaveBeenCalledWith({
+    expect(applyProductCorrection).toHaveBeenCalledWith(userId, {
       rawText: "Wild Rice",
       productConceptId,
       aisleSectionId,
@@ -165,7 +170,7 @@ describe("product correction route", () => {
   });
 
   it("surfaces service-level correction field errors", async () => {
-    hasValidSession.mockResolvedValue(true);
+    requireSessionUserId.mockResolvedValue(userId);
     applyProductCorrection.mockRejectedValue(
       new ProductCorrectionRequestError(
         "Choose a section in the active store.",

@@ -1,13 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { addActiveShoppingListItem, getActiveShoppingList, hasValidSession } =
-  vi.hoisted(() => ({
-    addActiveShoppingListItem: vi.fn(),
-    getActiveShoppingList: vi.fn(),
-    hasValidSession: vi.fn(),
-  }));
+const {
+  addActiveShoppingListItem,
+  getActiveShoppingList,
+  requireSessionUserId,
+} = vi.hoisted(() => ({
+  addActiveShoppingListItem: vi.fn(),
+  getActiveShoppingList: vi.fn(),
+  requireSessionUserId: vi.fn(),
+}));
 
-vi.mock("@/auth/access", () => ({ hasValidSession }));
+vi.mock("@/auth/access", () => ({ requireSessionUserId }));
 vi.mock("@/services/active-shopping-list", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@/services/active-shopping-list")>();
@@ -24,6 +27,7 @@ import { ActiveShoppingListRequestError } from "@/services/active-shopping-list"
 import { GET, POST } from "./route";
 
 const mutationId = "44444444-4444-4444-8444-444444444444";
+const userId = "user-a";
 
 function itemRequest(body: unknown) {
   return new Request("https://aisle-flow.example/api/shopping-list", {
@@ -36,7 +40,8 @@ describe("shopping list route", () => {
   beforeEach(() => {
     addActiveShoppingListItem.mockReset();
     getActiveShoppingList.mockReset();
-    hasValidSession.mockResolvedValue(false);
+    requireSessionUserId.mockReset();
+    requireSessionUserId.mockResolvedValue(null);
   });
 
   it("rejects unauthenticated reads", async () => {
@@ -61,7 +66,7 @@ describe("shopping list route", () => {
   });
 
   it("returns the active list for authenticated callers", async () => {
-    hasValidSession.mockResolvedValue(true);
+    requireSessionUserId.mockResolvedValue(userId);
     getActiveShoppingList.mockResolvedValue({
       store: { id: "store-1", name: "Example Market" },
       list: { id: "list-1", source: "manual", syncState: "synced" },
@@ -71,6 +76,7 @@ describe("shopping list route", () => {
     const response = await GET();
 
     expect(response.status).toBe(200);
+    expect(getActiveShoppingList).toHaveBeenCalledWith(userId);
     await expect(response.json()).resolves.toEqual({
       activeList: {
         store: { id: "store-1", name: "Example Market" },
@@ -81,7 +87,7 @@ describe("shopping list route", () => {
   });
 
   it("returns field errors for invalid manual additions", async () => {
-    hasValidSession.mockResolvedValue(true);
+    requireSessionUserId.mockResolvedValue(userId);
 
     const response = await POST(
       itemRequest({ text: "   ", mutationId: "not-a-uuid" }),
@@ -100,7 +106,7 @@ describe("shopping list route", () => {
   });
 
   it("adds a valid manual item", async () => {
-    hasValidSession.mockResolvedValue(true);
+    requireSessionUserId.mockResolvedValue(userId);
     addActiveShoppingListItem.mockResolvedValue({
       store: { id: "store-1", name: "Example Market" },
       list: { id: "list-1", source: "manual", syncState: "synced" },
@@ -110,14 +116,14 @@ describe("shopping list route", () => {
     const response = await POST(itemRequest({ text: "  Rice  ", mutationId }));
 
     expect(response.status).toBe(200);
-    expect(addActiveShoppingListItem).toHaveBeenCalledWith({
+    expect(addActiveShoppingListItem).toHaveBeenCalledWith(userId, {
       text: "Rice",
       mutationId,
     });
   });
 
   it("surfaces service-level list errors", async () => {
-    hasValidSession.mockResolvedValue(true);
+    requireSessionUserId.mockResolvedValue(userId);
     getActiveShoppingList.mockRejectedValue(
       new ActiveShoppingListRequestError(
         "Create and save a store layout before adding shopping items.",

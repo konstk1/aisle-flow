@@ -1,5 +1,6 @@
 import type { ActiveShoppingListPayload } from "@/domain/active-shopping-list";
 import type { StoreLayout } from "@/domain/store-layout";
+import { requirePageSession } from "@/auth/access";
 import {
   ActiveShoppingListRequestError,
   getActiveShoppingListForLayout,
@@ -43,10 +44,14 @@ async function loadShoppingItemsPageData<Key extends ShoppingListPageDataKey>({
   pageName,
   resultKey,
 }: {
-  loadList: (layout: StoreLayout) => Promise<ActiveShoppingListPayload | null>;
+  loadList: (
+    layout: StoreLayout,
+    userId: string,
+  ) => Promise<ActiveShoppingListPayload | null>;
   pageName: string;
   resultKey: Key;
 }) {
+  const userId = await requirePageSession();
   const layoutData = await loadStoreLayoutPageData(pageName);
 
   if (layoutData.dataError || !layoutData.layout) {
@@ -58,7 +63,7 @@ async function loadShoppingItemsPageData<Key extends ShoppingListPageDataKey>({
 
   try {
     const list = await withDataTimeout(
-      loadList(layoutData.layout),
+      loadList(layoutData.layout, userId),
       PAGE_DATA_TIMEOUT_MS,
     );
 

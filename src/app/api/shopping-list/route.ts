@@ -1,4 +1,4 @@
-import { hasValidSession } from "@/auth/access";
+import { requireSessionUserId } from "@/auth/access";
 import {
   activeShoppingItemCreateRequestSchema,
   addActiveShoppingListItem,
@@ -12,19 +12,23 @@ import {
 import { activeShoppingListErrorResponse } from "./_lib/responses";
 
 export async function GET() {
-  if (!(await hasValidSession())) {
+  const userId = await requireSessionUserId();
+
+  if (!userId) {
     return unauthorizedResponse();
   }
 
   try {
-    return Response.json({ activeList: await getActiveShoppingList() });
+    return Response.json({ activeList: await getActiveShoppingList(userId) });
   } catch (error) {
     return activeShoppingListErrorResponse(error);
   }
 }
 
 export async function POST(request: Request) {
-  if (!(await hasValidSession())) {
+  const userId = await requireSessionUserId();
+
+  if (!userId) {
     return unauthorizedResponse();
   }
 
@@ -50,7 +54,7 @@ export async function POST(request: Request) {
 
   try {
     return Response.json({
-      activeList: await addActiveShoppingListItem(parsed.data),
+      activeList: await addActiveShoppingListItem(userId, parsed.data),
     });
   } catch (error) {
     return activeShoppingListErrorResponse(error);

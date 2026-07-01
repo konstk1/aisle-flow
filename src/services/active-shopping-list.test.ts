@@ -62,6 +62,7 @@ import {
 
 const storeId = "11111111-1111-4111-8111-111111111111";
 const listId = "22222222-2222-4222-8222-222222222222";
+const userId = "user-a";
 const itemId = "33333333-3333-4333-8333-333333333333";
 const mutationId = "44444444-4444-4444-8444-444444444444";
 const now = new Date("2026-01-01T00:00:00Z");
@@ -74,6 +75,7 @@ const layout = {
 
 const list = {
   id: listId,
+  userId,
   storeId,
   sourceConnectionId: null,
   externalId: null,
@@ -149,10 +151,10 @@ describe("getActiveShoppingList", () => {
   it("requires a saved store layout before creating list data", async () => {
     mocks.getStoreLayout.mockResolvedValue(null);
 
-    await expect(getActiveShoppingList()).rejects.toBeInstanceOf(
+    await expect(getActiveShoppingList(userId)).rejects.toBeInstanceOf(
       ActiveShoppingListRequestError,
     );
-    await expect(getActiveShoppingList()).rejects.toMatchObject({
+    await expect(getActiveShoppingList(userId)).rejects.toMatchObject({
       status: 409,
       fieldErrors: {
         form: ["Create and save a store layout before adding shopping items."],
@@ -230,11 +232,12 @@ describe("getActiveShoppingList", () => {
       },
     ]);
 
-    const result = await getActiveShoppingList();
+    const result = await getActiveShoppingList(userId);
 
     expect(mocks.buildActiveShoppingListCreateQuery).toHaveBeenCalledWith(
       mocks.db,
       storeId,
+      userId,
     );
     expect(result.items[0]).toMatchObject({
       id: itemId,
@@ -308,7 +311,7 @@ describe("getActiveShoppingList", () => {
       },
     ]);
 
-    const result = await getActiveShoppingList();
+    const result = await getActiveShoppingList(userId);
 
     expect(result.items[0]).toMatchObject({
       resolutionState: "route-resolved",
@@ -328,7 +331,7 @@ describe("getCompletedShoppingList", () => {
   it("does not create a shopping list when no list exists", async () => {
     mocks.buildActiveShoppingListQuery.mockResolvedValue([]);
 
-    const result = await getCompletedShoppingList();
+    const result = await getCompletedShoppingList(userId);
 
     expect(result).toBeNull();
     expect(mocks.buildActiveShoppingListCreateQuery).not.toHaveBeenCalled();
@@ -364,7 +367,7 @@ describe("getCompletedShoppingList", () => {
       },
     ]);
 
-    const result = await getCompletedShoppingList();
+    const result = await getCompletedShoppingList(userId);
 
     expect(mocks.buildCompletedShoppingItemsQuery).toHaveBeenCalledWith(
       mocks.db,
@@ -388,7 +391,7 @@ describe("getCompletedShoppingList", () => {
 
 describe("addActiveShoppingListItem", () => {
   it("resolves and persists a manual item with raw and normalized text", async () => {
-    await addActiveShoppingListItem({
+    await addActiveShoppingListItem(userId, {
       text: "Rice",
       mutationId,
     });
@@ -424,7 +427,7 @@ describe("addActiveShoppingListItem", () => {
     ]);
 
     await expect(
-      addActiveShoppingListItem({
+      addActiveShoppingListItem(userId, {
         text: "oAtLy",
         mutationId,
       }),
@@ -447,7 +450,7 @@ describe("addActiveShoppingListItem", () => {
       },
     ]);
 
-    await addActiveShoppingListItem({
+    await addActiveShoppingListItem(userId, {
       text: "Oatly",
       mutationId,
     });
@@ -465,7 +468,7 @@ describe("addActiveShoppingListItem", () => {
 
 describe("importActiveShoppingListItems", () => {
   it("persists one item per parsed line with deterministic import identifiers", async () => {
-    await importActiveShoppingListItems({
+    await importActiveShoppingListItems(userId, {
       text: "Rice\n\nBroccoli",
       mutationId,
     });
@@ -510,7 +513,7 @@ describe("importActiveShoppingListItems", () => {
     ]);
 
     await expect(
-      importActiveShoppingListItems({
+      importActiveShoppingListItems(userId, {
         text: "oAtLy\nBroccoli",
         mutationId,
       }),
@@ -527,7 +530,7 @@ describe("importActiveShoppingListItems", () => {
 
   it("rejects duplicate imported lines before writing any rows", async () => {
     await expect(
-      importActiveShoppingListItems({
+      importActiveShoppingListItems(userId, {
         text: "Oatly\noAtLy",
         mutationId,
       }),
@@ -551,7 +554,7 @@ describe("importActiveShoppingListItems", () => {
       .mockRejectedValueOnce(new Error("matching failed"));
 
     await expect(
-      importActiveShoppingListItems({
+      importActiveShoppingListItems(userId, {
         text: "Rice\nBroccoli",
         mutationId,
       }),
@@ -563,7 +566,7 @@ describe("importActiveShoppingListItems", () => {
 
   it("surfaces import parse errors before touching the database", async () => {
     await expect(
-      importActiveShoppingListItems({
+      importActiveShoppingListItems(userId, {
         text: "\n",
         mutationId,
       }),
@@ -577,7 +580,7 @@ describe("importActiveShoppingListItems", () => {
 
 describe("setActiveShoppingItemChecked", () => {
   it("updates the target item within the active list", async () => {
-    await setActiveShoppingItemChecked({ itemId, isChecked: true });
+    await setActiveShoppingItemChecked({ userId, itemId, isChecked: true });
 
     expect(mocks.buildShoppingItemCheckStateQuery).toHaveBeenCalledWith(
       mocks.db,
@@ -592,6 +595,7 @@ describe("setActiveShoppingItemChecked", () => {
 
   it("can return the completed view after a completed-screen update", async () => {
     await setActiveShoppingItemChecked({
+      userId,
       itemId,
       isChecked: false,
       responseView: "completed",
@@ -617,7 +621,7 @@ describe("setActiveShoppingItemChecked", () => {
     mocks.buildShoppingItemCheckStateQuery.mockResolvedValue([]);
 
     await expect(
-      setActiveShoppingItemChecked({ itemId, isChecked: true }),
+      setActiveShoppingItemChecked({ userId, itemId, isChecked: true }),
     ).rejects.toMatchObject({
       status: 404,
       fieldErrors: { itemId: ["Choose an item in the active list."] },
@@ -629,7 +633,7 @@ describe("snoozeActiveShoppingItem", () => {
   it("snoozes an item one hour into the future", async () => {
     const before = Date.now();
 
-    await snoozeActiveShoppingItem({ itemId, snoozed: true });
+    await snoozeActiveShoppingItem({ userId, itemId, snoozed: true });
 
     expect(mocks.buildShoppingItemSnoozeStateQuery).toHaveBeenCalledWith(
       mocks.db,
@@ -649,6 +653,7 @@ describe("snoozeActiveShoppingItem", () => {
 
   it("clears the snooze when restoring an item to the list", async () => {
     await snoozeActiveShoppingItem({
+      userId,
       itemId,
       snoozed: false,
       responseView: "snoozed",
@@ -670,7 +675,7 @@ describe("snoozeActiveShoppingItem", () => {
     mocks.buildShoppingItemSnoozeStateQuery.mockResolvedValue([]);
 
     await expect(
-      snoozeActiveShoppingItem({ itemId, snoozed: true }),
+      snoozeActiveShoppingItem({ userId, itemId, snoozed: true }),
     ).rejects.toMatchObject({
       status: 404,
       fieldErrors: { itemId: ["Choose an item in the active list."] },
@@ -682,7 +687,7 @@ describe("getSnoozedShoppingList", () => {
   it("does not create a shopping list when no list exists", async () => {
     mocks.buildActiveShoppingListQuery.mockResolvedValue([]);
 
-    const result = await getSnoozedShoppingList();
+    const result = await getSnoozedShoppingList(userId);
 
     expect(result).toBeNull();
     expect(mocks.buildActiveShoppingListCreateQuery).not.toHaveBeenCalled();
@@ -719,7 +724,7 @@ describe("getSnoozedShoppingList", () => {
       },
     ]);
 
-    const result = await getSnoozedShoppingList();
+    const result = await getSnoozedShoppingList(userId);
 
     expect(mocks.buildSnoozedShoppingItemsQuery).toHaveBeenCalledWith(
       mocks.db,
@@ -740,6 +745,7 @@ describe("getSnoozedShoppingList", () => {
 describe("updateActiveShoppingItemText", () => {
   it("re-resolves text edits and preserves active-list membership", async () => {
     await updateActiveShoppingItemText({
+      userId,
       itemId,
       text: "Rice",
     });
@@ -782,6 +788,7 @@ describe("updateActiveShoppingItemText", () => {
     ]);
 
     await updateActiveShoppingItemText({
+      userId,
       itemId,
       text: "Rice",
     });
@@ -808,6 +815,7 @@ describe("updateActiveShoppingItemText", () => {
 
     await expect(
       updateActiveShoppingItemText({
+        userId,
         itemId,
         text: "Rice",
       }),
@@ -825,6 +833,7 @@ describe("updateActiveShoppingItemText", () => {
 
     await expect(
       updateActiveShoppingItemText({
+        userId,
         itemId,
         text: "Rice",
       }),
@@ -837,7 +846,7 @@ describe("updateActiveShoppingItemText", () => {
 
 describe("deleteActiveShoppingItem", () => {
   it("deletes the target item within the active list", async () => {
-    await deleteActiveShoppingItem({ itemId });
+    await deleteActiveShoppingItem({ userId, itemId });
 
     expect(mocks.buildShoppingItemDeleteQuery).toHaveBeenCalledWith(mocks.db, {
       storeId,
@@ -849,7 +858,9 @@ describe("deleteActiveShoppingItem", () => {
   it("returns a not-found request error when deleting an item outside the active list", async () => {
     mocks.buildShoppingItemDeleteQuery.mockResolvedValue([]);
 
-    await expect(deleteActiveShoppingItem({ itemId })).rejects.toMatchObject({
+    await expect(
+      deleteActiveShoppingItem({ userId, itemId }),
+    ).rejects.toMatchObject({
       status: 404,
       fieldErrors: { itemId: ["Choose an item in the active list."] },
     });
