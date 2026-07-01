@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { APIError, betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
+import { oAuthProxy } from "better-auth/plugins";
 
 import { getDb } from "@/db/client";
 import * as schema from "@/db/schema";
@@ -29,18 +30,32 @@ function notAllowedError() {
   });
 }
 
+const authEnv = getAuthEnv();
+
+// On Vercel preview deployments each build serves from its own URL. Better Auth
+// must use that per-deployment URL as its base so the session cookie and the
+// redirect back from the OAuth proxy target the actual preview host. Production
+// and local development use the configured BETTER_AUTH_URL.
+function resolveBaseURL() {
+  if (process.env.VERCEL_ENV === "preview" && process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+
+  return authEnv.BETTER_AUTH_URL;
+}
+
 export const auth = betterAuth({
   appName: "Aisle Flow",
-  baseURL: getAuthEnv().BETTER_AUTH_URL,
-  secret: getAuthEnv().BETTER_AUTH_SECRET,
+  baseURL: resolveBaseURL(),
+  secret: authEnv.BETTER_AUTH_SECRET,
   database: drizzleAdapter(getDb(), {
     provider: "pg",
     schema,
   }),
   socialProviders: {
     google: {
-      clientId: getAuthEnv().GOOGLE_CLIENT_ID,
-      clientSecret: getAuthEnv().GOOGLE_CLIENT_SECRET,
+      clientId: authEnv.GOOGLE_CLIENT_ID,
+      clientSecret: authEnv.GOOGLE_CLIENT_SECRET,
     },
   },
   account: {
@@ -48,6 +63,13 @@ export const auth = betterAuth({
       trustedProviders: ["google"],
     },
   },
+  trustedOrigins: [
+    authEnv.BETTER_AUTH_URL,
+    // Vercel preview deployments, e.g.
+    // aisle-flow-git-<branch>-konsteam.vercel.app (and hash builds). Scoped to
+    // this project + team rather than all of *.vercel.app.
+    "https://aisle-flow-*-konsteam.vercel.app",
+  ],
   databaseHooks: {
     user: {
       create: {
@@ -68,5 +90,16 @@ export const auth = betterAuth({
       },
     },
   },
-  plugins: [nextCookies()],
+  plugins: [
+    oAuthProxy({
+      // Google's callback is registered only for the production URL; preview
+      // deployments proxy the OAuth handshake through it and get redirected
+      // back. productionURL equals baseURL on production and locally, so no
+      // proxying happens there. The secret must match across every deployment
+      // (BETTER_AUTH_SECRET is shared) so previews can decrypt the payload.
+      productionURL: authEnv.BETTER_AUTH_URL,
+      secret: authEnv.BETTER_AUTH_SECRET,
+    }),
+    nextCookies(),
+  ],
 });
