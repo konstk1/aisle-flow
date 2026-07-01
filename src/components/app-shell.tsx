@@ -1,4 +1,5 @@
 import { AppNav } from "@/components/app-nav";
+import { FeedbackButton } from "@/components/feedback-button";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   return (
@@ -17,6 +18,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </header>
       {children}
+      <FeedbackButton />
     </main>
   );
 }
