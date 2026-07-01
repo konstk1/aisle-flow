@@ -1,6 +1,12 @@
 "use client";
 
-import { Check, ChevronDown, ListChecks, Route } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  GraduationCap,
+  ListChecks,
+  Route,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -8,6 +14,7 @@ import { useEffect, useRef, useState } from "react";
 const navItems = [
   { exact: true, href: "/", icon: ListChecks, label: "Shopping list" },
   { exact: false, href: "/route", icon: Route, label: "Store route" },
+  { exact: false, href: "/learned", icon: GraduationCap, label: "Learned products" },
 ] as const;
 
 export function AppNav() {
