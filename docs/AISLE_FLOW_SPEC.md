@@ -150,15 +150,14 @@ Vercel Hobby cron jobs run only daily, so they are not suitable for frequent bac
 
 ## Access Control
 
-The app is single-user. It needs access control, not a multi-user identity system.
+The app uses Google sign-in with an explicit email allowlist.
 
-- One login page and one strong password
-- Store only `APP_PASSWORD_HASH` in Vercel environment variables
-- Store a separate `SESSION_SECRET`
-- Signed `HttpOnly`, `Secure`, `SameSite=Lax` session cookie
-- Middleware protection for all pages and API routes
-- Basic login rate limiting
-- No signup, OAuth, roles, email flow, or users table
+- One login page with Sign in with Google
+- Store `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `ALLOWED_EMAILS` in Vercel environment variables
+- Signed Better Auth session cookie
+- Page and API route session checks for protected data
+- Shopping-list ownership scoped by authenticated user id
+- No public signup, roles, or email/password flow
 
 Provider webhook endpoints must use provider signatures or dedicated secrets rather than the browser session.
 
@@ -186,13 +185,13 @@ Use a fine-grained GitHub token restricted to the repository with only `Issues: 
 
 ## MVP Scope
 
-- Single-password access gate
+- Google sign-in restricted to allowlisted email addresses
 - One store
 - Text-based aisle and section editor
 - Multiple ordered sections per aisle
 - One absolute section path order for route sorting
 - Informational left/right/center/endcap placement
-- One persistent active shopping list with manual entry and checkoff
+- One persistent active shopping list per user with manual entry and checkoff
 - Route-sorted shopping view
 - Shelf-category, qualifier-aware, typo-tolerant, and learned-alias matching
 - Manual item relocation with learned corrections

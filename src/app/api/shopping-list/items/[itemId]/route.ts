@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { hasValidSession } from "@/auth/access";
+import { requireSessionUserId } from "@/auth/access";
 import type { ActiveShoppingListPayload } from "@/domain/active-shopping-list";
 import {
   activeShoppingItemUpdateRequestSchema,
@@ -45,7 +45,9 @@ export async function PATCH(
   request: Request,
   context: { params: Promise<{ itemId: string }> },
 ) {
-  if (!(await hasValidSession())) {
+  const userId = await requireSessionUserId();
+
+  if (!userId) {
     return unauthorizedResponse();
   }
 
@@ -81,6 +83,7 @@ export async function PATCH(
 
     if (parsed.data.text !== undefined) {
       const list = await updateActiveShoppingItemText({
+        userId,
         itemId: parsedItemId.data,
         responseView,
         text: parsed.data.text,
@@ -91,6 +94,7 @@ export async function PATCH(
 
     if (parsed.data.snoozed !== undefined) {
       const list = await snoozeActiveShoppingItem({
+        userId,
         itemId: parsedItemId.data,
         responseView,
         snoozed: parsed.data.snoozed,
@@ -104,6 +108,7 @@ export async function PATCH(
     }
 
     const list = await setActiveShoppingItemChecked({
+      userId,
       isChecked: parsed.data.isChecked,
       itemId: parsedItemId.data,
       responseView,
@@ -119,7 +124,9 @@ export async function DELETE(
   request: Request,
   context: { params: Promise<{ itemId: string }> },
 ) {
-  if (!(await hasValidSession())) {
+  const userId = await requireSessionUserId();
+
+  if (!userId) {
     return unauthorizedResponse();
   }
 
@@ -133,6 +140,7 @@ export async function DELETE(
   try {
     const responseView = responseViewFromRequest(request);
     const list = await deleteActiveShoppingItem({
+      userId,
       itemId: parsedItemId.data,
       responseView,
     });

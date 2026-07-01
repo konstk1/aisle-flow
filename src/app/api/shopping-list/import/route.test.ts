@@ -1,11 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { hasValidSession, importActiveShoppingListItems } = vi.hoisted(() => ({
-  hasValidSession: vi.fn(),
-  importActiveShoppingListItems: vi.fn(),
-}));
+const { importActiveShoppingListItems, requireSessionUserId } = vi.hoisted(
+  () => ({
+    importActiveShoppingListItems: vi.fn(),
+    requireSessionUserId: vi.fn(),
+  }),
+);
 
-vi.mock("@/auth/access", () => ({ hasValidSession }));
+vi.mock("@/auth/access", () => ({ requireSessionUserId }));
 vi.mock("@/services/active-shopping-list", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@/services/active-shopping-list")>();
@@ -19,6 +21,7 @@ vi.mock("@/services/active-shopping-list", async (importOriginal) => {
 import { POST } from "./route";
 
 const mutationId = "44444444-4444-4444-8444-444444444444";
+const userId = "user-a";
 
 function importRequest(body: unknown) {
   return new Request("https://aisle-flow.example/api/shopping-list/import", {
@@ -29,8 +32,9 @@ function importRequest(body: unknown) {
 
 describe("shopping list import route", () => {
   beforeEach(() => {
-    hasValidSession.mockResolvedValue(false);
     importActiveShoppingListItems.mockReset();
+    requireSessionUserId.mockReset();
+    requireSessionUserId.mockResolvedValue(null);
   });
 
   it("rejects unauthenticated imports before parsing the body", async () => {
@@ -47,7 +51,7 @@ describe("shopping list import route", () => {
   });
 
   it("returns validation errors for invalid import envelopes", async () => {
-    hasValidSession.mockResolvedValue(true);
+    requireSessionUserId.mockResolvedValue(userId);
 
     const response = await POST(
       importRequest({ text: "Rice", mutationId: "bad-id" }),
@@ -62,7 +66,7 @@ describe("shopping list import route", () => {
   });
 
   it("imports valid pasted text", async () => {
-    hasValidSession.mockResolvedValue(true);
+    requireSessionUserId.mockResolvedValue(userId);
     importActiveShoppingListItems.mockResolvedValue({
       store: { id: "store-1", name: "Example Market" },
       list: { id: "list-1", source: "manual", syncState: "synced" },
@@ -74,7 +78,7 @@ describe("shopping list import route", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(importActiveShoppingListItems).toHaveBeenCalledWith({
+    expect(importActiveShoppingListItems).toHaveBeenCalledWith(userId, {
       text: "Rice\nBroccoli",
       mutationId,
     });

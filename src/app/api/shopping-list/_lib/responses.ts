@@ -1,4 +1,4 @@
-import { hasValidSession } from "@/auth/access";
+import { requireSessionUserId } from "@/auth/access";
 import type { ActiveShoppingListPayload } from "@/domain/active-shopping-list";
 import { ActiveShoppingListRequestError } from "@/services/active-shopping-list";
 
@@ -20,15 +20,17 @@ export function activeShoppingListErrorResponse(error: unknown) {
 
 export function createShoppingListGetRoute(
   responseKey: string,
-  loadList: () => Promise<ActiveShoppingListPayload | null>,
+  loadList: (userId: string) => Promise<ActiveShoppingListPayload | null>,
 ) {
   return async function GET() {
-    if (!(await hasValidSession())) {
+    const userId = await requireSessionUserId();
+
+    if (!userId) {
       return unauthorizedResponse();
     }
 
     try {
-      return Response.json({ [responseKey]: await loadList() });
+      return Response.json({ [responseKey]: await loadList(userId) });
     } catch (error) {
       return activeShoppingListErrorResponse(error);
     }

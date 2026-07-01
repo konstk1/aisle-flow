@@ -1,4 +1,4 @@
-import { hasValidSession } from "@/auth/access";
+import { requireSessionUserId } from "@/auth/access";
 import {
   applyProductCorrection,
   getProductCorrectionOptions,
@@ -12,7 +12,9 @@ import {
 } from "../_lib/responses";
 
 export async function GET() {
-  if (!(await hasValidSession())) {
+  const userId = await requireSessionUserId();
+
+  if (!userId) {
     return unauthorizedResponse();
   }
 
@@ -27,7 +29,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  if (!(await hasValidSession())) {
+  const userId = await requireSessionUserId();
+
+  if (!userId) {
     return unauthorizedResponse();
   }
 
@@ -52,7 +56,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const correction = await applyProductCorrection(parsed.data);
+    const correction = await applyProductCorrection(userId, parsed.data);
     return Response.json({ correction });
   } catch (error) {
     if (error instanceof ProductCorrectionRequestError) {

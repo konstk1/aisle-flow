@@ -126,51 +126,61 @@ interface RouteOrderedShoppingItemRow {
   aisle: Aisle | null;
 }
 
-export async function getActiveShoppingList(): Promise<ActiveShoppingListPayload> {
+export async function getActiveShoppingList(
+  userId: string,
+): Promise<ActiveShoppingListPayload> {
   const layout = await requireActiveStoreLayout();
 
-  return getActiveShoppingListForLayout(layout);
+  return getActiveShoppingListForLayout(layout, userId);
 }
 
 export async function getActiveShoppingListForLayout(
   layout: StoreLayout,
+  userId: string,
 ): Promise<ActiveShoppingListPayload> {
   const db = getDb();
-  const list = await getOrCreateActiveShoppingList(db, layout.id);
+  const list = await getOrCreateActiveShoppingList(db, layout.id, userId);
 
   return readShoppingListPayload(db, layout, list, "active");
 }
 
-export async function getCompletedShoppingList(): Promise<ActiveShoppingListPayload | null> {
+export async function getCompletedShoppingList(
+  userId: string,
+): Promise<ActiveShoppingListPayload | null> {
   const layout = await requireActiveStoreLayout();
 
-  return getCompletedShoppingListForLayout(layout);
+  return getCompletedShoppingListForLayout(layout, userId);
 }
 
 export function getCompletedShoppingListForLayout(
   layout: StoreLayout,
+  userId: string,
 ): Promise<ActiveShoppingListPayload | null> {
-  return readExistingShoppingList(layout, "completed");
+  return readExistingShoppingList(layout, userId, "completed");
 }
 
-export async function getSnoozedShoppingList(): Promise<ActiveShoppingListPayload | null> {
+export async function getSnoozedShoppingList(
+  userId: string,
+): Promise<ActiveShoppingListPayload | null> {
   const layout = await requireActiveStoreLayout();
 
-  return getSnoozedShoppingListForLayout(layout);
+  return getSnoozedShoppingListForLayout(layout, userId);
 }
 
 export function getSnoozedShoppingListForLayout(
   layout: StoreLayout,
+  userId: string,
 ): Promise<ActiveShoppingListPayload | null> {
-  return readExistingShoppingList(layout, "snoozed");
+  return readExistingShoppingList(layout, userId, "snoozed");
 }
 
 async function readExistingShoppingList(
   layout: StoreLayout,
+  userId: string,
   view: ShoppingListView,
 ): Promise<ActiveShoppingListPayload | null> {
   const db = getDb();
-  const [list] = await buildActiveShoppingListQuery(db, layout.id);
+  const [list] = await buildActiveShoppingListQuery(db, layout.id, userId);
 
   if (!list) {
     return null;
@@ -180,11 +190,12 @@ async function readExistingShoppingList(
 }
 
 export async function addActiveShoppingListItem(
+  userId: string,
   input: ActiveShoppingItemCreateRequest,
 ): Promise<ActiveShoppingListPayload> {
   const layout = await requireActiveStoreLayout();
   const db = getDb();
-  const list = await getOrCreateActiveShoppingList(db, layout.id);
+  const list = await getOrCreateActiveShoppingList(db, layout.id, userId);
   const now = new Date();
   const sourceIdentifier = `manual:${input.mutationId}`;
   await ensureShoppingItemsAreNew(db, {
@@ -217,6 +228,7 @@ export async function addActiveShoppingListItem(
 }
 
 export async function importActiveShoppingListItems(
+  userId: string,
   input: ActiveShoppingListImportRequest,
 ): Promise<ActiveShoppingListPayload> {
   const parsed = parseShoppingItemImportLines(input.text);
@@ -230,7 +242,7 @@ export async function importActiveShoppingListItems(
 
   const layout = await requireActiveStoreLayout();
   const db = getDb();
-  const list = await getOrCreateActiveShoppingList(db, layout.id);
+  const list = await getOrCreateActiveShoppingList(db, layout.id, userId);
   const now = new Date();
   const normalizedItems = parsed.lines.map((line, index) => ({
     lineNumber: line.lineNumber,
@@ -271,17 +283,19 @@ export async function importActiveShoppingListItems(
 }
 
 export async function setActiveShoppingItemChecked({
+  userId,
   itemId,
   isChecked,
   responseView = "active",
 }: {
+  userId: string;
   itemId: string;
   isChecked: boolean;
   responseView?: ShoppingListView;
 }): Promise<ActiveShoppingListPayload> {
   const layout = await requireActiveStoreLayout();
   const db = getDb();
-  const list = await getOrCreateActiveShoppingList(db, layout.id);
+  const list = await getOrCreateActiveShoppingList(db, layout.id, userId);
   const [updatedItem] = await buildShoppingItemCheckStateQuery(db, {
     storeId: layout.id,
     shoppingListId: list.id,
@@ -301,17 +315,19 @@ export async function setActiveShoppingItemChecked({
 }
 
 export async function snoozeActiveShoppingItem({
+  userId,
   itemId,
   snoozed,
   responseView = "active",
 }: {
+  userId: string;
   itemId: string;
   snoozed: boolean;
   responseView?: ShoppingListView;
 }): Promise<ActiveShoppingListPayload> {
   const layout = await requireActiveStoreLayout();
   const db = getDb();
-  const list = await getOrCreateActiveShoppingList(db, layout.id);
+  const list = await getOrCreateActiveShoppingList(db, layout.id, userId);
   const now = new Date();
   const snoozedUntil = snoozed
     ? new Date(now.getTime() + SNOOZE_DURATION_MS)
@@ -336,17 +352,19 @@ export async function snoozeActiveShoppingItem({
 }
 
 export async function updateActiveShoppingItemText({
+  userId,
   itemId,
   text,
   responseView = "active",
 }: {
+  userId: string;
   itemId: string;
   text: string;
   responseView?: ShoppingListView;
 }): Promise<ActiveShoppingListPayload> {
   const layout = await requireActiveStoreLayout();
   const db = getDb();
-  const list = await getOrCreateActiveShoppingList(db, layout.id);
+  const list = await getOrCreateActiveShoppingList(db, layout.id, userId);
   const normalizedText = normalizeProductText(text);
   await ensureShoppingItemTextIsAvailable(db, {
     currentItemId: itemId,
@@ -382,15 +400,17 @@ export async function updateActiveShoppingItemText({
 }
 
 export async function deleteActiveShoppingItem({
+  userId,
   itemId,
   responseView = "active",
 }: {
+  userId: string;
   itemId: string;
   responseView?: ShoppingListView;
 }): Promise<ActiveShoppingListPayload> {
   const layout = await requireActiveStoreLayout();
   const db = getDb();
-  const list = await getOrCreateActiveShoppingList(db, layout.id);
+  const list = await getOrCreateActiveShoppingList(db, layout.id, userId);
   const [deletedItem] = await buildShoppingItemDeleteQuery(db, {
     storeId: layout.id,
     shoppingListId: list.id,
@@ -427,14 +447,19 @@ async function requireActiveStoreLayout(): Promise<StoreLayout> {
 async function getOrCreateActiveShoppingList(
   db: Database,
   storeId: string,
+  userId: string,
 ): Promise<ShoppingList> {
-  const [existing] = await buildActiveShoppingListQuery(db, storeId);
+  const [existing] = await buildActiveShoppingListQuery(db, storeId, userId);
 
   if (existing) {
     return existing;
   }
 
-  const [created] = await buildActiveShoppingListCreateQuery(db, storeId);
+  const [created] = await buildActiveShoppingListCreateQuery(
+    db,
+    storeId,
+    userId,
+  );
 
   if (created) {
     return created;

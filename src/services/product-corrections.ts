@@ -154,6 +154,7 @@ export async function getProductCorrectionOptions(): Promise<ProductCorrectionOp
 }
 
 export async function applyProductCorrection(
+  userId: string,
   input: ProductCorrectionRequest,
 ): Promise<ProductCorrectionResult> {
   const layout = await getStoreLayout();
@@ -184,7 +185,11 @@ export async function applyProductCorrection(
   const db = getDb();
   const normalizedText = normalizeProductText(input.rawText);
   const now = new Date();
-  const [activeList] = await buildActiveShoppingListQuery(db, layout.id);
+  const [activeList] = await buildActiveShoppingListQuery(
+    db,
+    layout.id,
+    userId,
+  );
 
   let productConcept: ProductConcept | undefined;
   let alias: ProductAlias | undefined;

@@ -30,11 +30,14 @@ describe("shopping-list queries", () => {
     const { sql: query, params } = buildActiveShoppingListQuery(
       database,
       "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
+      "user-a",
     ).toSQL();
 
     expect(query).toContain('from "shopping_lists"');
-    expect(query).toContain('"shopping_lists"."state" = $2');
+    expect(query).toContain('"shopping_lists"."user_id" = $1');
+    expect(query).toContain('"shopping_lists"."state" = $3');
     expect(params).toEqual([
+      "user-a",
       "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
       "active",
       1,
@@ -123,13 +126,15 @@ describe("shopping-list queries", () => {
     const { sql: query, params } = buildActiveShoppingListCreateQuery(
       database,
       "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
+      "user-a",
     ).toSQL();
 
     expect(query).toContain('insert into "shopping_lists"');
     expect(query).toContain(
-      'on conflict ("store_id") where "shopping_lists"."state" = \'active\' do update set "updated_at" = "shopping_lists"."updated_at"',
+      'on conflict ("user_id","store_id") where "shopping_lists"."state" = \'active\' do update set "updated_at" = "shopping_lists"."updated_at"',
     );
     expect(params).toEqual([
+      "user-a",
       "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
       "active",
       "manual",

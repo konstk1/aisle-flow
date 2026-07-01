@@ -124,12 +124,17 @@ export interface ShoppingItemNormalizedTextLookupInput {
   normalizedTexts: string[];
 }
 
-export function buildActiveShoppingListQuery(db: Database, storeId: string) {
+export function buildActiveShoppingListQuery(
+  db: Database,
+  storeId: string,
+  userId: string,
+) {
   return db
     .select()
     .from(shoppingLists)
     .where(
       and(
+        eq(shoppingLists.userId, userId),
         eq(shoppingLists.storeId, storeId),
         eq(shoppingLists.state, "active"),
       ),
@@ -140,17 +145,19 @@ export function buildActiveShoppingListQuery(db: Database, storeId: string) {
 export function buildActiveShoppingListCreateQuery(
   db: Database,
   storeId: string,
+  userId: string,
 ) {
   return db
     .insert(shoppingLists)
     .values({
+      userId,
       storeId,
       source: "manual",
       state: "active",
       syncState: "synced",
     })
     .onConflictDoUpdate({
-      target: shoppingLists.storeId,
+      target: [shoppingLists.userId, shoppingLists.storeId],
       targetWhere: sql`${shoppingLists.state} = 'active'`,
       set: {
         updatedAt: sql`${shoppingLists.updatedAt}`,

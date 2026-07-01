@@ -34,12 +34,15 @@ files from there when the application source is in `src/`.
 All variables are server-only. Do not add a `NEXT_PUBLIC_` prefix to any of
 them, and never commit real values.
 
-| Variable              | Purpose                                                                                                                           |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`        | Neon Postgres connection string supplied by the Vercel Neon integration.                                                          |
-| `APP_PASSWORD_HASH`   | Hash of the single application password; never a raw password.                                                                    |
-| `SESSION_SECRET`      | At least 32 random characters used to sign the session cookie.                                                                    |
-| `GITHUB_ISSUES_TOKEN` | Required only when in-app feedback is enabled; a fine-grained token restricted to `konstk1/aisle-flow` with `Issues: write` only. |
+| Variable               | Purpose                                                                                                                           |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`         | Neon Postgres connection string supplied by the Vercel Neon integration.                                                          |
+| `BETTER_AUTH_SECRET`   | At least 32 random characters used by Better Auth to sign and protect authentication state.                                       |
+| `BETTER_AUTH_URL`      | Public app base URL used for OAuth callbacks, such as `http://localhost:3000` locally or the Vercel deployment URL in production. |
+| `GOOGLE_CLIENT_ID`     | Google OAuth client id for Sign in with Google.                                                                                   |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret for Sign in with Google.                                                                               |
+| `ALLOWED_EMAILS`       | Comma-separated allowlist of Google account emails that may sign in.                                                              |
+| `GITHUB_ISSUES_TOKEN`  | Required only when in-app feedback is enabled; a fine-grained token restricted to `konstk1/aisle-flow` with `Issues: write` only. |
 
 The server environment is validated before database access or database
 migrations run. Validation reports only invalid variable names, never values.
@@ -69,9 +72,10 @@ For production, restore a verified Neon backup or deploy a separate, reviewed
 forward migration that restores the intended schema and data.
 
 The schema keeps route/layout data store-scoped, supports one active list per
-store, and prevents aliases from conflicting within either global or
-store-specific scope. The query layer returns only list, product, and location
-data; source connection credentials and protected metadata remain server-side.
+user/store, and prevents aliases from conflicting within either global or
+store-specific scope. The query layer returns only the signed-in user's list,
+product, and location data; source connection credentials and protected
+metadata remain server-side.
 
 See [the development store fixture](docs/development-store-fixture.md) for a
 small manually-created layout suitable for local or preview testing. It is
@@ -83,11 +87,13 @@ documentation only and is never applied automatically.
    `vercel.json` is required for this standard App Router deployment.
 2. Add the Neon integration from the Vercel Marketplace and create or attach a
    Postgres database.
-3. Set `DATABASE_URL`, `APP_PASSWORD_HASH`, and `SESSION_SECRET` for
+3. Set `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`,
+   `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `ALLOWED_EMAILS` for
    Development, Preview, and Production. Set `GITHUB_ISSUES_TOKEN` when
    deploying in-app feedback.
 4. Run `pnpm db:migrate` against the intended database before deploying code
    that depends on a new migration.
 
 `GET /api/health` is the unauthenticated health/readiness endpoint. Every
-other application page and API route requires the signed session cookie.
+other application page and API route requires a signed Better Auth session from
+an allowlisted Google account.

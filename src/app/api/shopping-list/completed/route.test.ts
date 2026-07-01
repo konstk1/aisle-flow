@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { getCompletedShoppingList, hasValidSession } = vi.hoisted(() => ({
+const { getCompletedShoppingList, requireSessionUserId } = vi.hoisted(() => ({
   getCompletedShoppingList: vi.fn(),
-  hasValidSession: vi.fn(),
+  requireSessionUserId: vi.fn(),
 }));
 
-vi.mock("@/auth/access", () => ({ hasValidSession }));
+vi.mock("@/auth/access", () => ({ requireSessionUserId }));
 vi.mock("@/services/active-shopping-list", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@/services/active-shopping-list")>();
@@ -18,10 +18,13 @@ vi.mock("@/services/active-shopping-list", async (importOriginal) => {
 
 import { GET } from "./route";
 
+const userId = "user-a";
+
 describe("completed shopping list route", () => {
   beforeEach(() => {
     getCompletedShoppingList.mockReset();
-    hasValidSession.mockResolvedValue(false);
+    requireSessionUserId.mockReset();
+    requireSessionUserId.mockResolvedValue(null);
   });
 
   it("rejects unauthenticated reads", async () => {
@@ -33,7 +36,7 @@ describe("completed shopping list route", () => {
   });
 
   it("returns completed items for authenticated callers", async () => {
-    hasValidSession.mockResolvedValue(true);
+    requireSessionUserId.mockResolvedValue(userId);
     getCompletedShoppingList.mockResolvedValue({
       store: { id: "store-1", name: "Example Market" },
       list: { id: "list-1", source: "manual", syncState: "synced" },
@@ -43,6 +46,7 @@ describe("completed shopping list route", () => {
     const response = await GET();
 
     expect(response.status).toBe(200);
+    expect(getCompletedShoppingList).toHaveBeenCalledWith(userId);
     await expect(response.json()).resolves.toEqual({
       completedList: {
         store: { id: "store-1", name: "Example Market" },
@@ -53,7 +57,7 @@ describe("completed shopping list route", () => {
   });
 
   it("returns null when no shopping list exists yet", async () => {
-    hasValidSession.mockResolvedValue(true);
+    requireSessionUserId.mockResolvedValue(userId);
     getCompletedShoppingList.mockResolvedValue(null);
 
     const response = await GET();
