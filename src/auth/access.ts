@@ -3,7 +3,8 @@ import "server-only";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { auth, emailIsAllowed } from "./better-auth";
+import { emailIsAllowed } from "./allowlist";
+import { auth } from "./better-auth";
 
 export async function getServerSession() {
   const session = await auth.api.getSession({

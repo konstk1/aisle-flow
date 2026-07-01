@@ -178,6 +178,22 @@ describe("shopping list item route", () => {
     });
   });
 
+  it("acts as the authenticated session user, not any user implied by the request", async () => {
+    requireSessionUserId.mockResolvedValue("user-b");
+    setActiveShoppingItemChecked.mockResolvedValue({
+      store: { id: "store-1", name: "Example Market" },
+      list: { id: "list-1", source: "manual", syncState: "synced" },
+      items: [],
+    });
+
+    await PATCH(checkRequest({ isChecked: true }), params());
+
+    // The acting userId comes from the session, regardless of the item URL.
+    expect(setActiveShoppingItemChecked).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "user-b", itemId }),
+    );
+  });
+
   it("returns the list for completed-screen check updates", async () => {
     requireSessionUserId.mockResolvedValue(userId);
     setActiveShoppingItemChecked.mockResolvedValue({

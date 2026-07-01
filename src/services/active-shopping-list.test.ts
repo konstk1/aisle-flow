@@ -866,3 +866,84 @@ describe("deleteActiveShoppingItem", () => {
     });
   });
 });
+
+describe("cross-user isolation", () => {
+  const otherUserId = "user-b";
+  const otherListId = "99999999-9999-4999-8999-999999999999";
+  const otherList = { ...list, id: otherListId, userId: otherUserId };
+
+  beforeEach(() => {
+    // Each user resolves strictly their own active list.
+    mocks.buildActiveShoppingListQuery.mockImplementation(
+      (_db, _storeId, requestedUserId) =>
+        Promise.resolve(requestedUserId === otherUserId ? [otherList] : [list]),
+    );
+    // The item exists only in user A's list; a mutation scoped to any other
+    // list matches nothing.
+    mocks.buildShoppingItemCheckStateQuery.mockImplementation((_db, input) =>
+      Promise.resolve(
+        input.shoppingListId === listId ? [{ id: input.itemId }] : [],
+      ),
+    );
+    mocks.buildShoppingItemDeleteQuery.mockImplementation((_db, input) =>
+      Promise.resolve(
+        input.shoppingListId === listId ? [{ id: input.itemId }] : [],
+      ),
+    );
+  });
+
+  it("resolves the active list strictly by the requesting user", async () => {
+    await getActiveShoppingList(otherUserId);
+
+    expect(mocks.buildActiveShoppingListQuery).toHaveBeenCalledWith(
+      mocks.db,
+      storeId,
+      otherUserId,
+    );
+  });
+
+  it("cannot check another user's item: the mutation is scoped to the caller's own list and 404s", async () => {
+    // user B targets an item that lives on user A's list.
+    await expect(
+      setActiveShoppingItemChecked({
+        userId: otherUserId,
+        itemId,
+        isChecked: true,
+      }),
+    ).rejects.toMatchObject({ status: 404 });
+
+    // The check ran against user B's own list, never user A's.
+    expect(mocks.buildShoppingItemCheckStateQuery).toHaveBeenCalledWith(
+      mocks.db,
+      expect.objectContaining({ shoppingListId: otherListId, itemId }),
+    );
+    expect(mocks.buildShoppingItemCheckStateQuery).not.toHaveBeenCalledWith(
+      mocks.db,
+      expect.objectContaining({ shoppingListId: listId }),
+    );
+  });
+
+  it("cannot delete another user's item", async () => {
+    await expect(
+      deleteActiveShoppingItem({ userId: otherUserId, itemId }),
+    ).rejects.toMatchObject({ status: 404 });
+
+    expect(mocks.buildShoppingItemDeleteQuery).toHaveBeenCalledWith(
+      mocks.db,
+      expect.objectContaining({ shoppingListId: otherListId, itemId }),
+    );
+    expect(mocks.buildShoppingItemDeleteQuery).not.toHaveBeenCalledWith(
+      mocks.db,
+      expect.objectContaining({ shoppingListId: listId }),
+    );
+  });
+
+  it("lets the owning user act on their own item", async () => {
+    await setActiveShoppingItemChecked({ userId, itemId, isChecked: true });
+
+    expect(mocks.buildShoppingItemCheckStateQuery).toHaveBeenCalledWith(
+      mocks.db,
+      expect.objectContaining({ shoppingListId: listId, itemId }),
+    );
+  });
+});

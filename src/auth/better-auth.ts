@@ -9,20 +9,8 @@ import { getDb } from "@/db/client";
 import * as schema from "@/db/schema";
 import { user } from "@/db/schema";
 
+import { emailIsAllowed } from "./allowlist";
 import { getAuthEnv } from "./env";
-
-function allowedEmails() {
-  return new Set(
-    getAuthEnv()
-      .ALLOWED_EMAILS.split(",")
-      .map((email) => email.trim().toLowerCase())
-      .filter(Boolean),
-  );
-}
-
-export function emailIsAllowed(email: string | null | undefined) {
-  return !!email && allowedEmails().has(email.toLowerCase());
-}
 
 async function userIdIsAllowed(userId: string) {
   const [matchedUser] = await getDb()
