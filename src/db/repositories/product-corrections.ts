@@ -1,7 +1,15 @@
-import { asc, eq, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, sql, type SQL } from "drizzle-orm";
 
 import type { Database } from "../create-client";
-import { productAliases, productConcepts, productLocations } from "../schema";
+import {
+  aisles,
+  aisleSections,
+  productAliases,
+  productConcepts,
+  productLearningEvents,
+  productLocations,
+  user,
+} from "../schema";
 
 export interface ProductConceptCreateInput {
   canonicalName: string;
@@ -111,6 +119,131 @@ export function buildManualProductAliasCorrectionQuery(
       },
     })
     .returning();
+}
+
+export interface ProductLearningEventInsertInput {
+  storeId: string;
+  normalizedText: string;
+  action: "created" | "updated" | "deleted";
+  productConceptId: string | SQL | null;
+  productConceptName: string;
+  aisleSectionId: string | null;
+  aisleSectionLabel: string | null;
+  createdByUserId: string;
+  now?: Date;
+}
+
+export function buildLearnedAliasListQuery(db: Database, storeId: string) {
+  return db
+    .select({
+      alias: productAliases,
+      productConcept: productConcepts,
+      location: productLocations,
+      aisleSection: aisleSections,
+      aisle: aisles,
+    })
+    .from(productAliases)
+    .innerJoin(
+      productConcepts,
+      eq(productAliases.productConceptId, productConcepts.id),
+    )
+    .leftJoin(
+      productLocations,
+      and(
+        eq(productLocations.storeId, storeId),
+        eq(productLocations.productConceptId, productConcepts.id),
+      ),
+    )
+    .leftJoin(aisleSections, eq(productLocations.aisleSectionId, aisleSections.id))
+    .leftJoin(aisles, eq(aisleSections.aisleId, aisles.id))
+    .where(
+      and(
+        eq(productAliases.storeId, storeId),
+        eq(productAliases.source, "learned"),
+        eq(productAliases.isCorrection, true),
+      ),
+    )
+    .orderBy(desc(productAliases.updatedAt), asc(productAliases.normalizedText));
+}
+
+export function buildLearnedAliasByIdQuery(db: Database, aliasId: string) {
+  return db
+    .select()
+    .from(productAliases)
+    .where(
+      and(
+        eq(productAliases.id, aliasId),
+        eq(productAliases.source, "learned"),
+        eq(productAliases.isCorrection, true),
+      ),
+    )
+    .limit(1);
+}
+
+export function buildLearnedAliasByTextQuery(
+  db: Database,
+  storeId: string,
+  normalizedText: string,
+) {
+  return db
+    .select()
+    .from(productAliases)
+    .where(
+      and(
+        eq(productAliases.storeId, storeId),
+        eq(productAliases.scope, "store"),
+        eq(productAliases.normalizedText, normalizedText),
+      ),
+    )
+    .limit(1);
+}
+
+export function buildLearnedAliasDeleteQuery(db: Database, aliasId: string) {
+  return db
+    .delete(productAliases)
+    .where(
+      and(
+        eq(productAliases.id, aliasId),
+        eq(productAliases.source, "learned"),
+        eq(productAliases.isCorrection, true),
+      ),
+    )
+    .returning();
+}
+
+export function buildProductLearningEventInsertQuery(
+  db: Database,
+  input: ProductLearningEventInsertInput,
+) {
+  return db
+    .insert(productLearningEvents)
+    .values({
+      storeId: input.storeId,
+      normalizedText: input.normalizedText,
+      action: input.action,
+      productConceptId: input.productConceptId,
+      productConceptName: input.productConceptName,
+      aisleSectionId: input.aisleSectionId,
+      aisleSectionLabel: input.aisleSectionLabel,
+      createdByUserId: input.createdByUserId,
+      ...(input.now ? { createdAt: input.now } : {}),
+    })
+    .returning();
+}
+
+export function buildProductLearningEventListQuery(
+  db: Database,
+  storeId: string,
+) {
+  return db
+    .select({
+      event: productLearningEvents,
+      createdByName: user.name,
+    })
+    .from(productLearningEvents)
+    .leftJoin(user, eq(productLearningEvents.createdByUserId, user.id))
+    .where(eq(productLearningEvents.storeId, storeId))
+    .orderBy(desc(productLearningEvents.createdAt));
 }
 
 export function buildManualProductLocationCorrectionQuery(

@@ -1,4 +1,5 @@
 import type { ActiveShoppingListPayload } from "@/domain/active-shopping-list";
+import type { LearnedProductsPayload } from "@/domain/learned-products";
 import type { StoreLayout } from "@/domain/store-layout";
 import { requirePageSession } from "@/auth/access";
 import {
@@ -7,6 +8,7 @@ import {
   getCompletedShoppingListForLayout,
   getSnoozedShoppingListForLayout,
 } from "@/services/active-shopping-list";
+import { getLearnedProducts } from "@/services/product-corrections";
 import { getStoreLayout } from "@/services/store-layout";
 
 import { withDataTimeout } from "./data-timeout";
@@ -84,6 +86,25 @@ async function loadShoppingItemsPageData<Key extends ShoppingListPageDataKey>({
       dataError: boolean;
       layout: StoreLayout | null;
     } & Record<Key, ActiveShoppingListPayload | null>;
+  }
+}
+
+export async function loadLearnedProductsPageData(): Promise<{
+  dataError: boolean;
+  learnedProducts: LearnedProductsPayload | null;
+}> {
+  await requirePageSession();
+
+  try {
+    const learnedProducts = await withDataTimeout(
+      getLearnedProducts(),
+      PAGE_DATA_TIMEOUT_MS,
+    );
+
+    return { dataError: false, learnedProducts };
+  } catch (error) {
+    console.error("Learned products data could not be loaded.", error);
+    return { dataError: true, learnedProducts: null };
   }
 }
 
