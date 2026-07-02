@@ -7,6 +7,7 @@ import type { StoreLayout } from "@/domain/store-layout";
 
 import { getDb } from "@/db/client";
 import { aisles, aisleSections, stores } from "@/db/schema";
+import { resolveCurrentStore } from "@/services/stores";
 
 const MAX_ORDER = 9_999;
 const ORDER_OFFSET = 100_000;
@@ -127,18 +128,26 @@ function addDuplicateIssue<T>(
 
 export type StoreLayoutInput = z.output<typeof storeLayoutSchema>;
 
-export class StoreLayoutConflictError extends Error {
-  constructor() {
-    super("Only one store layout can be configured.");
+export async function getCurrentStoreLayout(
+  userId: string,
+): Promise<StoreLayout | null> {
+  const currentStore = await resolveCurrentStore(userId);
+
+  if (!currentStore) {
+    return null;
   }
+
+  return getStoreLayout(currentStore.id);
 }
 
-export async function getStoreLayout(): Promise<StoreLayout | null> {
+export async function getStoreLayout(
+  storeId: string,
+): Promise<StoreLayout | null> {
   const db = getDb();
   const [store] = await db
     .select()
     .from(stores)
-    .orderBy(asc(stores.createdAt))
+    .where(eq(stores.id, storeId))
     .limit(1);
 
   if (!store) {
@@ -182,7 +191,7 @@ export async function getStoreLayout(): Promise<StoreLayout | null> {
 }
 
 export async function replaceStoreLayout(layout: StoreLayoutInput) {
-  const existing = await getStoreLayout();
+  const existing = await getStoreLayout(layout.id);
   const db = getDb();
 
   if (!existing) {
@@ -211,11 +220,7 @@ export async function replaceStoreLayout(layout: StoreLayoutInput) {
       ),
     ]);
 
-    return getStoreLayout();
-  }
-
-  if (existing.id !== layout.id) {
-    throw new StoreLayoutConflictError();
+    return getStoreLayout(layout.id);
   }
 
   const existingAisleIds = new Set(existing.aisles.map((aisle) => aisle.id));
@@ -332,5 +337,5 @@ export async function replaceStoreLayout(layout: StoreLayoutInput) {
       ),
   ]);
 
-  return getStoreLayout();
+  return getStoreLayout(layout.id);
 }

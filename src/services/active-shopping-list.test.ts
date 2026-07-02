@@ -44,7 +44,9 @@ vi.mock("@/db/repositories/shopping-lists", () => ({
 vi.mock("./product-matching", () => ({
   createStoreProductMatcher: mocks.createStoreProductMatcher,
 }));
-vi.mock("./store-layout", () => ({ getStoreLayout: mocks.getStoreLayout }));
+vi.mock("./store-layout", () => ({
+  getCurrentStoreLayout: mocks.getStoreLayout,
+}));
 
 import {
   ActiveShoppingListRequestError,

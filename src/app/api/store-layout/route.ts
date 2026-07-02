@@ -1,9 +1,8 @@
-import { hasValidSession } from "@/auth/access";
+import { hasValidSession, requireSessionUserId } from "@/auth/access";
 import { isForeignKeyError } from "@/db/errors";
 import {
-  getStoreLayout,
+  getCurrentStoreLayout,
   replaceStoreLayout,
-  StoreLayoutConflictError,
   storeLayoutSchema,
 } from "@/services/store-layout";
 
@@ -13,11 +12,13 @@ import {
 } from "../_lib/responses";
 
 export async function GET() {
-  if (!(await hasValidSession())) {
+  const userId = await requireSessionUserId();
+
+  if (!userId) {
     return unauthorizedResponse();
   }
 
-  return Response.json({ layout: await getStoreLayout() });
+  return Response.json({ layout: await getCurrentStoreLayout(userId) });
 }
 
 export async function PUT(request: Request) {
@@ -49,10 +50,6 @@ export async function PUT(request: Request) {
     const layout = await replaceStoreLayout(parsed.data);
     return Response.json({ layout });
   } catch (error) {
-    if (error instanceof StoreLayoutConflictError) {
-      return Response.json({ error: error.message }, { status: 409 });
-    }
-
     if (isForeignKeyError(error)) {
       return Response.json(
         {

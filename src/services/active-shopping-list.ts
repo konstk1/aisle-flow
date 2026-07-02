@@ -43,7 +43,7 @@ import {
   createStoreProductMatcher,
   type StoreProductMatcher,
 } from "./product-matching";
-import { getStoreLayout } from "./store-layout";
+import { getCurrentStoreLayout } from "./store-layout";
 
 const mutationIdSchema = z.uuid("Provide a valid mutation id.");
 const duplicateShoppingItemMessage = "This item is already on the list.";
@@ -129,7 +129,7 @@ interface RouteOrderedShoppingItemRow {
 export async function getActiveShoppingList(
   userId: string,
 ): Promise<ActiveShoppingListPayload> {
-  const layout = await requireActiveStoreLayout();
+  const layout = await requireActiveStoreLayout(userId);
 
   return getActiveShoppingListForLayout(layout, userId);
 }
@@ -147,7 +147,7 @@ export async function getActiveShoppingListForLayout(
 export async function getCompletedShoppingList(
   userId: string,
 ): Promise<ActiveShoppingListPayload | null> {
-  const layout = await requireActiveStoreLayout();
+  const layout = await requireActiveStoreLayout(userId);
 
   return getCompletedShoppingListForLayout(layout, userId);
 }
@@ -162,7 +162,7 @@ export function getCompletedShoppingListForLayout(
 export async function getSnoozedShoppingList(
   userId: string,
 ): Promise<ActiveShoppingListPayload | null> {
-  const layout = await requireActiveStoreLayout();
+  const layout = await requireActiveStoreLayout(userId);
 
   return getSnoozedShoppingListForLayout(layout, userId);
 }
@@ -193,7 +193,7 @@ export async function addActiveShoppingListItem(
   userId: string,
   input: ActiveShoppingItemCreateRequest,
 ): Promise<ActiveShoppingListPayload> {
-  const layout = await requireActiveStoreLayout();
+  const layout = await requireActiveStoreLayout(userId);
   const db = getDb();
   const list = await getOrCreateActiveShoppingList(db, layout.id, userId);
   const now = new Date();
@@ -240,7 +240,7 @@ export async function importActiveShoppingListItems(
     );
   }
 
-  const layout = await requireActiveStoreLayout();
+  const layout = await requireActiveStoreLayout(userId);
   const db = getDb();
   const list = await getOrCreateActiveShoppingList(db, layout.id, userId);
   const now = new Date();
@@ -293,7 +293,7 @@ export async function setActiveShoppingItemChecked({
   isChecked: boolean;
   responseView?: ShoppingListView;
 }): Promise<ActiveShoppingListPayload> {
-  const layout = await requireActiveStoreLayout();
+  const layout = await requireActiveStoreLayout(userId);
   const db = getDb();
   const list = await getOrCreateActiveShoppingList(db, layout.id, userId);
   const [updatedItem] = await buildShoppingItemCheckStateQuery(db, {
@@ -325,7 +325,7 @@ export async function snoozeActiveShoppingItem({
   snoozed: boolean;
   responseView?: ShoppingListView;
 }): Promise<ActiveShoppingListPayload> {
-  const layout = await requireActiveStoreLayout();
+  const layout = await requireActiveStoreLayout(userId);
   const db = getDb();
   const list = await getOrCreateActiveShoppingList(db, layout.id, userId);
   const now = new Date();
@@ -362,7 +362,7 @@ export async function updateActiveShoppingItemText({
   text: string;
   responseView?: ShoppingListView;
 }): Promise<ActiveShoppingListPayload> {
-  const layout = await requireActiveStoreLayout();
+  const layout = await requireActiveStoreLayout(userId);
   const db = getDb();
   const list = await getOrCreateActiveShoppingList(db, layout.id, userId);
   const normalizedText = normalizeProductText(text);
@@ -408,7 +408,7 @@ export async function deleteActiveShoppingItem({
   itemId: string;
   responseView?: ShoppingListView;
 }): Promise<ActiveShoppingListPayload> {
-  const layout = await requireActiveStoreLayout();
+  const layout = await requireActiveStoreLayout(userId);
   const db = getDb();
   const list = await getOrCreateActiveShoppingList(db, layout.id, userId);
   const [deletedItem] = await buildShoppingItemDeleteQuery(db, {
@@ -428,8 +428,8 @@ export async function deleteActiveShoppingItem({
   return readShoppingListPayload(db, layout, list, responseView);
 }
 
-async function requireActiveStoreLayout(): Promise<StoreLayout> {
-  const layout = await getStoreLayout();
+async function requireActiveStoreLayout(userId: string): Promise<StoreLayout> {
+  const layout = await getCurrentStoreLayout(userId);
 
   if (!layout) {
     throw new ActiveShoppingListRequestError(

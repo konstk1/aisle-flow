@@ -19,7 +19,9 @@ export async function GET() {
   }
 
   try {
-    return Response.json({ options: await getProductCorrectionOptions() });
+    return Response.json({
+      options: await getProductCorrectionOptions(userId),
+    });
   } catch {
     return Response.json(
       { error: "Correction options could not be loaded. Try again." },

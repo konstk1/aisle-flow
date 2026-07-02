@@ -43,7 +43,7 @@ import type {
 } from "@/db/schema";
 
 import type { StoreProductMatchResult } from "./product-matching";
-import { getStoreLayout } from "./store-layout";
+import { getCurrentStoreLayout } from "./store-layout";
 
 const MAX_CORRECTION_TEXT_LENGTH = 120;
 const MAX_CATEGORY_NAME_LENGTH = 80;
@@ -171,10 +171,12 @@ export class ProductCorrectionRequestError extends Error {
   }
 }
 
-export async function getProductCorrectionOptions(): Promise<ProductCorrectionOptions> {
+export async function getProductCorrectionOptions(
+  userId: string,
+): Promise<ProductCorrectionOptions> {
   const db = getDb();
   const [layout, concepts] = await Promise.all([
-    getStoreLayout(),
+    getCurrentStoreLayout(userId),
     buildProductConceptListQuery(db),
   ]);
 
@@ -189,7 +191,7 @@ export async function applyProductCorrection(
   userId: string,
   input: ProductCorrectionRequest,
 ): Promise<ProductCorrectionResult> {
-  const layout = await getStoreLayout();
+  const layout = await getCurrentStoreLayout(userId);
 
   if (!layout) {
     throw new ProductCorrectionRequestError(
@@ -391,8 +393,10 @@ export async function applyProductCorrection(
   };
 }
 
-export async function getLearnedProducts(): Promise<LearnedProductsPayload> {
-  const layout = await getStoreLayout();
+export async function getLearnedProducts(
+  userId: string,
+): Promise<LearnedProductsPayload> {
+  const layout = await getCurrentStoreLayout(userId);
 
   if (!layout) {
     return { store: null, learnedProducts: [] };
@@ -449,7 +453,7 @@ export async function updateLearnedProduct(
     throw missingLearnedProductError();
   }
 
-  const layout = await getStoreLayout();
+  const layout = await getCurrentStoreLayout(userId);
 
   if (!layout || alias.storeId !== layout.id) {
     throw new ProductCorrectionRequestError(
@@ -466,7 +470,7 @@ export async function updateLearnedProduct(
     aisleSectionId: input.aisleSectionId,
   });
 
-  return getLearnedProducts();
+  return getLearnedProducts(userId);
 }
 
 export async function deleteLearnedProduct(
@@ -500,7 +504,7 @@ export async function deleteLearnedProduct(
     }),
   ]);
 
-  return getLearnedProducts();
+  return getLearnedProducts(userId);
 }
 
 function missingLearnedProductError() {

@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { hasValidSession } = vi.hoisted(() => ({
+const { hasValidSession, requireSessionUserId } = vi.hoisted(() => ({
   hasValidSession: vi.fn(),
+  requireSessionUserId: vi.fn(),
 }));
 
-vi.mock("@/auth/access", () => ({ hasValidSession }));
+vi.mock("@/auth/access", () => ({ hasValidSession, requireSessionUserId }));
 vi.mock("@/services/store-layout", () => ({
-  getStoreLayout: vi.fn(),
+  getCurrentStoreLayout: vi.fn(),
   replaceStoreLayout: vi.fn(),
-  StoreLayoutConflictError: class StoreLayoutConflictError extends Error {},
   storeLayoutSchema: { safeParse: vi.fn() },
 }));
 
@@ -17,6 +17,7 @@ import { GET, PUT } from "./route";
 describe("store layout route authorization", () => {
   beforeEach(() => {
     hasValidSession.mockResolvedValue(false);
+    requireSessionUserId.mockResolvedValue(null);
   });
 
   it("rejects unauthenticated layout reads", async () => {
