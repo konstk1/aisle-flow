@@ -2,18 +2,33 @@ import "server-only";
 
 import { z } from "zod";
 
+import type {
+  LearnedProductEventPayload,
+  LearnedProductsPayload,
+} from "@/domain/learned-products";
 import { normalizeProductText } from "@/domain/product-matching";
-import type { AisleSectionSide, StoreLayout } from "@/domain/store-layout";
+import {
+  formatAisleLabel,
+  formatSectionLabel,
+  type AisleSectionSide,
+  type StoreLayout,
+} from "@/domain/store-layout";
 
 import { getDb } from "@/db/client";
 import type { Database } from "@/db/create-client";
 import { isForeignKeyError } from "@/db/errors";
 import {
+  buildLearnedAliasByIdQuery,
+  buildLearnedAliasByTextQuery,
+  buildLearnedAliasDeleteQuery,
+  buildLearnedAliasListQuery,
   buildManualProductAliasCorrectionQuery,
   buildManualProductLocationCorrectionQuery,
   buildProductConceptByIdQuery,
   buildProductConceptCreateQuery,
   buildProductConceptListQuery,
+  buildProductLearningEventInsertQuery,
+  buildProductLearningEventListQuery,
   productConceptIdByNormalizedName,
   productLocationIdByStoreAndConcept,
 } from "@/db/repositories/product-corrections";
@@ -35,6 +50,44 @@ const MAX_CATEGORY_NAME_LENGTH = 80;
 
 type FieldErrors = Record<string, string[]>;
 
+const correctionCategoryFields = {
+  productConceptId: z.uuid("Choose a valid shelf category.").optional(),
+  canonicalName: z
+    .string()
+    .trim()
+    .min(1, "Enter a shelf category name.")
+    .max(
+      MAX_CATEGORY_NAME_LENGTH,
+      "Shelf category names must be 80 characters or fewer.",
+    )
+    .refine((value) => normalizeProductText(value).length > 0, {
+      message: "Enter a shelf category name with letters or numbers.",
+    })
+    .optional(),
+  aisleSectionId: z.uuid("Choose a valid aisle section."),
+};
+
+function requireExactlyOneCategory(
+  input: { productConceptId?: string; canonicalName?: string },
+  context: z.RefinementCtx,
+) {
+  const hasExistingCategory = input.productConceptId !== undefined;
+  const hasNewCategory = input.canonicalName !== undefined;
+
+  if (hasExistingCategory === hasNewCategory) {
+    context.addIssue({
+      code: "custom",
+      message: "Choose an existing category or enter a new one.",
+      path: ["productConceptId"],
+    });
+    context.addIssue({
+      code: "custom",
+      message: "Choose an existing category or enter a new one.",
+      path: ["canonicalName"],
+    });
+  }
+}
+
 export const productCorrectionRequestSchema = z
   .object({
     rawText: z
@@ -46,41 +99,20 @@ export const productCorrectionRequestSchema = z
       .refine((value) => normalizeProductText(value).length > 0, {
         message: "Enter the unresolved item text before saving a correction.",
       }),
-    productConceptId: z.uuid("Choose a valid shelf category.").optional(),
-    canonicalName: z
-      .string()
-      .trim()
-      .min(1, "Enter a shelf category name.")
-      .max(
-        MAX_CATEGORY_NAME_LENGTH,
-        "Shelf category names must be 80 characters or fewer.",
-      )
-      .refine((value) => normalizeProductText(value).length > 0, {
-        message: "Enter a shelf category name with letters or numbers.",
-      })
-      .optional(),
-    aisleSectionId: z.uuid("Choose a valid aisle section."),
+    ...correctionCategoryFields,
   })
-  .superRefine((input, context) => {
-    const hasExistingCategory = input.productConceptId !== undefined;
-    const hasNewCategory = input.canonicalName !== undefined;
-
-    if (hasExistingCategory === hasNewCategory) {
-      context.addIssue({
-        code: "custom",
-        message: "Choose an existing category or enter a new one.",
-        path: ["productConceptId"],
-      });
-      context.addIssue({
-        code: "custom",
-        message: "Choose an existing category or enter a new one.",
-        path: ["canonicalName"],
-      });
-    }
-  });
+  .superRefine(requireExactlyOneCategory);
 
 export type ProductCorrectionRequest = z.output<
   typeof productCorrectionRequestSchema
+>;
+
+export const learnedProductUpdateRequestSchema = z
+  .object(correctionCategoryFields)
+  .superRefine(requireExactlyOneCategory);
+
+export type LearnedProductUpdateRequest = z.output<
+  typeof learnedProductUpdateRequestSchema
 >;
 
 export interface ProductCorrectionProductConcept {
@@ -185,11 +217,12 @@ export async function applyProductCorrection(
   const db = getDb();
   const normalizedText = normalizeProductText(input.rawText);
   const now = new Date();
-  const [activeList] = await buildActiveShoppingListQuery(
-    db,
-    layout.id,
-    userId,
-  );
+  const [[activeList], [existingAlias]] = await Promise.all([
+    buildActiveShoppingListQuery(db, layout.id, userId),
+    buildLearnedAliasByTextQuery(db, layout.id, normalizedText),
+  ]);
+  const learningAction = existingAlias ? "updated" : "created";
+  const aisleSectionLabel = formatCorrectionSectionLabel(aisleSection);
 
   let productConcept: ProductConcept | undefined;
   let alias: ProductAlias | undefined;
@@ -214,11 +247,23 @@ export async function applyProductCorrection(
         positionWithinSection: null,
         now,
       });
+      const eventQuery = buildProductLearningEventInsertQuery(db, {
+        storeId: layout.id,
+        normalizedText,
+        action: learningAction,
+        productConceptId: productConcept.id,
+        productConceptName: productConcept.canonicalName,
+        aisleSectionId: aisleSection.id,
+        aisleSectionLabel,
+        createdByUserId: userId,
+        now,
+      });
 
       const [aliasRows, locationRows] = activeList
         ? await db.batch([
             aliasQuery,
             locationQuery,
+            eventQuery,
             buildShoppingItemProductResolutionQuery(db, {
               storeId: layout.id,
               shoppingListId: activeList.id,
@@ -231,7 +276,7 @@ export async function applyProductCorrection(
               now,
             }),
           ])
-        : await db.batch([aliasQuery, locationQuery]);
+        : await db.batch([aliasQuery, locationQuery, eventQuery]);
 
       alias = aliasRows[0];
       location = locationRows[0];
@@ -261,12 +306,24 @@ export async function applyProductCorrection(
         positionWithinSection: null,
         now,
       });
+      const eventQuery = buildProductLearningEventInsertQuery(db, {
+        storeId: layout.id,
+        normalizedText,
+        action: learningAction,
+        productConceptId,
+        productConceptName: canonicalName,
+        aisleSectionId: aisleSection.id,
+        aisleSectionLabel,
+        createdByUserId: userId,
+        now,
+      });
 
       const [productConceptRows, aliasRows, locationRows] = activeList
         ? await db.batch([
             conceptQuery,
             aliasQuery,
             locationQuery,
+            eventQuery,
             buildShoppingItemProductResolutionQuery(db, {
               storeId: layout.id,
               shoppingListId: activeList.id,
@@ -279,7 +336,7 @@ export async function applyProductCorrection(
               now,
             }),
           ])
-        : await db.batch([conceptQuery, aliasQuery, locationQuery]);
+        : await db.batch([conceptQuery, aliasQuery, locationQuery, eventQuery]);
 
       productConcept = productConceptRows[0];
       alias = aliasRows[0];
@@ -334,6 +391,124 @@ export async function applyProductCorrection(
   };
 }
 
+export async function getLearnedProducts(): Promise<LearnedProductsPayload> {
+  const layout = await getStoreLayout();
+
+  if (!layout) {
+    return { store: null, learnedProducts: [] };
+  }
+
+  const db = getDb();
+  const [aliasRows, eventRows] = await Promise.all([
+    buildLearnedAliasListQuery(db, layout.id),
+    buildProductLearningEventListQuery(db, layout.id),
+  ]);
+
+  const eventsByText = new Map<string, LearnedProductEventPayload[]>();
+
+  for (const { event, createdByName } of eventRows) {
+    const events = eventsByText.get(event.normalizedText) ?? [];
+
+    events.push({
+      id: event.id,
+      action: event.action,
+      productConceptName: event.productConceptName,
+      aisleSectionLabel: event.aisleSectionLabel,
+      createdByName,
+      createdAt: event.createdAt.toISOString(),
+    });
+    eventsByText.set(event.normalizedText, events);
+  }
+
+  return {
+    store: { id: layout.id, name: layout.name },
+    learnedProducts: aliasRows.map((row) => ({
+      aliasId: row.alias.id,
+      normalizedText: row.alias.normalizedText,
+      updatedAt: row.alias.updatedAt.toISOString(),
+      productConcept: toProductConceptPayload(row.productConcept),
+      aisleSectionId: row.location?.aisleSectionId ?? null,
+      locationLabel:
+        row.aisle && row.aisleSection
+          ? `${formatAisleLabel(row.aisle)} · ${formatSectionLabel(row.aisleSection)}`
+          : null,
+      events: eventsByText.get(row.alias.normalizedText) ?? [],
+    })),
+  };
+}
+
+export async function updateLearnedProduct(
+  userId: string,
+  aliasId: string,
+  input: LearnedProductUpdateRequest,
+): Promise<LearnedProductsPayload> {
+  const db = getDb();
+  const [alias] = await buildLearnedAliasByIdQuery(db, aliasId);
+
+  if (!alias) {
+    throw missingLearnedProductError();
+  }
+
+  const layout = await getStoreLayout();
+
+  if (!layout || alias.storeId !== layout.id) {
+    throw new ProductCorrectionRequestError(
+      "This learned product belongs to a different store layout.",
+      { form: ["This learned product belongs to a different store layout."] },
+      409,
+    );
+  }
+
+  await applyProductCorrection(userId, {
+    rawText: alias.normalizedText,
+    productConceptId: input.productConceptId,
+    canonicalName: input.canonicalName,
+    aisleSectionId: input.aisleSectionId,
+  });
+
+  return getLearnedProducts();
+}
+
+export async function deleteLearnedProduct(
+  userId: string,
+  aliasId: string,
+): Promise<LearnedProductsPayload> {
+  const db = getDb();
+  const [alias] = await buildLearnedAliasByIdQuery(db, aliasId);
+
+  if (!alias || !alias.storeId) {
+    throw missingLearnedProductError();
+  }
+
+  const [productConcept] = await buildProductConceptByIdQuery(
+    db,
+    alias.productConceptId,
+  );
+
+  await db.batch([
+    buildLearnedAliasDeleteQuery(db, alias.id),
+    buildProductLearningEventInsertQuery(db, {
+      storeId: alias.storeId,
+      normalizedText: alias.normalizedText,
+      action: "deleted",
+      productConceptId: alias.productConceptId,
+      productConceptName:
+        productConcept?.canonicalName ?? alias.normalizedText,
+      aisleSectionId: null,
+      aisleSectionLabel: null,
+      createdByUserId: userId,
+    }),
+  ]);
+
+  return getLearnedProducts();
+}
+
+function missingLearnedProductError() {
+  const message = "This learned product no longer exists. Refresh the page.";
+
+  return new ProductCorrectionRequestError(message, { form: [message] }, 404);
+}
+
 async function getExistingProductConcept(
   db: Database,
   productConceptId: string,
@@ -369,6 +544,13 @@ function listAisleSections(
       })),
     )
     .sort((first, second) => first.pathOrder - second.pathOrder);
+}
+
+function formatCorrectionSectionLabel(section: ProductCorrectionAisleSection) {
+  return `${formatAisleLabel({
+    displayName: section.aisleDisplayName,
+    identifier: section.aisleIdentifier,
+  })} · ${formatSectionLabel(section)}`;
 }
 
 function toProductConceptPayload(
