@@ -14,6 +14,7 @@ export default async function SnoozedPage() {
     <SnoozedShoppingList
       hasStoreLayout={layout !== null}
       initialSnoozedList={snoozedList}
+      key={layout?.id ?? "no-store"}
     />
   );
 }

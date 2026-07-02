@@ -41,7 +41,7 @@ import {
 } from "@/domain/store-layout";
 
 type StoreLayoutEditorProps = {
-  initialLayout: StoreLayout | null;
+  initialLayout: StoreLayout;
 };
 
 type FieldErrors = Record<string, string[]>;
@@ -50,36 +50,13 @@ function createId() {
   return crypto.randomUUID();
 }
 
-function createDefaultLayout(): StoreLayout {
-  return {
-    id: createId(),
-    name: "My store",
-    aisles: [
-      {
-        id: createId(),
-        identifier: "1",
-        displayName: null,
-        displayOrder: 0,
-        sections: [
-          {
-            id: createId(),
-            label: "Section 1",
-            pathOrder: 0,
-            side: "center",
-          },
-        ],
-      },
-    ],
-  };
-}
-
 export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
-  const [layout, setLayout] = useState<StoreLayout>(
-    () => initialLayout ?? createDefaultLayout(),
-  );
+  const [layout, setLayout] = useState<StoreLayout>(initialLayout);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [message, setMessage] = useState<string | null>(
-    initialLayout ? null : "Create your first aisle, then save the route.",
+    initialLayout.aisles.length > 0
+      ? null
+      : "Create your first aisle, then save the route.",
   );
   const [isSaving, setIsSaving] = useState(false);
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
@@ -370,17 +347,15 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
         assigned automatically; section side is informational only.
       </p>
 
-      <label className="mt-8 block text-sm font-medium text-zinc-800">
+      <div className="mt-8 text-sm font-medium text-zinc-800">
         Store name
-        <input
-          className="mt-2 min-h-11 w-full border bg-white px-3 text-base transition outline-none focus:border-zinc-950"
-          onChange={(event) =>
-            setLayout((current) => ({ ...current, name: event.target.value }))
-          }
-          value={layout.name}
-        />
-        <FieldError message={errorFor("name")} />
-      </label>
+        <p className="mt-2 text-base font-normal text-zinc-950">
+          {layout.name}
+        </p>
+        <p className="mt-1 text-xs font-normal text-zinc-500">
+          Rename this store on the Manage stores page.
+        </p>
+      </div>
 
       <div className="mt-10 space-y-5">
         {orderedAisles.map((aisle, aisleIndex) => {
