@@ -9,7 +9,7 @@ import {
   getSnoozedShoppingListForLayout,
 } from "@/services/active-shopping-list";
 import { getLearnedProducts } from "@/services/product-corrections";
-import { getStoreLayout } from "@/services/store-layout";
+import { getCurrentStoreLayout } from "@/services/store-layout";
 
 import { withDataTimeout } from "./data-timeout";
 
@@ -54,7 +54,7 @@ async function loadShoppingItemsPageData<Key extends ShoppingListPageDataKey>({
   resultKey: Key;
 }) {
   const userId = await requirePageSession();
-  const layoutData = await loadStoreLayoutPageData(pageName);
+  const layoutData = await loadStoreLayoutData(userId, pageName);
 
   if (layoutData.dataError || !layoutData.layout) {
     return { ...layoutData, [resultKey]: null } as {
@@ -93,11 +93,11 @@ export async function loadLearnedProductsPageData(): Promise<{
   dataError: boolean;
   learnedProducts: LearnedProductsPayload | null;
 }> {
-  await requirePageSession();
+  const userId = await requirePageSession();
 
   try {
     const learnedProducts = await withDataTimeout(
-      getLearnedProducts(),
+      getLearnedProducts(userId),
       PAGE_DATA_TIMEOUT_MS,
     );
 
@@ -109,9 +109,15 @@ export async function loadLearnedProductsPageData(): Promise<{
 }
 
 export async function loadStoreLayoutPageData(pageName = "Store route") {
+  const userId = await requirePageSession();
+
+  return loadStoreLayoutData(userId, pageName);
+}
+
+async function loadStoreLayoutData(userId: string, pageName: string) {
   try {
     const layout = await withDataTimeout(
-      getStoreLayout(),
+      getCurrentStoreLayout(userId),
       PAGE_DATA_TIMEOUT_MS,
     );
 

@@ -86,6 +86,9 @@ export const user = pgTable(
     email: text("email").notNull(),
     emailVerified: boolean("email_verified").default(false).notNull(),
     image: text("image"),
+    currentStoreId: uuid("current_store_id").references(() => stores.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

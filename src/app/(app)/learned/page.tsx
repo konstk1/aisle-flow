@@ -9,5 +9,10 @@ export default async function LearnedProductsPage() {
     return <DataUnavailable eyebrow="Learned products" retryHref="/learned" />;
   }
 
-  return <LearnedProducts initialLearnedProducts={learnedProducts} />;
+  return (
+    <LearnedProducts
+      initialLearnedProducts={learnedProducts}
+      key={learnedProducts.store?.id ?? "no-store"}
+    />
+  );
 }

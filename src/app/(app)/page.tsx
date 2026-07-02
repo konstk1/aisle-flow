@@ -13,6 +13,7 @@ export default async function Home() {
     <ActiveShoppingList
       hasStoreLayout={layout !== null}
       initialActiveList={activeList}
+      key={layout?.id ?? "no-store"}
     />
   );
 }

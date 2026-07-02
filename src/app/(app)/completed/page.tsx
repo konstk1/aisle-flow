@@ -14,6 +14,7 @@ export default async function CompletedPage() {
     <CompletedShoppingList
       hasStoreLayout={layout !== null}
       initialCompletedList={completedList}
+      key={layout?.id ?? "no-store"}
     />
   );
 }

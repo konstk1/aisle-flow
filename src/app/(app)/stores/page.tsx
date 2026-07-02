@@ -1,12 +1,8 @@
 import { requirePageSession } from "@/auth/access";
-import { AppShell } from "@/components/app-shell";
+import { StoresManager } from "@/components/stores-manager";
 import { listStores, resolveCurrentStore } from "@/services/stores";
 
-export default async function AuthenticatedLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default async function StoresPage() {
   const userId = await requirePageSession();
   const [stores, currentStore] = await Promise.all([
     listStores(),
@@ -14,8 +10,6 @@ export default async function AuthenticatedLayout({
   ]);
 
   return (
-    <AppShell currentStoreId={currentStore?.id ?? null} stores={stores}>
-      {children}
-    </AppShell>
+    <StoresManager currentStoreId={currentStore?.id ?? null} stores={stores} />
   );
 }

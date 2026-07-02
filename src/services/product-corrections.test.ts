@@ -49,7 +49,9 @@ vi.mock("@/db/repositories/shopping-lists", () => ({
   buildShoppingItemProductResolutionQuery:
     mocks.buildShoppingItemProductResolutionQuery,
 }));
-vi.mock("./store-layout", () => ({ getStoreLayout: mocks.getStoreLayout }));
+vi.mock("./store-layout", () => ({
+  getCurrentStoreLayout: mocks.getStoreLayout,
+}));
 
 import {
   applyProductCorrection,
@@ -414,7 +416,7 @@ describe("getLearnedProducts", () => {
   it("returns an empty payload when no store layout exists", async () => {
     mocks.getStoreLayout.mockResolvedValue(null);
 
-    await expect(getLearnedProducts()).resolves.toEqual({
+    await expect(getLearnedProducts(userId)).resolves.toEqual({
       store: null,
       learnedProducts: [],
     });
@@ -460,7 +462,7 @@ describe("getLearnedProducts", () => {
       },
     ]);
 
-    const payload = await getLearnedProducts();
+    const payload = await getLearnedProducts(userId);
 
     expect(payload.store).toEqual({ id: storeId, name: "Example Market" });
     expect(payload.learnedProducts).toEqual([

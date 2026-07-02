@@ -559,6 +559,11 @@ function LearnedProductEditor({
           <FieldError messages={fieldErrors.aisleSectionId} />
         </label>
       </div>
+
+      <p className="text-xs leading-5 text-zinc-500">
+        Shelf categories are shared across all stores; the route section
+        applies only to {options?.store?.name ?? "this store"}.
+      </p>
     </div>
   );
 }
