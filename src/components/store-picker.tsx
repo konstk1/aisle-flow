@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, ChevronDown, Settings2, Store } from "lucide-react";
+import { Check, ChevronDown, Store } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -146,7 +146,7 @@ export function StorePicker({
             onClick={() => setIsOpen(false)}
             role="menuitem"
           >
-            <Settings2 aria-hidden="true" className="size-4 text-zinc-500" />
+            <Store aria-hidden="true" className="size-4 text-zinc-500" />
             Manage stores
           </Link>
         </div>

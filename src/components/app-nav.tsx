@@ -6,7 +6,7 @@ import {
   GraduationCap,
   ListChecks,
   Route,
-  Settings2,
+  Store,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -16,7 +16,7 @@ const navItems = [
   { exact: true, href: "/", icon: ListChecks, label: "Shopping list" },
   { exact: false, href: "/route", icon: Route, label: "Store route" },
   { exact: false, href: "/learned", icon: GraduationCap, label: "Learned products" },
-  { exact: false, href: "/stores", icon: Settings2, label: "Manage stores" },
+  { exact: false, href: "/stores", icon: Store, label: "Manage stores" },
 ] as const;
 
 export function AppNav() {
