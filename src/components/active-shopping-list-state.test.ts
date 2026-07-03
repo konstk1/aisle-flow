@@ -10,6 +10,7 @@ import {
   buildProductCorrectionRequest,
   buildProductSelectionPatch,
   createProductCorrectionFormState,
+  getLocationChangeWarning,
   getStableMutationForText,
   mergeVisibleListSnapshotAfterCheck,
   removeItemFromActiveList,
@@ -167,6 +168,99 @@ describe("buildProductCorrectionRequest", () => {
         aisleSectionId: ["Choose an aisle section."],
       },
     });
+  });
+});
+
+describe("getLocationChangeWarning", () => {
+  const productConcepts = [
+    { id: "concept-1", canonicalName: "Yogurt", aisleSectionId: "section-1" },
+    { id: "concept-2", canonicalName: "Milk", aisleSectionId: null },
+  ];
+  const items = [
+    {
+      id: "item-1",
+      rawText: "greek yogurt",
+      isChecked: false,
+      productConcept: { id: "concept-1" },
+    },
+    {
+      id: "item-2",
+      rawText: "yoghurt",
+      isChecked: false,
+      productConcept: { id: "concept-1" },
+    },
+    {
+      id: "item-3",
+      rawText: "finished yogurt",
+      isChecked: true,
+      productConcept: { id: "concept-1" },
+    },
+    {
+      id: "item-4",
+      rawText: "milk",
+      isChecked: false,
+      productConcept: { id: "concept-2" },
+    },
+  ];
+
+  it("warns with the unfinished items linked to the moved product", () => {
+    const warning = getLocationChangeWarning({
+      body: {
+        rawText: "greek yogurt",
+        productConceptId: "concept-1",
+        aisleSectionId: "section-2",
+      },
+      productConcepts,
+      items,
+      excludeItemId: "item-1",
+    });
+
+    expect(warning).toEqual({
+      productName: "Yogurt",
+      affectedItemTexts: ["yoghurt"],
+    });
+  });
+
+  it("does not warn for a new product", () => {
+    expect(
+      getLocationChangeWarning({
+        body: {
+          rawText: "greek yogurt",
+          canonicalName: "Greek yogurt",
+          aisleSectionId: "section-2",
+        },
+        productConcepts,
+        items,
+      }),
+    ).toBeNull();
+  });
+
+  it("does not warn when the product has no learned location yet", () => {
+    expect(
+      getLocationChangeWarning({
+        body: {
+          rawText: "milk",
+          productConceptId: "concept-2",
+          aisleSectionId: "section-2",
+        },
+        productConcepts,
+        items,
+      }),
+    ).toBeNull();
+  });
+
+  it("does not warn when the section is unchanged", () => {
+    expect(
+      getLocationChangeWarning({
+        body: {
+          rawText: "greek yogurt",
+          productConceptId: "concept-1",
+          aisleSectionId: "section-1",
+        },
+        productConcepts,
+        items,
+      }),
+    ).toBeNull();
   });
 });
 

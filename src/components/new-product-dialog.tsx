@@ -1,8 +1,10 @@
 "use client";
 
 import { X } from "lucide-react";
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+
+import { useDialogFocusTrap } from "./use-dialog-focus-trap";
 
 export type NewProductDialogSection = {
   id: string;
@@ -40,52 +42,11 @@ export function NewProductDialog({
   const dialogRef = useRef<HTMLFormElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    nameRef.current?.focus();
-
-    function handleDialogKeydown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        onCancel();
-        return;
-      }
-
-      if (event.key !== "Tab") {
-        return;
-      }
-
-      const focusableElements = Array.from(
-        dialogRef.current?.querySelectorAll<HTMLElement>(
-          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ) ?? [],
-      );
-
-      const firstElement = focusableElements[0];
-      const lastElement = focusableElements.at(-1);
-      const activeElement = document.activeElement;
-
-      if (!firstElement || !lastElement) {
-        return;
-      }
-
-      if (
-        !(activeElement instanceof HTMLElement) ||
-        !dialogRef.current?.contains(activeElement)
-      ) {
-        event.preventDefault();
-        firstElement.focus();
-      } else if (event.shiftKey && activeElement === firstElement) {
-        event.preventDefault();
-        lastElement.focus();
-      } else if (!event.shiftKey && activeElement === lastElement) {
-        event.preventDefault();
-        firstElement.focus();
-      }
-    }
-
-    document.addEventListener("keydown", handleDialogKeydown);
-
-    return () => document.removeEventListener("keydown", handleDialogKeydown);
-  }, [onCancel]);
+  useDialogFocusTrap({
+    dialogRef,
+    initialFocusRef: nameRef,
+    onClose: onCancel,
+  });
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

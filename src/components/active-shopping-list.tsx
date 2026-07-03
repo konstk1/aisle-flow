@@ -24,6 +24,7 @@ import type {
 } from "@/domain/active-shopping-list";
 import { formatAisleLabel, formatSectionLabel } from "@/domain/store-layout";
 
+import { LocationChangeDialog } from "./location-change-dialog";
 import { NewProductDialog } from "./new-product-dialog";
 import {
   ADD_PRODUCT_OPTION_VALUE,
@@ -31,13 +32,16 @@ import {
   buildProductCorrectionRequest,
   buildProductSelectionPatch,
   createProductCorrectionFormState,
+  getLocationChangeWarning,
   getStableMutationForText,
   mergeVisibleListSnapshotAfterCheck,
   removeItemFromActiveList,
   restoreItemInActiveList,
   shouldSaveProductCorrectionForEdit,
+  type LocationChangeWarning,
   type PendingTextMutation,
   type ProductCorrectionFormState,
+  type ProductCorrectionRequestBody,
 } from "./active-shopping-list-state";
 
 type ActiveShoppingListProps = {
@@ -224,6 +228,10 @@ function ShoppingListView({
   const [pendingCorrectionItemId, setPendingCorrectionItemId] = useState<
     string | null
   >(null);
+  const [locationChangeConfirm, setLocationChangeConfirm] = useState<{
+    warning: LocationChangeWarning;
+    body: ProductCorrectionRequestBody;
+  } | null>(null);
   const [editItemId, setEditItemId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [editFieldErrors, setEditFieldErrors] = useState<FieldErrors>({});
@@ -516,6 +524,7 @@ function ShoppingListView({
     setEditLocationTouched(false);
     setCorrectionFieldErrors({});
     setCorrectionMessage(null);
+    setLocationChangeConfirm(null);
   }
 
   async function saveEdit(event: React.FormEvent<HTMLFormElement>) {
@@ -525,7 +534,6 @@ function ShoppingListView({
       return;
     }
 
-    setPendingEditItemId(editItem.id);
     setEditFieldErrors({});
     setEditMessage(null);
     setCorrectionFieldErrors({});
@@ -544,11 +552,40 @@ function ShoppingListView({
     if (correctionRequest?.success === false) {
       setCorrectionFieldErrors(correctionRequest.fieldErrors);
       setCorrectionMessage("Check the highlighted location fields.");
-      setPendingEditItemId(null);
       return;
     }
 
-    if (correctionRequest?.success) {
+    const correctionBody = correctionRequest?.success
+      ? correctionRequest.body
+      : null;
+
+    if (correctionBody) {
+      const warning = getLocationChangeWarning({
+        body: correctionBody,
+        productConcepts: correctionOptions?.productConcepts ?? [],
+        items: activeList?.items ?? [],
+        excludeItemId: editItem.id,
+      });
+
+      if (warning) {
+        setLocationChangeConfirm({ warning, body: correctionBody });
+        return;
+      }
+    }
+
+    await performSaveEdit(correctionBody);
+  }
+
+  async function performSaveEdit(
+    correctionBody: ProductCorrectionRequestBody | null,
+  ) {
+    if (!editItem) {
+      return;
+    }
+
+    setPendingEditItemId(editItem.id);
+
+    if (correctionBody) {
       setPendingCorrectionItemId(editItem.id);
     }
 
@@ -567,9 +604,9 @@ function ShoppingListView({
         return;
       }
 
-      if (correctionRequest?.success) {
+      if (correctionBody) {
         const correctionResponse = await fetch("/api/product-corrections", {
-          body: JSON.stringify(correctionRequest.body),
+          body: JSON.stringify(correctionBody),
           headers: { "Content-Type": "application/json" },
           method: "POST",
         });
@@ -919,6 +956,20 @@ function ShoppingListView({
             <ArrowRight aria-hidden="true" className="size-4" />
           </Link>
         </div>
+      ) : null}
+
+      {locationChangeConfirm ? (
+        <LocationChangeDialog
+          affectedItemTexts={locationChangeConfirm.warning.affectedItemTexts}
+          onCancel={() => setLocationChangeConfirm(null)}
+          onProceed={() => {
+            const confirmed = locationChangeConfirm;
+            setLocationChangeConfirm(null);
+            void performSaveEdit(confirmed.body);
+          }}
+          productName={locationChangeConfirm.warning.productName}
+          storeName={correctionOptions?.store?.name ?? null}
+        />
       ) : null}
     </section>
   );

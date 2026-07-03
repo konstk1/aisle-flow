@@ -88,6 +88,62 @@ export function buildProductSelectionPatch(
   };
 }
 
+export type LocationChangeWarning = {
+  productName: string;
+  affectedItemTexts: string[];
+};
+
+// A correction to an existing product with a different section moves the
+// product's one location per store, relocating every linked item at once.
+export function getLocationChangeWarning({
+  body,
+  productConcepts,
+  items,
+  excludeItemId,
+}: {
+  body: ProductCorrectionRequestBody;
+  productConcepts: readonly {
+    id: string;
+    canonicalName: string;
+    aisleSectionId: string | null;
+  }[];
+  items: readonly {
+    id: string;
+    rawText: string;
+    isChecked: boolean;
+    productConcept: { id: string } | null;
+  }[];
+  excludeItemId?: string;
+}): LocationChangeWarning | null {
+  if (!body.productConceptId) {
+    return null;
+  }
+
+  const concept = productConcepts.find(
+    (candidate) => candidate.id === body.productConceptId,
+  );
+
+  if (
+    !concept ||
+    concept.aisleSectionId === null ||
+    concept.aisleSectionId === body.aisleSectionId
+  ) {
+    return null;
+  }
+
+  return {
+    productName: concept.canonicalName,
+    affectedItemTexts: items
+      .filter(
+        (item) =>
+          !item.isChecked &&
+          item.id !== excludeItemId &&
+          item.productConcept?.id === body.productConceptId,
+      )
+      .map((item) => item.rawText),
+  };
+}
+
 export function buildProductCorrectionRequest({
   form,
   rawText,

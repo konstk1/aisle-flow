@@ -15,8 +15,12 @@ import {
   buildProductCorrectionRequest,
   buildProductSelectionPatch,
   createProductCorrectionFormState,
+  getLocationChangeWarning,
+  type LocationChangeWarning,
   type ProductCorrectionFormState,
+  type ProductCorrectionRequestBody,
 } from "./active-shopping-list-state";
+import { LocationChangeDialog } from "./location-change-dialog";
 import { NewProductDialog } from "./new-product-dialog";
 
 type ProductCorrectionOptions = {
@@ -94,6 +98,11 @@ export function LearnedProducts({
   );
   const [optionsLoading, setOptionsLoading] = useState(false);
   const [optionsError, setOptionsError] = useState<string | null>(null);
+  const [locationChangeConfirm, setLocationChangeConfirm] = useState<{
+    learning: LearnedProductPayload;
+    body: ProductCorrectionRequestBody;
+    warning: LocationChangeWarning;
+  } | null>(null);
 
   async function loadOptions() {
     setOptionsLoading(true);
@@ -153,6 +162,7 @@ export function LearnedProducts({
     setEditingAliasId(null);
     setFieldErrors({});
     setMessage(null);
+    setLocationChangeConfirm(null);
   }
 
   async function saveLearning(learning: LearnedProductPayload) {
@@ -166,11 +176,59 @@ export function LearnedProducts({
       return;
     }
 
+    const warning = getLocationChangeWarning({
+      body: request.body,
+      productConcepts: options?.productConcepts ?? [],
+      items: [],
+    });
+
+    if (warning) {
+      const items = await fetchActiveListItems();
+      setLocationChangeConfirm({
+        learning,
+        body: request.body,
+        warning:
+          getLocationChangeWarning({
+            body: request.body,
+            productConcepts: options?.productConcepts ?? [],
+            items,
+          }) ?? warning,
+      });
+      return;
+    }
+
+    await performSaveLearning(learning, request.body);
+  }
+
+  async function fetchActiveListItems() {
+    try {
+      const response = await fetch("/api/shopping-list");
+      const result = (await response.json()) as {
+        activeList?: {
+          items?: {
+            id: string;
+            rawText: string;
+            isChecked: boolean;
+            productConcept: { id: string } | null;
+          }[];
+        } | null;
+      };
+
+      return response.ok ? (result.activeList?.items ?? []) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async function performSaveLearning(
+    learning: LearnedProductPayload,
+    requestBody: ProductCorrectionRequestBody,
+  ) {
     const body = {
-      aisleSectionId: request.body.aisleSectionId,
-      ...(request.body.productConceptId !== undefined
-        ? { productConceptId: request.body.productConceptId }
-        : { canonicalName: request.body.canonicalName }),
+      aisleSectionId: requestBody.aisleSectionId,
+      ...(requestBody.productConceptId !== undefined
+        ? { productConceptId: requestBody.productConceptId }
+        : { canonicalName: requestBody.canonicalName }),
     };
 
     setPendingAliasId(learning.aliasId);
@@ -237,7 +295,7 @@ export function LearnedProducts({
           : "No store layout yet."}
       </h1>
       <p className="mt-3 max-w-2xl text-base leading-7 text-zinc-600">
-        Item phrases the app has learned from your corrections, with the shelf
+        Item phrases the app has learned from your corrections, with the
         product and aisle section each one resolves to.
       </p>
 
@@ -416,6 +474,20 @@ export function LearnedProducts({
           })}
         </ul>
       )}
+
+      {locationChangeConfirm ? (
+        <LocationChangeDialog
+          affectedItemTexts={locationChangeConfirm.warning.affectedItemTexts}
+          onCancel={() => setLocationChangeConfirm(null)}
+          onProceed={() => {
+            const confirmed = locationChangeConfirm;
+            setLocationChangeConfirm(null);
+            void performSaveLearning(confirmed.learning, confirmed.body);
+          }}
+          productName={locationChangeConfirm.warning.productName}
+          storeName={options?.store?.name ?? payload.store?.name ?? null}
+        />
+      ) : null}
     </section>
   );
 }
