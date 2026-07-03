@@ -191,7 +191,7 @@ export function resolveProductMatch({
     return needsUserCorrection(
       text,
       normalizedText,
-      "Enter a product name before choosing a shelf category.",
+      "Enter a product name before choosing a route section.",
     );
   }
 
@@ -237,7 +237,7 @@ export function resolveProductMatch({
   return needsUserCorrection(
     text,
     normalizedText,
-    "No category matched with sufficient confidence.",
+    "No product matched with sufficient confidence.",
   );
 }
 
@@ -444,7 +444,7 @@ function toMatchedResult(
       ? `Corrected “${normalizedText}” to the curated term “${candidate.matchedTerm}”.`
       : candidate.source === "qualifier"
         ? `Matched “${phrase}” using a configured department qualifier.`
-        : `Matched the ${candidate.source === "canonical-name" ? "canonical category" : "curated term"} “${candidate.matchedTerm}”.`;
+        : `Matched the ${candidate.source === "canonical-name" ? "canonical product name" : "curated term"} “${candidate.matchedTerm}”.`;
 
   return {
     state: "matched",

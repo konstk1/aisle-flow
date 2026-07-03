@@ -9,10 +9,10 @@ export type PendingTextMutation = {
   mutationId: string;
 };
 
-export const ADD_CATEGORY_OPTION_VALUE = "__add_category__";
+export const ADD_PRODUCT_OPTION_VALUE = "__add_product__";
 
 export type ProductCorrectionFormState = {
-  categorySelection: string;
+  productSelection: string;
   canonicalName: string;
   aisleSectionId: string;
 };
@@ -59,9 +59,9 @@ export function createProductCorrectionFormState({
   hasProductConceptOptions: boolean;
 }): ProductCorrectionFormState {
   return {
-    categorySelection:
+    productSelection:
       productConceptId ??
-      (hasProductConceptOptions ? "" : ADD_CATEGORY_OPTION_VALUE),
+      (hasProductConceptOptions ? "" : ADD_PRODUCT_OPTION_VALUE),
     canonicalName: "",
     aisleSectionId: "",
   };
@@ -76,17 +76,17 @@ export function buildProductCorrectionRequest({
 }): ProductCorrectionRequestBuildResult {
   const fieldErrors: FieldErrors = {};
   const aisleSectionId = form.aisleSectionId.trim();
-  const categorySelection = form.categorySelection.trim();
+  const productSelection = form.productSelection.trim();
 
-  if (categorySelection === ADD_CATEGORY_OPTION_VALUE) {
+  if (productSelection === ADD_PRODUCT_OPTION_VALUE) {
     const canonicalName = form.canonicalName.trim();
 
     if (!canonicalName) {
-      fieldErrors.canonicalName = ["Enter a shelf category name."];
+      fieldErrors.canonicalName = ["Enter a product name."];
     }
   } else {
-    if (!categorySelection) {
-      fieldErrors.productConceptId = ["Choose a shelf category."];
+    if (!productSelection) {
+      fieldErrors.productConceptId = ["Choose a product."];
     }
   }
 
@@ -103,9 +103,9 @@ export function buildProductCorrectionRequest({
     body: {
       rawText,
       aisleSectionId,
-      ...(categorySelection === ADD_CATEGORY_OPTION_VALUE
+      ...(productSelection === ADD_PRODUCT_OPTION_VALUE
         ? { canonicalName: form.canonicalName.trim() }
-        : { productConceptId: categorySelection }),
+        : { productConceptId: productSelection }),
     },
   };
 }

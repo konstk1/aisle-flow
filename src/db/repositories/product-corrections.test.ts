@@ -22,7 +22,7 @@ const productConceptId = "22222222-2222-4222-8222-222222222222";
 const aisleSectionId = "33333333-3333-4333-8333-333333333333";
 
 describe("product correction queries", () => {
-  it("returns a category when normalized concept creation conflicts", () => {
+  it("returns a concept when normalized concept creation conflicts", () => {
     const { sql: query, params } = buildProductConceptCreateQuery(database, {
       canonicalName: "bulk grains",
       normalizedName: "bulk grains",
@@ -101,7 +101,7 @@ describe("product correction queries", () => {
     ]);
   });
 
-  it("updates the one store-specific product location for a category without clobbering existing section position", () => {
+  it("updates the one store-specific product location for a concept without clobbering existing section position", () => {
     const { sql: query, params } = buildManualProductLocationCorrectionQuery(
       database,
       {

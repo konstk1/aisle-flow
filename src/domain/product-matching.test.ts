@@ -112,7 +112,7 @@ describe("resolveProductMatch", () => {
   });
 
   it.each(["rice vinegar", "rice cakes", "rice noodles"])(
-    "never resolves %s to rice through its broad category term",
+    "never resolves %s to rice through its broad concept term",
     (text) => {
       const result = resolveProductMatch({ text, catalog });
 

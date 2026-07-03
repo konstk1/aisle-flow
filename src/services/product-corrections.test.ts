@@ -159,7 +159,7 @@ beforeEach(() => {
 });
 
 describe("productCorrectionRequestSchema", () => {
-  it("accepts an unresolved phrase with an existing category and section", () => {
+  it("accepts an unresolved phrase with an existing product and section", () => {
     const result = productCorrectionRequestSchema.parse({
       rawText: "Wild Rice",
       productConceptId: validConceptId,
@@ -173,7 +173,7 @@ describe("productCorrectionRequestSchema", () => {
     });
   });
 
-  it("accepts a new category name instead of an existing category id", () => {
+  it("accepts a new product name instead of an existing product id", () => {
     const result = productCorrectionRequestSchema.parse({
       rawText: "dried mango",
       canonicalName: "Dried fruit",
@@ -187,7 +187,7 @@ describe("productCorrectionRequestSchema", () => {
     });
   });
 
-  it("requires exactly one category selection mode", () => {
+  it("requires exactly one product selection mode", () => {
     const missing = productCorrectionRequestSchema.safeParse({
       rawText: "wild rice",
       aisleSectionId: validSectionId,
@@ -335,7 +335,7 @@ describe("applyProductCorrection", () => {
     ).rejects.toMatchObject({
       fieldErrors: {
         form: [
-          "The selected category or section no longer exists. Refresh and try again.",
+          "The selected product or section no longer exists. Refresh and try again.",
         ],
       },
       status: 409,
@@ -385,7 +385,7 @@ describe("applyProductCorrection", () => {
 });
 
 describe("learnedProductUpdateRequestSchema", () => {
-  it("requires exactly one category selection mode", () => {
+  it("requires exactly one product selection mode", () => {
     const missing = learnedProductUpdateRequestSchema.safeParse({
       aisleSectionId: validSectionId,
     });

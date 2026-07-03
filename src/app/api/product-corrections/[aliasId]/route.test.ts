@@ -104,8 +104,8 @@ describe("learned product route", () => {
     expect(body.fieldErrors).toEqual(
       expect.objectContaining({
         aisleSectionId: ["Choose a valid aisle section."],
-        productConceptId: ["Choose an existing category or enter a new one."],
-        canonicalName: ["Choose an existing category or enter a new one."],
+        productConceptId: ["Choose an existing product or enter a new one."],
+        canonicalName: ["Choose an existing product or enter a new one."],
       }),
     );
     expect(updateLearnedProduct).not.toHaveBeenCalled();

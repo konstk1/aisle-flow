@@ -10,7 +10,7 @@ import type {
 } from "@/domain/learned-products";
 
 import {
-  ADD_CATEGORY_OPTION_VALUE,
+  ADD_PRODUCT_OPTION_VALUE,
   buildProductCorrectionRequest,
   createProductCorrectionFormState,
   type ProductCorrectionFormState,
@@ -135,7 +135,7 @@ export function LearnedProducts({
     setFieldErrors({});
     setMessage(null);
     setForm({
-      categorySelection: learning.productConcept.id,
+      productSelection: learning.productConcept.id,
       canonicalName: "",
       aisleSectionId: learning.aisleSectionId ?? "",
     });
@@ -234,7 +234,7 @@ export function LearnedProducts({
       </h1>
       <p className="mt-3 max-w-2xl text-base leading-7 text-zinc-600">
         Item phrases the app has learned from your corrections, with the shelf
-        category and aisle section each one resolves to.
+        product and aisle section each one resolves to.
       </p>
 
       {message && !editingAliasId ? (
@@ -439,13 +439,13 @@ function LearnedProductEditor({
 }) {
   const productConcepts = options?.productConcepts ?? [];
   const aisleSections = options?.aisleSections ?? [];
-  const isAddingCategory = form.categorySelection === ADD_CATEGORY_OPTION_VALUE;
+  const isAddingProduct = form.productSelection === ADD_PRODUCT_OPTION_VALUE;
   const selectedConceptIsMissing =
-    form.categorySelection.length > 0 &&
-    !isAddingCategory &&
-    !productConcepts.some((concept) => concept.id === form.categorySelection);
+    form.productSelection.length > 0 &&
+    !isAddingProduct &&
+    !productConcepts.some((concept) => concept.id === form.productSelection);
   const formDisabled = pending || loadingOptions || !options || !!optionsError;
-  const categoryControlId = `learned-category-${learning.aliasId}`;
+  const productControlId = `learned-product-${learning.aliasId}`;
 
   return (
     <div className="space-y-2">
@@ -476,33 +476,33 @@ function LearnedProductEditor({
 
       <div className="grid gap-2 sm:grid-cols-2">
         <div className="block min-w-0">
-          <label className="sr-only" htmlFor={categoryControlId}>
-            Shelf category
+          <label className="sr-only" htmlFor={productControlId}>
+            Product
           </label>
-          {isAddingCategory ? (
+          {isAddingProduct ? (
             <span className="flex">
               <input
                 autoFocus
                 className="min-h-10 min-w-0 flex-1 border bg-white px-3 text-sm outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={formDisabled}
-                id={categoryControlId}
+                id={productControlId}
                 onChange={(event) =>
                   onFormChange({ canonicalName: event.target.value })
                 }
-                placeholder="New category"
+                placeholder="New product"
                 value={form.canonicalName}
               />
               <button
-                aria-label="Choose existing category"
+                aria-label="Choose existing product"
                 className="inline-flex size-10 shrink-0 items-center justify-center border border-l-0 text-zinc-700 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={formDisabled}
                 onClick={() =>
                   onFormChange({
                     canonicalName: "",
-                    categorySelection: "",
+                    productSelection: "",
                   })
                 }
-                title="Choose existing category"
+                title="Choose existing product"
                 type="button"
               >
                 <X aria-hidden="true" className="size-4" />
@@ -512,16 +512,16 @@ function LearnedProductEditor({
             <select
               className="min-h-10 w-full border bg-white px-3 text-sm outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
               disabled={formDisabled}
-              id={categoryControlId}
+              id={productControlId}
               onChange={(event) =>
                 onFormChange({
-                  categorySelection: event.target.value,
+                  productSelection: event.target.value,
                   canonicalName: "",
                 })
               }
-              value={form.categorySelection}
+              value={form.productSelection}
             >
-              <option value="">Choose category</option>
+              <option value="">Choose product</option>
               {selectedConceptIsMissing ? (
                 <option value={learning.productConcept.id}>
                   {learning.productConcept.canonicalName}
@@ -532,7 +532,7 @@ function LearnedProductEditor({
                   {concept.canonicalName}
                 </option>
               ))}
-              <option value={ADD_CATEGORY_OPTION_VALUE}>Add category</option>
+              <option value={ADD_PRODUCT_OPTION_VALUE}>Add product</option>
             </select>
           )}
           <FieldError messages={fieldErrors.productConceptId} />
@@ -561,7 +561,7 @@ function LearnedProductEditor({
       </div>
 
       <p className="text-xs leading-5 text-zinc-500">
-        Shelf categories are shared across all stores; the route section
+        Products are shared across all stores; the route section
         applies only to {options?.store?.name ?? "this store"}.
       </p>
     </div>

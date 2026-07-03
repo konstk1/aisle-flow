@@ -6,7 +6,7 @@ import type {
 } from "@/domain/active-shopping-list";
 
 import {
-  ADD_CATEGORY_OPTION_VALUE,
+  ADD_PRODUCT_OPTION_VALUE,
   buildProductCorrectionRequest,
   createProductCorrectionFormState,
   getStableMutationForText,
@@ -54,35 +54,35 @@ describe("getStableMutationForText", () => {
 });
 
 describe("createProductCorrectionFormState", () => {
-  it("starts with the matched category selected when an item already has one", () => {
+  it("starts with the matched product selected when an item already has one", () => {
     expect(
       createProductCorrectionFormState({
         productConceptId: "concept-1",
         hasProductConceptOptions: true,
       }),
     ).toMatchObject({
-      categorySelection: "concept-1",
+      productSelection: "concept-1",
     });
   });
 
-  it("starts with add category selected when there are no existing categories", () => {
+  it("starts with add product selected when there are no existing products", () => {
     expect(
       createProductCorrectionFormState({
         productConceptId: null,
         hasProductConceptOptions: false,
       }),
     ).toMatchObject({
-      categorySelection: ADD_CATEGORY_OPTION_VALUE,
+      productSelection: ADD_PRODUCT_OPTION_VALUE,
     });
   });
 });
 
 describe("buildProductCorrectionRequest", () => {
-  it("builds a correction request for an existing category", () => {
+  it("builds a correction request for an existing product", () => {
     const result = buildProductCorrectionRequest({
       rawText: "Wild Rice",
       form: {
-        categorySelection: "22222222-2222-4222-8222-222222222222",
+        productSelection: "22222222-2222-4222-8222-222222222222",
         canonicalName: "",
         aisleSectionId: "33333333-3333-4333-8333-333333333333",
       },
@@ -98,11 +98,11 @@ describe("buildProductCorrectionRequest", () => {
     });
   });
 
-  it("builds a correction request for a new trimmed category", () => {
+  it("builds a correction request for a new trimmed product", () => {
     const result = buildProductCorrectionRequest({
       rawText: "dried mango",
       form: {
-        categorySelection: ADD_CATEGORY_OPTION_VALUE,
+        productSelection: ADD_PRODUCT_OPTION_VALUE,
         canonicalName: "  Dried fruit  ",
         aisleSectionId: "33333333-3333-4333-8333-333333333333",
       },
@@ -122,7 +122,7 @@ describe("buildProductCorrectionRequest", () => {
     const result = buildProductCorrectionRequest({
       rawText: "Wild Rice",
       form: {
-        categorySelection: "",
+        productSelection: "",
         canonicalName: "",
         aisleSectionId: "",
       },
@@ -131,7 +131,7 @@ describe("buildProductCorrectionRequest", () => {
     expect(result).toEqual({
       success: false,
       fieldErrors: {
-        productConceptId: ["Choose a shelf category."],
+        productConceptId: ["Choose a product."],
         aisleSectionId: ["Choose an aisle section."],
       },
     });

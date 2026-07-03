@@ -25,7 +25,7 @@ import type {
 import { formatAisleLabel, formatSectionLabel } from "@/domain/store-layout";
 
 import {
-  ADD_CATEGORY_OPTION_VALUE,
+  ADD_PRODUCT_OPTION_VALUE,
   buildProductCorrectionRequest,
   createProductCorrectionFormState,
   getStableMutationForText,
@@ -663,9 +663,9 @@ function ShoppingListView({
 
       setCorrectionOptions(options);
       setCorrectionForm((current) =>
-        current.categorySelection.length === 0 &&
+        current.productSelection.length === 0 &&
         options.productConcepts.length === 0
-          ? { ...current, categorySelection: ADD_CATEGORY_OPTION_VALUE }
+          ? { ...current, productSelection: ADD_PRODUCT_OPTION_VALUE }
           : current,
       );
       return options;
@@ -1186,16 +1186,16 @@ function InlineLocationEditor({
 }) {
   const productConcepts = options?.productConcepts ?? [];
   const aisleSections = options?.aisleSections ?? [];
-  const isAddingCategory = form.categorySelection === ADD_CATEGORY_OPTION_VALUE;
+  const isAddingProduct = form.productSelection === ADD_PRODUCT_OPTION_VALUE;
   const selectedConceptIsMissing =
-    form.categorySelection.length > 0 &&
-    !isAddingCategory &&
-    !productConcepts.some((concept) => concept.id === form.categorySelection);
+    form.productSelection.length > 0 &&
+    !isAddingProduct &&
+    !productConcepts.some((concept) => concept.id === form.productSelection);
   const selectedSectionIsMissing =
     form.aisleSectionId.length > 0 &&
     !aisleSections.some((section) => section.id === form.aisleSectionId);
   const formDisabled = pending || loadingOptions || !options || !!optionsError;
-  const categoryControlId = `category-${item.id}`;
+  const productControlId = `product-${item.id}`;
 
   return (
     <div className="space-y-2">
@@ -1238,33 +1238,33 @@ function InlineLocationEditor({
       ) : (
         <div className="grid gap-2 sm:grid-cols-2">
           <div className="block min-w-0">
-            <label className="sr-only" htmlFor={categoryControlId}>
-              Shelf category
+            <label className="sr-only" htmlFor={productControlId}>
+              Product
             </label>
-            {isAddingCategory ? (
+            {isAddingProduct ? (
               <span className="flex">
                 <input
                   autoFocus
                   className="min-h-10 min-w-0 flex-1 border bg-white px-3 text-sm outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
                   disabled={formDisabled}
-                  id={categoryControlId}
+                  id={productControlId}
                   onChange={(event) =>
                     onFormChange({ canonicalName: event.target.value })
                   }
-                  placeholder="New category"
+                  placeholder="New product"
                   value={form.canonicalName}
                 />
                 <button
-                  aria-label="Choose existing category"
+                  aria-label="Choose existing product"
                   className="inline-flex size-10 shrink-0 items-center justify-center border border-l-0 text-zinc-700 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={formDisabled}
                   onClick={() =>
                     onFormChange({
                       canonicalName: "",
-                      categorySelection: "",
+                      productSelection: "",
                     })
                   }
-                  title="Choose existing category"
+                  title="Choose existing product"
                   type="button"
                 >
                   <X aria-hidden="true" className="size-4" />
@@ -1274,16 +1274,16 @@ function InlineLocationEditor({
               <select
                 className="min-h-10 w-full border bg-white px-3 text-sm outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={formDisabled}
-                id={categoryControlId}
+                id={productControlId}
                 onChange={(event) =>
                   onFormChange({
-                    categorySelection: event.target.value,
+                    productSelection: event.target.value,
                     canonicalName: "",
                   })
                 }
-                value={form.categorySelection}
+                value={form.productSelection}
               >
-                <option value="">Choose category</option>
+                <option value="">Choose product</option>
                 {selectedConceptIsMissing && item.productConcept ? (
                   <option value={item.productConcept.id}>
                     {item.productConcept.canonicalName}
@@ -1294,7 +1294,7 @@ function InlineLocationEditor({
                     {concept.canonicalName}
                   </option>
                 ))}
-                <option value={ADD_CATEGORY_OPTION_VALUE}>Add category</option>
+                <option value={ADD_PRODUCT_OPTION_VALUE}>Add product</option>
               </select>
             )}
             <FieldError messages={fieldErrors.productConceptId} />
