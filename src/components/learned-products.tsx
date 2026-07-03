@@ -10,11 +10,19 @@ import type {
 } from "@/domain/learned-products";
 
 import {
-  ADD_CATEGORY_OPTION_VALUE,
+  ADD_PRODUCT_OPTION_VALUE,
+  NEW_PRODUCT_DIALOG_OPTION_VALUE,
   buildProductCorrectionRequest,
+  buildProductSelectionPatch,
   createProductCorrectionFormState,
+  getLocationChangeWarning,
+  getProductSelectionState,
+  type LocationChangeWarning,
   type ProductCorrectionFormState,
+  type ProductCorrectionRequestBody,
 } from "./active-shopping-list-state";
+import { LocationChangeDialog } from "./location-change-dialog";
+import { NewProductDialog } from "./new-product-dialog";
 
 type ProductCorrectionOptions = {
   store: { id: string; name: string } | null;
@@ -26,6 +34,7 @@ type ProductCorrectionProductConcept = {
   id: string;
   canonicalName: string;
   normalizedName: string;
+  aisleSectionId: string | null;
 };
 
 type ProductCorrectionAisleSection = {
@@ -90,6 +99,11 @@ export function LearnedProducts({
   );
   const [optionsLoading, setOptionsLoading] = useState(false);
   const [optionsError, setOptionsError] = useState<string | null>(null);
+  const [locationChangeConfirm, setLocationChangeConfirm] = useState<{
+    learning: LearnedProductPayload;
+    body: ProductCorrectionRequestBody;
+    warning: LocationChangeWarning;
+  } | null>(null);
 
   async function loadOptions() {
     setOptionsLoading(true);
@@ -135,7 +149,7 @@ export function LearnedProducts({
     setFieldErrors({});
     setMessage(null);
     setForm({
-      categorySelection: learning.productConcept.id,
+      productSelection: learning.productConcept.id,
       canonicalName: "",
       aisleSectionId: learning.aisleSectionId ?? "",
     });
@@ -149,6 +163,7 @@ export function LearnedProducts({
     setEditingAliasId(null);
     setFieldErrors({});
     setMessage(null);
+    setLocationChangeConfirm(null);
   }
 
   async function saveLearning(learning: LearnedProductPayload) {
@@ -162,11 +177,61 @@ export function LearnedProducts({
       return;
     }
 
+    const productConcepts = options?.productConcepts ?? [];
+    const concept = productConcepts.find(
+      (candidate) => candidate.id === request.body.productConceptId,
+    );
+
+    // Only relocating an existing product needs a confirmation; fetch the list
+    // just then to show which of the user's items will move.
+    if (
+      concept?.aisleSectionId &&
+      concept.aisleSectionId !== request.body.aisleSectionId
+    ) {
+      const warning = getLocationChangeWarning({
+        body: request.body,
+        productConcepts,
+        items: await fetchActiveListItems(),
+      });
+
+      if (warning) {
+        setLocationChangeConfirm({ learning, body: request.body, warning });
+        return;
+      }
+    }
+
+    await performSaveLearning(learning, request.body);
+  }
+
+  async function fetchActiveListItems() {
+    try {
+      const response = await fetch("/api/shopping-list");
+      const result = (await response.json()) as {
+        activeList?: {
+          items?: {
+            id: string;
+            rawText: string;
+            isChecked: boolean;
+            productConcept: { id: string } | null;
+          }[];
+        } | null;
+      };
+
+      return response.ok ? (result.activeList?.items ?? []) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async function performSaveLearning(
+    learning: LearnedProductPayload,
+    requestBody: ProductCorrectionRequestBody,
+  ) {
     const body = {
-      aisleSectionId: request.body.aisleSectionId,
-      ...(request.body.productConceptId !== undefined
-        ? { productConceptId: request.body.productConceptId }
-        : { canonicalName: request.body.canonicalName }),
+      aisleSectionId: requestBody.aisleSectionId,
+      ...(requestBody.productConceptId !== undefined
+        ? { productConceptId: requestBody.productConceptId }
+        : { canonicalName: requestBody.canonicalName }),
     };
 
     setPendingAliasId(learning.aliasId);
@@ -192,6 +257,9 @@ export function LearnedProducts({
 
       setPayload(result.learnedProducts);
       setEditingAliasId(null);
+      // Refresh cached options so a product's location reflects this save on
+      // the next edit rather than warning against the stale section.
+      void loadOptions();
     } catch {
       setMessage("The learned product could not be saved.");
     } finally {
@@ -233,8 +301,8 @@ export function LearnedProducts({
           : "No store layout yet."}
       </h1>
       <p className="mt-3 max-w-2xl text-base leading-7 text-zinc-600">
-        Item phrases the app has learned from your corrections, with the shelf
-        category and aisle section each one resolves to.
+        Item phrases the app has learned from your corrections, with the
+        product and aisle section each one resolves to.
       </p>
 
       {message && !editingAliasId ? (
@@ -412,6 +480,20 @@ export function LearnedProducts({
           })}
         </ul>
       )}
+
+      {locationChangeConfirm ? (
+        <LocationChangeDialog
+          affectedItemTexts={locationChangeConfirm.warning.affectedItemTexts}
+          onCancel={() => setLocationChangeConfirm(null)}
+          onProceed={() => {
+            const confirmed = locationChangeConfirm;
+            setLocationChangeConfirm(null);
+            void performSaveLearning(confirmed.learning, confirmed.body);
+          }}
+          productName={locationChangeConfirm.warning.productName}
+          storeName={options?.store?.name ?? payload.store?.name ?? null}
+        />
+      ) : null}
     </section>
   );
 }
@@ -439,13 +521,11 @@ function LearnedProductEditor({
 }) {
   const productConcepts = options?.productConcepts ?? [];
   const aisleSections = options?.aisleSections ?? [];
-  const isAddingCategory = form.categorySelection === ADD_CATEGORY_OPTION_VALUE;
-  const selectedConceptIsMissing =
-    form.categorySelection.length > 0 &&
-    !isAddingCategory &&
-    !productConcepts.some((concept) => concept.id === form.categorySelection);
+  const { isAddingProduct, selectedConceptIsMissing, selectValue } =
+    getProductSelectionState(form, productConcepts);
   const formDisabled = pending || loadingOptions || !options || !!optionsError;
-  const categoryControlId = `learned-category-${learning.aliasId}`;
+  const productControlId = `learned-product-${learning.aliasId}`;
+  const [isNewProductDialogOpen, setIsNewProductDialogOpen] = useState(false);
 
   return (
     <div className="space-y-2">
@@ -476,65 +556,48 @@ function LearnedProductEditor({
 
       <div className="grid gap-2 sm:grid-cols-2">
         <div className="block min-w-0">
-          <label className="sr-only" htmlFor={categoryControlId}>
-            Shelf category
+          <label className="sr-only" htmlFor={productControlId}>
+            Product
           </label>
-          {isAddingCategory ? (
-            <span className="flex">
-              <input
-                autoFocus
-                className="min-h-10 min-w-0 flex-1 border bg-white px-3 text-sm outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={formDisabled}
-                id={categoryControlId}
-                onChange={(event) =>
-                  onFormChange({ canonicalName: event.target.value })
-                }
-                placeholder="New category"
-                value={form.canonicalName}
-              />
-              <button
-                aria-label="Choose existing category"
-                className="inline-flex size-10 shrink-0 items-center justify-center border border-l-0 text-zinc-700 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={formDisabled}
-                onClick={() =>
-                  onFormChange({
-                    canonicalName: "",
-                    categorySelection: "",
-                  })
-                }
-                title="Choose existing category"
-                type="button"
-              >
-                <X aria-hidden="true" className="size-4" />
-              </button>
-            </span>
-          ) : (
-            <select
-              className="min-h-10 w-full border bg-white px-3 text-sm outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={formDisabled}
-              id={categoryControlId}
-              onChange={(event) =>
-                onFormChange({
-                  categorySelection: event.target.value,
-                  canonicalName: "",
-                })
+          <select
+            className="min-h-10 w-full border bg-white px-3 text-sm outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={formDisabled}
+            id={productControlId}
+            onChange={(event) => {
+              if (event.target.value === NEW_PRODUCT_DIALOG_OPTION_VALUE) {
+                setIsNewProductDialogOpen(true);
+                return;
               }
-              value={form.categorySelection}
-            >
-              <option value="">Choose category</option>
-              {selectedConceptIsMissing ? (
-                <option value={learning.productConcept.id}>
-                  {learning.productConcept.canonicalName}
-                </option>
-              ) : null}
-              {productConcepts.map((concept) => (
-                <option key={concept.id} value={concept.id}>
-                  {concept.canonicalName}
-                </option>
-              ))}
-              <option value={ADD_CATEGORY_OPTION_VALUE}>Add category</option>
-            </select>
-          )}
+
+              onFormChange(
+                buildProductSelectionPatch(
+                  event.target.value,
+                  productConcepts,
+                ),
+              );
+            }}
+            value={selectValue}
+          >
+            <option value="">Choose product</option>
+            {isAddingProduct && form.canonicalName ? (
+              <option value={ADD_PRODUCT_OPTION_VALUE}>
+                {form.canonicalName} (new)
+              </option>
+            ) : null}
+            {selectedConceptIsMissing ? (
+              <option value={learning.productConcept.id}>
+                {learning.productConcept.canonicalName}
+              </option>
+            ) : null}
+            {productConcepts.map((concept) => (
+              <option key={concept.id} value={concept.id}>
+                {concept.canonicalName}
+              </option>
+            ))}
+            <option value={NEW_PRODUCT_DIALOG_OPTION_VALUE}>
+              Add product
+            </option>
+          </select>
           <FieldError messages={fieldErrors.productConceptId} />
           <FieldError messages={fieldErrors.canonicalName} />
         </div>
@@ -561,9 +624,32 @@ function LearnedProductEditor({
       </div>
 
       <p className="text-xs leading-5 text-zinc-500">
-        Shelf categories are shared across all stores; the route section
+        Products are shared across all stores; the route section
         applies only to {options?.store?.name ?? "this store"}.
       </p>
+
+      {isNewProductDialogOpen ? (
+        <NewProductDialog
+          initialValues={{
+            canonicalName: form.canonicalName,
+            aisleSectionId: form.aisleSectionId,
+          }}
+          onCancel={() => setIsNewProductDialogOpen(false)}
+          onSave={(values) => {
+            onFormChange({
+              productSelection: ADD_PRODUCT_OPTION_VALUE,
+              canonicalName: values.canonicalName,
+              aisleSectionId: values.aisleSectionId,
+            });
+            setIsNewProductDialogOpen(false);
+          }}
+          sections={aisleSections.map((section) => ({
+            id: section.id,
+            label: sectionOptionLabel(section),
+          }))}
+          storeName={options?.store?.name ?? null}
+        />
+      ) : null}
     </div>
   );
 }

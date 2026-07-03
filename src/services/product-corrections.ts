@@ -45,43 +45,43 @@ import type { StoreProductMatchResult } from "./product-matching";
 import { getCurrentStoreLayout } from "./store-layout";
 
 const MAX_CORRECTION_TEXT_LENGTH = 120;
-const MAX_CATEGORY_NAME_LENGTH = 80;
+const MAX_PRODUCT_NAME_LENGTH = 80;
 
 type FieldErrors = Record<string, string[]>;
 
-const correctionCategoryFields = {
-  productConceptId: z.uuid("Choose a valid shelf category.").optional(),
+const correctionProductFields = {
+  productConceptId: z.uuid("Choose a valid product.").optional(),
   canonicalName: z
     .string()
     .trim()
-    .min(1, "Enter a shelf category name.")
+    .min(1, "Enter a product name.")
     .max(
-      MAX_CATEGORY_NAME_LENGTH,
-      "Shelf category names must be 80 characters or fewer.",
+      MAX_PRODUCT_NAME_LENGTH,
+      "Product names must be 80 characters or fewer.",
     )
     .refine((value) => normalizeProductText(value).length > 0, {
-      message: "Enter a shelf category name with letters or numbers.",
+      message: "Enter a product name with letters or numbers.",
     })
     .optional(),
   aisleSectionId: z.uuid("Choose a valid aisle section."),
 };
 
-function requireExactlyOneCategory(
+function requireExactlyOneProduct(
   input: { productConceptId?: string; canonicalName?: string },
   context: z.RefinementCtx,
 ) {
-  const hasExistingCategory = input.productConceptId !== undefined;
-  const hasNewCategory = input.canonicalName !== undefined;
+  const hasExistingProduct = input.productConceptId !== undefined;
+  const hasNewProduct = input.canonicalName !== undefined;
 
-  if (hasExistingCategory === hasNewCategory) {
+  if (hasExistingProduct === hasNewProduct) {
     context.addIssue({
       code: "custom",
-      message: "Choose an existing category or enter a new one.",
+      message: "Choose an existing product or enter a new one.",
       path: ["productConceptId"],
     });
     context.addIssue({
       code: "custom",
-      message: "Choose an existing category or enter a new one.",
+      message: "Choose an existing product or enter a new one.",
       path: ["canonicalName"],
     });
   }
@@ -98,17 +98,17 @@ export const productCorrectionRequestSchema = z
       .refine((value) => normalizeProductText(value).length > 0, {
         message: "Enter the unresolved item text before saving a correction.",
       }),
-    ...correctionCategoryFields,
+    ...correctionProductFields,
   })
-  .superRefine(requireExactlyOneCategory);
+  .superRefine(requireExactlyOneProduct);
 
 export type ProductCorrectionRequest = z.output<
   typeof productCorrectionRequestSchema
 >;
 
 export const learnedProductUpdateRequestSchema = z
-  .object(correctionCategoryFields)
-  .superRefine(requireExactlyOneCategory);
+  .object(correctionProductFields)
+  .superRefine(requireExactlyOneProduct);
 
 export type LearnedProductUpdateRequest = z.output<
   typeof learnedProductUpdateRequestSchema
@@ -118,6 +118,11 @@ export interface ProductCorrectionProductConcept {
   id: string;
   canonicalName: string;
   normalizedName: string;
+}
+
+export interface ProductCorrectionProductConceptOption
+  extends ProductCorrectionProductConcept {
+  aisleSectionId: string | null;
 }
 
 export interface ProductCorrectionAisleSection {
@@ -132,7 +137,7 @@ export interface ProductCorrectionAisleSection {
 
 export interface ProductCorrectionOptions {
   store: { id: string; name: string } | null;
-  productConcepts: ProductCorrectionProductConcept[];
+  productConcepts: ProductCorrectionProductConceptOption[];
   aisleSections: ProductCorrectionAisleSection[];
 }
 
@@ -174,14 +179,18 @@ export async function getProductCorrectionOptions(
   userId: string,
 ): Promise<ProductCorrectionOptions> {
   const db = getDb();
-  const [layout, concepts] = await Promise.all([
-    getCurrentStoreLayout(userId),
-    buildProductConceptListQuery(db),
-  ]);
+  const layout = await getCurrentStoreLayout(userId);
+  const conceptRows = await buildProductConceptListQuery(
+    db,
+    layout?.id ?? null,
+  );
 
   return {
     store: layout ? { id: layout.id, name: layout.name } : null,
-    productConcepts: concepts.map(toProductConceptPayload),
+    productConcepts: conceptRows.map((row) => ({
+      ...toProductConceptPayload(row.productConcept),
+      aisleSectionId: row.aisleSectionId,
+    })),
     aisleSections: layout ? listAisleSections(layout) : [],
   };
 }
@@ -280,7 +289,7 @@ export async function applyProductCorrection(
       const canonicalName = input.canonicalName;
 
       if (canonicalName === undefined) {
-        throw new Error("Product correction category was not validated.");
+        throw new Error("Product correction input was not validated.");
       }
 
       const normalizedName = normalizeProductText(canonicalName);
@@ -336,10 +345,10 @@ export async function applyProductCorrection(
   } catch (error) {
     if (isForeignKeyError(error)) {
       throw new ProductCorrectionRequestError(
-        "The selected category or section no longer exists. Refresh and try again.",
+        "The selected product or section no longer exists. Refresh and try again.",
         {
           form: [
-            "The selected category or section no longer exists. Refresh and try again.",
+            "The selected product or section no longer exists. Refresh and try again.",
           ],
         },
         409,
@@ -513,8 +522,8 @@ async function getExistingProductConcept(
 
   if (!productConcept) {
     throw new ProductCorrectionRequestError(
-      "Choose an existing shelf category.",
-      { productConceptId: ["Choose an existing shelf category."] },
+      "Choose an existing product.",
+      { productConceptId: ["Choose an existing product."] },
     );
   }
 

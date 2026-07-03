@@ -38,6 +38,12 @@ const concepts: ProductMatchConcept[] = [
     normalizedName: "canned vegetables",
     excludedTerms: [],
   },
+  {
+    id: "dairy",
+    canonicalName: "dairy",
+    normalizedName: "dairy",
+    excludedTerms: [],
+  },
 ];
 
 const catalog: ProductMatchingCatalog = {
@@ -47,21 +53,24 @@ const catalog: ProductMatchingCatalog = {
     { productConceptId: "vinegar", text: "apple cider vinegar" },
     { productConceptId: "produce", text: "broccoli" },
     { productConceptId: "produce", text: "peas" },
+    { productConceptId: "produce", text: "green beans" },
+    { productConceptId: "dairy", text: "greek yogurt" },
+    { productConceptId: "dairy", text: "yogurt" },
   ],
   qualifierRules: [
     {
       qualifier: "fresh",
-      productTerms: ["broccoli", "peas"],
+      productTerms: ["broccoli", "peas", "green beans"],
       productConceptId: "produce",
     },
     {
       qualifier: "frozen",
-      productTerms: ["broccoli", "peas"],
+      productTerms: ["broccoli", "peas", "green beans"],
       productConceptId: "frozen-vegetables",
     },
     {
       qualifier: "canned",
-      productTerms: ["broccoli", "peas"],
+      productTerms: ["broccoli", "peas", "green beans"],
       productConceptId: "canned-vegetables",
     },
   ],
@@ -103,7 +112,7 @@ describe("resolveProductMatch", () => {
   });
 
   it.each(["rice vinegar", "rice cakes", "rice noodles"])(
-    "never resolves %s to rice through its broad category term",
+    "never resolves %s to rice through its broad concept term",
     (text) => {
       const result = resolveProductMatch({ text, catalog });
 
@@ -229,6 +238,111 @@ describe("resolveProductMatch", () => {
     expect(result).toMatchObject({
       state: "needs-user-correction",
       source: "unresolved",
+    });
+  });
+
+  it("corrects a multi-word misspelling against a multi-word term", () => {
+    const result = resolveProductMatch({ text: "greek yogrt", catalog });
+
+    expect(result).toMatchObject({
+      state: "matched",
+      productConcept: { id: "dairy" },
+      source: "typo-correction",
+      confidence: 0.91,
+    });
+  });
+
+  it("remaps a typo-corrected term through a department qualifier", () => {
+    const result = resolveProductMatch({ text: "frozen brocoli", catalog });
+
+    expect(result).toMatchObject({
+      state: "matched",
+      productConcept: { id: "frozen-vegetables" },
+      source: "typo-correction",
+      confidence: 0.91,
+    });
+  });
+
+  it("remaps a misspelled multi-word term through a department qualifier", () => {
+    const result = resolveProductMatch({ text: "frozen grean beans", catalog });
+
+    expect(result).toMatchObject({
+      state: "matched",
+      productConcept: { id: "frozen-vegetables" },
+      source: "typo-correction",
+      confidence: 0.91,
+    });
+  });
+
+  it("requires correction when multi-word terms from different concepts tie", () => {
+    const result = resolveProductMatch({
+      text: "grean beans",
+      catalog: {
+        concepts: [
+          {
+            id: "green-beans",
+            canonicalName: "green beans",
+            normalizedName: "green beans",
+            excludedTerms: [],
+          },
+          {
+            id: "great-beans",
+            canonicalName: "great beans",
+            normalizedName: "great beans",
+            excludedTerms: [],
+          },
+        ],
+        curatedTerms: [],
+        qualifierRules: [],
+      },
+    });
+
+    expect(result).toMatchObject({
+      state: "needs-user-correction",
+      source: "unresolved",
+    });
+  });
+
+  it("does not fuzzy-match when the word counts diverge", () => {
+    expect(
+      resolveProductMatch({ text: "organic yogrt", catalog }),
+    ).toMatchObject({
+      state: "needs-user-correction",
+      source: "unresolved",
+    });
+  });
+
+  it("applies the short-term floor to multi-word terms", () => {
+    const result = resolveProductMatch({
+      text: "pb k",
+      catalog: {
+        concepts: [
+          {
+            id: "pb-j",
+            canonicalName: "pb j",
+            normalizedName: "pb j",
+            excludedTerms: [],
+          },
+        ],
+        curatedTerms: [],
+        qualifierRules: [],
+      },
+    });
+
+    expect(result).toMatchObject({
+      state: "needs-user-correction",
+      source: "unresolved",
+    });
+  });
+
+  it("repairs a missing space against a multi-word term", () => {
+    const result = resolveProductMatch({ text: "ricevinegar", catalog });
+
+    expect(result).toMatchObject({
+      state: "matched",
+      productConcept: { id: "vinegar" },
+      source: "typo-correction",
+      confidence: 0.91,
     });
   });
 

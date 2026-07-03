@@ -9,10 +9,14 @@ export type PendingTextMutation = {
   mutationId: string;
 };
 
-export const ADD_CATEGORY_OPTION_VALUE = "__add_category__";
+export const ADD_PRODUCT_OPTION_VALUE = "__add_product__";
+
+// Distinct from ADD_PRODUCT_OPTION_VALUE so choosing it always fires a change
+// event, even while a pending new product is the current selection.
+export const NEW_PRODUCT_DIALOG_OPTION_VALUE = "__new_product_dialog__";
 
 export type ProductCorrectionFormState = {
-  categorySelection: string;
+  productSelection: string;
   canonicalName: string;
   aisleSectionId: string;
 };
@@ -59,11 +63,130 @@ export function createProductCorrectionFormState({
   hasProductConceptOptions: boolean;
 }): ProductCorrectionFormState {
   return {
-    categorySelection:
+    productSelection:
       productConceptId ??
-      (hasProductConceptOptions ? "" : ADD_CATEGORY_OPTION_VALUE),
+      (hasProductConceptOptions ? "" : ADD_PRODUCT_OPTION_VALUE),
     canonicalName: "",
     aisleSectionId: "",
+  };
+}
+
+export type ProductConceptOption = {
+  id: string;
+  canonicalName: string;
+  normalizedName: string;
+  aisleSectionId: string | null;
+};
+
+// After a correction is saved, refresh the concept's location in the cached
+// options so later edits compare against the new section, not the stale one.
+export function applyCorrectedConceptLocation(
+  productConcepts: readonly ProductConceptOption[],
+  corrected: ProductConceptOption,
+): ProductConceptOption[] {
+  if (productConcepts.some((concept) => concept.id === corrected.id)) {
+    return productConcepts.map((concept) =>
+      concept.id === corrected.id
+        ? { ...concept, aisleSectionId: corrected.aisleSectionId }
+        : concept,
+    );
+  }
+
+  return [...productConcepts, corrected].sort((first, second) =>
+    first.normalizedName.localeCompare(second.normalizedName),
+  );
+}
+
+// Shared derivations for the product select in both correction editors: which
+// mode it's in, whether the current selection is a concept no longer offered,
+// and the bound value (blank while a new product has no name yet).
+export function getProductSelectionState(
+  form: ProductCorrectionFormState,
+  productConcepts: readonly { id: string }[],
+) {
+  const isAddingProduct = form.productSelection === ADD_PRODUCT_OPTION_VALUE;
+
+  return {
+    isAddingProduct,
+    selectedConceptIsMissing:
+      form.productSelection.length > 0 &&
+      !isAddingProduct &&
+      !productConcepts.some((concept) => concept.id === form.productSelection),
+    selectValue:
+      isAddingProduct && !form.canonicalName ? "" : form.productSelection,
+  };
+}
+
+export function buildProductSelectionPatch(
+  productSelection: string,
+  productConcepts: readonly { id: string; aisleSectionId: string | null }[],
+): Partial<ProductCorrectionFormState> {
+  const selected = productConcepts.find(
+    (concept) => concept.id === productSelection,
+  );
+
+  return {
+    productSelection,
+    canonicalName: "",
+    ...(selected?.aisleSectionId
+      ? { aisleSectionId: selected.aisleSectionId }
+      : {}),
+  };
+}
+
+export type LocationChangeWarning = {
+  productName: string;
+  affectedItemTexts: string[];
+};
+
+// A correction to an existing product with a different section moves the
+// product's one location per store, relocating every linked item at once.
+export function getLocationChangeWarning({
+  body,
+  productConcepts,
+  items,
+  excludeItemId,
+}: {
+  body: ProductCorrectionRequestBody;
+  productConcepts: readonly {
+    id: string;
+    canonicalName: string;
+    aisleSectionId: string | null;
+  }[];
+  items: readonly {
+    id: string;
+    rawText: string;
+    isChecked: boolean;
+    productConcept: { id: string } | null;
+  }[];
+  excludeItemId?: string;
+}): LocationChangeWarning | null {
+  if (!body.productConceptId) {
+    return null;
+  }
+
+  const concept = productConcepts.find(
+    (candidate) => candidate.id === body.productConceptId,
+  );
+
+  if (
+    !concept ||
+    concept.aisleSectionId === null ||
+    concept.aisleSectionId === body.aisleSectionId
+  ) {
+    return null;
+  }
+
+  return {
+    productName: concept.canonicalName,
+    affectedItemTexts: items
+      .filter(
+        (item) =>
+          !item.isChecked &&
+          item.id !== excludeItemId &&
+          item.productConcept?.id === body.productConceptId,
+      )
+      .map((item) => item.rawText),
   };
 }
 
@@ -76,17 +199,17 @@ export function buildProductCorrectionRequest({
 }): ProductCorrectionRequestBuildResult {
   const fieldErrors: FieldErrors = {};
   const aisleSectionId = form.aisleSectionId.trim();
-  const categorySelection = form.categorySelection.trim();
+  const productSelection = form.productSelection.trim();
 
-  if (categorySelection === ADD_CATEGORY_OPTION_VALUE) {
+  if (productSelection === ADD_PRODUCT_OPTION_VALUE) {
     const canonicalName = form.canonicalName.trim();
 
     if (!canonicalName) {
-      fieldErrors.canonicalName = ["Enter a shelf category name."];
+      fieldErrors.canonicalName = ["Enter a product name."];
     }
   } else {
-    if (!categorySelection) {
-      fieldErrors.productConceptId = ["Choose a shelf category."];
+    if (!productSelection) {
+      fieldErrors.productConceptId = ["Choose a product."];
     }
   }
 
@@ -103,9 +226,9 @@ export function buildProductCorrectionRequest({
     body: {
       rawText,
       aisleSectionId,
-      ...(categorySelection === ADD_CATEGORY_OPTION_VALUE
+      ...(productSelection === ADD_PRODUCT_OPTION_VALUE
         ? { canonicalName: form.canonicalName.trim() }
-        : { productConceptId: categorySelection }),
+        : { productConceptId: productSelection }),
     },
   };
 }

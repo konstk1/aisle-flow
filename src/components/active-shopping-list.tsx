@@ -24,17 +24,26 @@ import type {
 } from "@/domain/active-shopping-list";
 import { formatAisleLabel, formatSectionLabel } from "@/domain/store-layout";
 
+import { LocationChangeDialog } from "./location-change-dialog";
+import { NewProductDialog } from "./new-product-dialog";
 import {
-  ADD_CATEGORY_OPTION_VALUE,
+  ADD_PRODUCT_OPTION_VALUE,
+  NEW_PRODUCT_DIALOG_OPTION_VALUE,
+  applyCorrectedConceptLocation,
   buildProductCorrectionRequest,
+  buildProductSelectionPatch,
   createProductCorrectionFormState,
+  getLocationChangeWarning,
+  getProductSelectionState,
   getStableMutationForText,
   mergeVisibleListSnapshotAfterCheck,
   removeItemFromActiveList,
   restoreItemInActiveList,
   shouldSaveProductCorrectionForEdit,
+  type LocationChangeWarning,
   type PendingTextMutation,
   type ProductCorrectionFormState,
+  type ProductCorrectionRequestBody,
 } from "./active-shopping-list-state";
 
 type ActiveShoppingListProps = {
@@ -75,7 +84,15 @@ type ProductCorrectionOptionsResponse = {
 };
 
 type ProductCorrectionResponse = {
-  correction?: { normalizedText: string };
+  correction?: {
+    normalizedText: string;
+    productConcept: {
+      id: string;
+      canonicalName: string;
+      normalizedName: string;
+    };
+    location: { aisleSectionId: string };
+  };
   error?: string;
   fieldErrors?: FieldErrors;
 };
@@ -90,6 +107,7 @@ type ProductCorrectionProductConcept = {
   id: string;
   canonicalName: string;
   normalizedName: string;
+  aisleSectionId: string | null;
 };
 
 type ProductCorrectionAisleSection = {
@@ -220,6 +238,10 @@ function ShoppingListView({
   const [pendingCorrectionItemId, setPendingCorrectionItemId] = useState<
     string | null
   >(null);
+  const [locationChangeConfirm, setLocationChangeConfirm] = useState<{
+    warning: LocationChangeWarning;
+    body: ProductCorrectionRequestBody;
+  } | null>(null);
   const [editItemId, setEditItemId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [editFieldErrors, setEditFieldErrors] = useState<FieldErrors>({});
@@ -512,6 +534,7 @@ function ShoppingListView({
     setEditLocationTouched(false);
     setCorrectionFieldErrors({});
     setCorrectionMessage(null);
+    setLocationChangeConfirm(null);
   }
 
   async function saveEdit(event: React.FormEvent<HTMLFormElement>) {
@@ -521,7 +544,6 @@ function ShoppingListView({
       return;
     }
 
-    setPendingEditItemId(editItem.id);
     setEditFieldErrors({});
     setEditMessage(null);
     setCorrectionFieldErrors({});
@@ -540,11 +562,40 @@ function ShoppingListView({
     if (correctionRequest?.success === false) {
       setCorrectionFieldErrors(correctionRequest.fieldErrors);
       setCorrectionMessage("Check the highlighted location fields.");
-      setPendingEditItemId(null);
       return;
     }
 
-    if (correctionRequest?.success) {
+    const correctionBody = correctionRequest?.success
+      ? correctionRequest.body
+      : null;
+
+    if (correctionBody) {
+      const warning = getLocationChangeWarning({
+        body: correctionBody,
+        productConcepts: correctionOptions?.productConcepts ?? [],
+        items: activeList?.items ?? [],
+        excludeItemId: editItem.id,
+      });
+
+      if (warning) {
+        setLocationChangeConfirm({ warning, body: correctionBody });
+        return;
+      }
+    }
+
+    await performSaveEdit(correctionBody);
+  }
+
+  async function performSaveEdit(
+    correctionBody: ProductCorrectionRequestBody | null,
+  ) {
+    if (!editItem) {
+      return;
+    }
+
+    setPendingEditItemId(editItem.id);
+
+    if (correctionBody) {
       setPendingCorrectionItemId(editItem.id);
     }
 
@@ -563,9 +614,9 @@ function ShoppingListView({
         return;
       }
 
-      if (correctionRequest?.success) {
+      if (correctionBody) {
         const correctionResponse = await fetch("/api/product-corrections", {
-          body: JSON.stringify(correctionRequest.body),
+          body: JSON.stringify(correctionBody),
           headers: { "Content-Type": "application/json" },
           method: "POST",
         });
@@ -579,6 +630,24 @@ function ShoppingListView({
           );
           return;
         }
+
+        const corrected = correctionResult.correction;
+        setCorrectionOptions((current) =>
+          current
+            ? {
+                ...current,
+                productConcepts: applyCorrectedConceptLocation(
+                  current.productConcepts,
+                  {
+                    id: corrected.productConcept.id,
+                    canonicalName: corrected.productConcept.canonicalName,
+                    normalizedName: corrected.productConcept.normalizedName,
+                    aisleSectionId: corrected.location.aisleSectionId,
+                  },
+                ),
+              }
+            : current,
+        );
 
         const refreshResponse = await fetch(listEndpoint);
         const refreshResult =
@@ -663,9 +732,9 @@ function ShoppingListView({
 
       setCorrectionOptions(options);
       setCorrectionForm((current) =>
-        current.categorySelection.length === 0 &&
+        current.productSelection.length === 0 &&
         options.productConcepts.length === 0
-          ? { ...current, categorySelection: ADD_CATEGORY_OPTION_VALUE }
+          ? { ...current, productSelection: ADD_PRODUCT_OPTION_VALUE }
           : current,
       );
       return options;
@@ -915,6 +984,20 @@ function ShoppingListView({
             <ArrowRight aria-hidden="true" className="size-4" />
           </Link>
         </div>
+      ) : null}
+
+      {locationChangeConfirm ? (
+        <LocationChangeDialog
+          affectedItemTexts={locationChangeConfirm.warning.affectedItemTexts}
+          onCancel={() => setLocationChangeConfirm(null)}
+          onProceed={() => {
+            const confirmed = locationChangeConfirm;
+            setLocationChangeConfirm(null);
+            void performSaveEdit(confirmed.body);
+          }}
+          productName={locationChangeConfirm.warning.productName}
+          storeName={correctionOptions?.store?.name ?? null}
+        />
       ) : null}
     </section>
   );
@@ -1186,16 +1269,14 @@ function InlineLocationEditor({
 }) {
   const productConcepts = options?.productConcepts ?? [];
   const aisleSections = options?.aisleSections ?? [];
-  const isAddingCategory = form.categorySelection === ADD_CATEGORY_OPTION_VALUE;
-  const selectedConceptIsMissing =
-    form.categorySelection.length > 0 &&
-    !isAddingCategory &&
-    !productConcepts.some((concept) => concept.id === form.categorySelection);
+  const { isAddingProduct, selectedConceptIsMissing, selectValue } =
+    getProductSelectionState(form, productConcepts);
   const selectedSectionIsMissing =
     form.aisleSectionId.length > 0 &&
     !aisleSections.some((section) => section.id === form.aisleSectionId);
   const formDisabled = pending || loadingOptions || !options || !!optionsError;
-  const categoryControlId = `category-${item.id}`;
+  const productControlId = `product-${item.id}`;
+  const [isNewProductDialogOpen, setIsNewProductDialogOpen] = useState(false);
 
   return (
     <div className="space-y-2">
@@ -1238,65 +1319,48 @@ function InlineLocationEditor({
       ) : (
         <div className="grid gap-2 sm:grid-cols-2">
           <div className="block min-w-0">
-            <label className="sr-only" htmlFor={categoryControlId}>
-              Shelf category
+            <label className="sr-only" htmlFor={productControlId}>
+              Product
             </label>
-            {isAddingCategory ? (
-              <span className="flex">
-                <input
-                  autoFocus
-                  className="min-h-10 min-w-0 flex-1 border bg-white px-3 text-sm outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={formDisabled}
-                  id={categoryControlId}
-                  onChange={(event) =>
-                    onFormChange({ canonicalName: event.target.value })
-                  }
-                  placeholder="New category"
-                  value={form.canonicalName}
-                />
-                <button
-                  aria-label="Choose existing category"
-                  className="inline-flex size-10 shrink-0 items-center justify-center border border-l-0 text-zinc-700 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
-                  disabled={formDisabled}
-                  onClick={() =>
-                    onFormChange({
-                      canonicalName: "",
-                      categorySelection: "",
-                    })
-                  }
-                  title="Choose existing category"
-                  type="button"
-                >
-                  <X aria-hidden="true" className="size-4" />
-                </button>
-              </span>
-            ) : (
-              <select
-                className="min-h-10 w-full border bg-white px-3 text-sm outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={formDisabled}
-                id={categoryControlId}
-                onChange={(event) =>
-                  onFormChange({
-                    categorySelection: event.target.value,
-                    canonicalName: "",
-                  })
+            <select
+              className="min-h-10 w-full border bg-white px-3 text-sm outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={formDisabled}
+              id={productControlId}
+              onChange={(event) => {
+                if (event.target.value === NEW_PRODUCT_DIALOG_OPTION_VALUE) {
+                  setIsNewProductDialogOpen(true);
+                  return;
                 }
-                value={form.categorySelection}
-              >
-                <option value="">Choose category</option>
-                {selectedConceptIsMissing && item.productConcept ? (
-                  <option value={item.productConcept.id}>
-                    {item.productConcept.canonicalName}
-                  </option>
-                ) : null}
-                {productConcepts.map((concept) => (
-                  <option key={concept.id} value={concept.id}>
-                    {concept.canonicalName}
-                  </option>
-                ))}
-                <option value={ADD_CATEGORY_OPTION_VALUE}>Add category</option>
-              </select>
-            )}
+
+                onFormChange(
+                  buildProductSelectionPatch(
+                    event.target.value,
+                    productConcepts,
+                  ),
+                );
+              }}
+              value={selectValue}
+            >
+              <option value="">Choose product</option>
+              {isAddingProduct && form.canonicalName ? (
+                <option value={ADD_PRODUCT_OPTION_VALUE}>
+                  {form.canonicalName} (new)
+                </option>
+              ) : null}
+              {selectedConceptIsMissing && item.productConcept ? (
+                <option value={item.productConcept.id}>
+                  {item.productConcept.canonicalName}
+                </option>
+              ) : null}
+              {productConcepts.map((concept) => (
+                <option key={concept.id} value={concept.id}>
+                  {concept.canonicalName}
+                </option>
+              ))}
+              <option value={NEW_PRODUCT_DIALOG_OPTION_VALUE}>
+                Add product
+              </option>
+            </select>
             <FieldError messages={fieldErrors.productConceptId} />
             <FieldError messages={fieldErrors.canonicalName} />
           </div>
@@ -1332,6 +1396,29 @@ function InlineLocationEditor({
         <p className="text-sm text-zinc-700" role="status">
           {message}
         </p>
+      ) : null}
+
+      {isNewProductDialogOpen ? (
+        <NewProductDialog
+          initialValues={{
+            canonicalName: form.canonicalName,
+            aisleSectionId: form.aisleSectionId,
+          }}
+          onCancel={() => setIsNewProductDialogOpen(false)}
+          onSave={(values) => {
+            onFormChange({
+              productSelection: ADD_PRODUCT_OPTION_VALUE,
+              canonicalName: values.canonicalName,
+              aisleSectionId: values.aisleSectionId,
+            });
+            setIsNewProductDialogOpen(false);
+          }}
+          sections={aisleSections.map((section) => ({
+            id: section.id,
+            label: correctionSectionLabel(section),
+          }))}
+          storeName={options?.store?.name ?? null}
+        />
       ) : null}
     </div>
   );

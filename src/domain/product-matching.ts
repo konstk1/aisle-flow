@@ -34,7 +34,7 @@ export interface PreparedProductMatchingCatalog {
   kind: "prepared-product-matching-catalog";
   conceptsById: ReadonlyMap<string, ProductMatchConcept>;
   terms: readonly PreparedProductTerm[];
-  singleWordTerms: readonly PreparedProductTerm[];
+  typoCandidateTerms: readonly PreparedProductTerm[];
   qualifierRules: readonly PreparedQualifierRule[];
   qualifierTerms: ReadonlySet<string>;
   excludedTermsByConceptId: ReadonlyMap<string, readonly string[]>;
@@ -165,7 +165,8 @@ export function prepareProductMatchingCatalog(
     kind: "prepared-product-matching-catalog",
     conceptsById,
     terms,
-    singleWordTerms: terms.filter((term) => !term.term.includes(" ")),
+    // Short terms have too many real-word neighbors to fuzzy-match safely.
+    typoCandidateTerms: terms.filter((term) => term.term.length >= 6),
     qualifierRules,
     qualifierTerms: new Set(qualifierRules.map((rule) => rule.qualifier)),
     excludedTermsByConceptId,
@@ -190,7 +191,7 @@ export function resolveProductMatch({
     return needsUserCorrection(
       text,
       normalizedText,
-      "Enter a product name before choosing a shelf category.",
+      "Enter a product name before choosing a route section.",
     );
   }
 
@@ -236,7 +237,7 @@ export function resolveProductMatch({
   return needsUserCorrection(
     text,
     normalizedText,
-    "No category matched with sufficient confidence.",
+    "No product matched with sufficient confidence.",
   );
 }
 
@@ -303,20 +304,19 @@ function findTypoCandidate(
   normalizedText: string,
   catalog: PreparedProductMatchingCatalog,
 ) {
-  const inputTerms = normalizedText
+  const inputPhrase = normalizedText
     .split(" ")
-    .filter((term) => !catalog.qualifierTerms.has(term));
+    .filter((word) => !catalog.qualifierTerms.has(word))
+    .join(" ");
 
-  if (inputTerms.length !== 1) {
+  if (!inputPhrase) {
     return undefined;
   }
 
-  const inputTerm = inputTerms[0];
-  const candidates = catalog.singleWordTerms
-    .filter(({ term }) => term.length >= 6)
+  const candidates = catalog.typoCandidateTerms
     .map((term) => ({
       term,
-      distance: levenshteinDistance(inputTerm, term.term),
+      distance: levenshteinDistance(inputPhrase, term.term),
     }))
     .filter(({ term, distance }) => distance <= maximumTypoDistance(term.term))
     .filter(
@@ -444,7 +444,7 @@ function toMatchedResult(
       ? `Corrected “${normalizedText}” to the curated term “${candidate.matchedTerm}”.`
       : candidate.source === "qualifier"
         ? `Matched “${phrase}” using a configured department qualifier.`
-        : `Matched the ${candidate.source === "canonical-name" ? "canonical category" : "curated term"} “${candidate.matchedTerm}”.`;
+        : `Matched the ${candidate.source === "canonical-name" ? "canonical product name" : "curated term"} “${candidate.matchedTerm}”.`;
 
   return {
     state: "matched",

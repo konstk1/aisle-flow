@@ -11,7 +11,7 @@ const database = createDatabase(
 );
 
 describe("curated product catalog seed queries", () => {
-  it("updates category metadata when the curated seed is rerun", () => {
+  it("updates product concept metadata when the curated seed is rerun", () => {
     const { sql: query } =
       buildCuratedProductConceptSeedQuery(database).toSQL();
 

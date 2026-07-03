@@ -7,6 +7,7 @@ import {
   buildManualProductAliasCorrectionQuery,
   buildManualProductLocationCorrectionQuery,
   buildProductConceptCreateQuery,
+  buildProductConceptListQuery,
   buildProductLearningEventInsertQuery,
   buildProductLearningEventListQuery,
   productConceptIdByNormalizedName,
@@ -22,7 +23,34 @@ const productConceptId = "22222222-2222-4222-8222-222222222222";
 const aisleSectionId = "33333333-3333-4333-8333-333333333333";
 
 describe("product correction queries", () => {
-  it("returns a category when normalized concept creation conflicts", () => {
+  it("lists concepts with their location in the given store", () => {
+    const { sql: query, params } = buildProductConceptListQuery(
+      database,
+      storeId,
+    ).toSQL();
+
+    expect(query).toContain('from "product_concepts"');
+    expect(query).toContain('left join "product_locations"');
+    expect(query).toContain('"product_locations"."store_id" = $');
+    expect(query).toContain(
+      'order by "product_concepts"."normalized_name" asc',
+    );
+    expect(params).toEqual([storeId]);
+  });
+
+  it("lists concepts without locations when no store is selected", () => {
+    const { sql: query, params } = buildProductConceptListQuery(
+      database,
+      null,
+    ).toSQL();
+
+    expect(query).toContain('left join "product_locations"');
+    expect(query).toContain("false");
+    expect(query).not.toContain('"product_locations"."store_id" = $');
+    expect(params).toEqual([]);
+  });
+
+  it("returns a concept when normalized concept creation conflicts", () => {
     const { sql: query, params } = buildProductConceptCreateQuery(database, {
       canonicalName: "bulk grains",
       normalizedName: "bulk grains",
@@ -101,7 +129,7 @@ describe("product correction queries", () => {
     ]);
   });
 
-  it("updates the one store-specific product location for a category without clobbering existing section position", () => {
+  it("updates the one store-specific product location for a concept without clobbering existing section position", () => {
     const { sql: query, params } = buildManualProductLocationCorrectionQuery(
       database,
       {

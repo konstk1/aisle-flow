@@ -100,8 +100,8 @@ describe("product correction route", () => {
       expect.objectContaining({
         rawText: ["Enter the unresolved item text before saving a correction."],
         aisleSectionId: ["Choose a valid aisle section."],
-        productConceptId: ["Choose an existing category or enter a new one."],
-        canonicalName: ["Choose an existing category or enter a new one."],
+        productConceptId: ["Choose an existing product or enter a new one."],
+        canonicalName: ["Choose an existing product or enter a new one."],
       }),
     );
     expect(applyProductCorrection).not.toHaveBeenCalled();

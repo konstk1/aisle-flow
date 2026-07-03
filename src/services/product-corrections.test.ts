@@ -55,6 +55,7 @@ import {
   applyProductCorrection,
   deleteLearnedProduct,
   getLearnedProducts,
+  getProductCorrectionOptions,
   learnedProductUpdateRequestSchema,
   productCorrectionRequestSchema,
   updateLearnedProduct,
@@ -159,7 +160,7 @@ beforeEach(() => {
 });
 
 describe("productCorrectionRequestSchema", () => {
-  it("accepts an unresolved phrase with an existing category and section", () => {
+  it("accepts an unresolved phrase with an existing product and section", () => {
     const result = productCorrectionRequestSchema.parse({
       rawText: "Wild Rice",
       productConceptId: validConceptId,
@@ -173,7 +174,7 @@ describe("productCorrectionRequestSchema", () => {
     });
   });
 
-  it("accepts a new category name instead of an existing category id", () => {
+  it("accepts a new product name instead of an existing product id", () => {
     const result = productCorrectionRequestSchema.parse({
       rawText: "dried mango",
       canonicalName: "Dried fruit",
@@ -187,7 +188,7 @@ describe("productCorrectionRequestSchema", () => {
     });
   });
 
-  it("requires exactly one category selection mode", () => {
+  it("requires exactly one product selection mode", () => {
     const missing = productCorrectionRequestSchema.safeParse({
       rawText: "wild rice",
       aisleSectionId: validSectionId,
@@ -215,6 +216,58 @@ describe("productCorrectionRequestSchema", () => {
         ]),
       );
     }
+  });
+});
+
+describe("getProductCorrectionOptions", () => {
+  it("returns concepts with their learned location in the current store", async () => {
+    mocks.buildProductConceptListQuery.mockResolvedValue([
+      { productConcept, aisleSectionId: validSectionId },
+      {
+        productConcept: { ...productConcept, id: "concept-2" },
+        aisleSectionId: null,
+      },
+    ]);
+
+    const options = await getProductCorrectionOptions(userId);
+
+    expect(mocks.buildProductConceptListQuery).toHaveBeenCalledWith(
+      mocks.db,
+      storeId,
+    );
+    expect(options.store).toEqual({ id: storeId, name: "Example Market" });
+    expect(options.productConcepts).toEqual([
+      {
+        id: validConceptId,
+        canonicalName: "Dried fruit",
+        normalizedName: "dried fruit",
+        aisleSectionId: validSectionId,
+      },
+      {
+        id: "concept-2",
+        canonicalName: "Dried fruit",
+        normalizedName: "dried fruit",
+        aisleSectionId: null,
+      },
+    ]);
+    expect(options.aisleSections).toHaveLength(1);
+  });
+
+  it("queries without a store when the user has no layout", async () => {
+    mocks.getStoreLayout.mockResolvedValue(null);
+    mocks.buildProductConceptListQuery.mockResolvedValue([]);
+
+    const options = await getProductCorrectionOptions(userId);
+
+    expect(mocks.buildProductConceptListQuery).toHaveBeenCalledWith(
+      mocks.db,
+      null,
+    );
+    expect(options).toEqual({
+      store: null,
+      productConcepts: [],
+      aisleSections: [],
+    });
   });
 });
 
@@ -335,7 +388,7 @@ describe("applyProductCorrection", () => {
     ).rejects.toMatchObject({
       fieldErrors: {
         form: [
-          "The selected category or section no longer exists. Refresh and try again.",
+          "The selected product or section no longer exists. Refresh and try again.",
         ],
       },
       status: 409,
@@ -385,7 +438,7 @@ describe("applyProductCorrection", () => {
 });
 
 describe("learnedProductUpdateRequestSchema", () => {
-  it("requires exactly one category selection mode", () => {
+  it("requires exactly one product selection mode", () => {
     const missing = learnedProductUpdateRequestSchema.safeParse({
       aisleSectionId: validSectionId,
     });

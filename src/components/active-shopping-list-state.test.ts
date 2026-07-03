@@ -6,9 +6,12 @@ import type {
 } from "@/domain/active-shopping-list";
 
 import {
-  ADD_CATEGORY_OPTION_VALUE,
+  ADD_PRODUCT_OPTION_VALUE,
+  applyCorrectedConceptLocation,
   buildProductCorrectionRequest,
+  buildProductSelectionPatch,
   createProductCorrectionFormState,
+  getLocationChangeWarning,
   getStableMutationForText,
   mergeVisibleListSnapshotAfterCheck,
   removeItemFromActiveList,
@@ -54,35 +57,66 @@ describe("getStableMutationForText", () => {
 });
 
 describe("createProductCorrectionFormState", () => {
-  it("starts with the matched category selected when an item already has one", () => {
+  it("starts with the matched product selected when an item already has one", () => {
     expect(
       createProductCorrectionFormState({
         productConceptId: "concept-1",
         hasProductConceptOptions: true,
       }),
     ).toMatchObject({
-      categorySelection: "concept-1",
+      productSelection: "concept-1",
     });
   });
 
-  it("starts with add category selected when there are no existing categories", () => {
+  it("starts with add product selected when there are no existing products", () => {
     expect(
       createProductCorrectionFormState({
         productConceptId: null,
         hasProductConceptOptions: false,
       }),
     ).toMatchObject({
-      categorySelection: ADD_CATEGORY_OPTION_VALUE,
+      productSelection: ADD_PRODUCT_OPTION_VALUE,
+    });
+  });
+});
+
+describe("buildProductSelectionPatch", () => {
+  const productConcepts = [
+    { id: "concept-1", aisleSectionId: "section-9" },
+    { id: "concept-2", aisleSectionId: null },
+  ];
+
+  it("fills the section from the selected product's learned location", () => {
+    expect(buildProductSelectionPatch("concept-1", productConcepts)).toEqual({
+      productSelection: "concept-1",
+      canonicalName: "",
+      aisleSectionId: "section-9",
+    });
+  });
+
+  it("leaves the section untouched when the product has no location", () => {
+    expect(buildProductSelectionPatch("concept-2", productConcepts)).toEqual({
+      productSelection: "concept-2",
+      canonicalName: "",
+    });
+  });
+
+  it("only switches modes for the add-product option", () => {
+    expect(
+      buildProductSelectionPatch(ADD_PRODUCT_OPTION_VALUE, productConcepts),
+    ).toEqual({
+      productSelection: ADD_PRODUCT_OPTION_VALUE,
+      canonicalName: "",
     });
   });
 });
 
 describe("buildProductCorrectionRequest", () => {
-  it("builds a correction request for an existing category", () => {
+  it("builds a correction request for an existing product", () => {
     const result = buildProductCorrectionRequest({
       rawText: "Wild Rice",
       form: {
-        categorySelection: "22222222-2222-4222-8222-222222222222",
+        productSelection: "22222222-2222-4222-8222-222222222222",
         canonicalName: "",
         aisleSectionId: "33333333-3333-4333-8333-333333333333",
       },
@@ -98,11 +132,11 @@ describe("buildProductCorrectionRequest", () => {
     });
   });
 
-  it("builds a correction request for a new trimmed category", () => {
+  it("builds a correction request for a new trimmed product", () => {
     const result = buildProductCorrectionRequest({
       rawText: "dried mango",
       form: {
-        categorySelection: ADD_CATEGORY_OPTION_VALUE,
+        productSelection: ADD_PRODUCT_OPTION_VALUE,
         canonicalName: "  Dried fruit  ",
         aisleSectionId: "33333333-3333-4333-8333-333333333333",
       },
@@ -122,7 +156,7 @@ describe("buildProductCorrectionRequest", () => {
     const result = buildProductCorrectionRequest({
       rawText: "Wild Rice",
       form: {
-        categorySelection: "",
+        productSelection: "",
         canonicalName: "",
         aisleSectionId: "",
       },
@@ -131,10 +165,135 @@ describe("buildProductCorrectionRequest", () => {
     expect(result).toEqual({
       success: false,
       fieldErrors: {
-        productConceptId: ["Choose a shelf category."],
+        productConceptId: ["Choose a product."],
         aisleSectionId: ["Choose an aisle section."],
       },
     });
+  });
+});
+
+describe("applyCorrectedConceptLocation", () => {
+  const concepts = [
+    { id: "a", canonicalName: "Apples", normalizedName: "apples", aisleSectionId: "s1" },
+    { id: "b", canonicalName: "Bread", normalizedName: "bread", aisleSectionId: "s2" },
+  ];
+
+  it("updates the location of an existing concept in place", () => {
+    const result = applyCorrectedConceptLocation(concepts, {
+      id: "b",
+      canonicalName: "Bread",
+      normalizedName: "bread",
+      aisleSectionId: "s9",
+    });
+
+    expect(result).toEqual([
+      { id: "a", canonicalName: "Apples", normalizedName: "apples", aisleSectionId: "s1" },
+      { id: "b", canonicalName: "Bread", normalizedName: "bread", aisleSectionId: "s9" },
+    ]);
+  });
+
+  it("inserts a newly created concept sorted by normalized name", () => {
+    const result = applyCorrectedConceptLocation(concepts, {
+      id: "c",
+      canonicalName: "Avocado",
+      normalizedName: "avocado",
+      aisleSectionId: "s3",
+    });
+
+    expect(result.map((concept) => concept.id)).toEqual(["a", "c", "b"]);
+  });
+});
+
+describe("getLocationChangeWarning", () => {
+  const productConcepts = [
+    { id: "concept-1", canonicalName: "Yogurt", aisleSectionId: "section-1" },
+    { id: "concept-2", canonicalName: "Milk", aisleSectionId: null },
+  ];
+  const items = [
+    {
+      id: "item-1",
+      rawText: "greek yogurt",
+      isChecked: false,
+      productConcept: { id: "concept-1" },
+    },
+    {
+      id: "item-2",
+      rawText: "yoghurt",
+      isChecked: false,
+      productConcept: { id: "concept-1" },
+    },
+    {
+      id: "item-3",
+      rawText: "finished yogurt",
+      isChecked: true,
+      productConcept: { id: "concept-1" },
+    },
+    {
+      id: "item-4",
+      rawText: "milk",
+      isChecked: false,
+      productConcept: { id: "concept-2" },
+    },
+  ];
+
+  it("warns with the unfinished items linked to the moved product", () => {
+    const warning = getLocationChangeWarning({
+      body: {
+        rawText: "greek yogurt",
+        productConceptId: "concept-1",
+        aisleSectionId: "section-2",
+      },
+      productConcepts,
+      items,
+      excludeItemId: "item-1",
+    });
+
+    expect(warning).toEqual({
+      productName: "Yogurt",
+      affectedItemTexts: ["yoghurt"],
+    });
+  });
+
+  it("does not warn for a new product", () => {
+    expect(
+      getLocationChangeWarning({
+        body: {
+          rawText: "greek yogurt",
+          canonicalName: "Greek yogurt",
+          aisleSectionId: "section-2",
+        },
+        productConcepts,
+        items,
+      }),
+    ).toBeNull();
+  });
+
+  it("does not warn when the product has no learned location yet", () => {
+    expect(
+      getLocationChangeWarning({
+        body: {
+          rawText: "milk",
+          productConceptId: "concept-2",
+          aisleSectionId: "section-2",
+        },
+        productConcepts,
+        items,
+      }),
+    ).toBeNull();
+  });
+
+  it("does not warn when the section is unchanged", () => {
+    expect(
+      getLocationChangeWarning({
+        body: {
+          rawText: "greek yogurt",
+          productConceptId: "concept-1",
+          aisleSectionId: "section-1",
+        },
+        productConcepts,
+        items,
+      }),
+    ).toBeNull();
   });
 });
 
