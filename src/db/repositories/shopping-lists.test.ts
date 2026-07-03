@@ -320,7 +320,7 @@ describe("shopping-list queries", () => {
     ]);
   });
 
-  it("looks up existing active-list items by normalized text", () => {
+  it("looks up existing unchecked active-list items by normalized text", () => {
     const { sql: query, params } = buildShoppingItemsByNormalizedTextQuery(
       database,
       {
@@ -331,9 +331,11 @@ describe("shopping-list queries", () => {
 
     expect(query).toContain('from "shopping_items"');
     expect(query).toContain('"shopping_items"."shopping_list_id" = $1');
-    expect(query).toContain('"shopping_items"."normalized_text" in ($2, $3)');
+    expect(query).toContain('"shopping_items"."is_checked" = $2');
+    expect(query).toContain('"shopping_items"."normalized_text" in ($3, $4)');
     expect(params).toEqual([
       "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
+      false,
       "oatly",
       "rice",
     ]);

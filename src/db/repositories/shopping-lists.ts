@@ -362,6 +362,8 @@ export function buildShoppingItemProductResolutionQuery(
     .returning();
 }
 
+// Only unchecked items count as duplicates: a checked-off item is history and
+// must not block re-adding the same product on a later trip.
 export function buildShoppingItemsByNormalizedTextQuery(
   db: Database,
   input: ShoppingItemNormalizedTextLookupInput,
@@ -377,6 +379,7 @@ export function buildShoppingItemsByNormalizedTextQuery(
     .where(
       and(
         eq(shoppingItems.shoppingListId, input.shoppingListId),
+        eq(shoppingItems.isChecked, false),
         inArray(shoppingItems.normalizedText, input.normalizedTexts),
       ),
     );

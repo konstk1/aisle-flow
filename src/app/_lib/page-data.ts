@@ -1,12 +1,12 @@
 import type { ActiveShoppingListPayload } from "@/domain/active-shopping-list";
 import type { LearnedProductsPayload } from "@/domain/learned-products";
 import type { StoreLayout } from "@/domain/store-layout";
-import type { StoreSummary } from "@/domain/stores";
 import { requirePageSession } from "@/auth/access";
 import {
   getActiveShoppingListForStore,
   getCompletedShoppingListForStore,
   getSnoozedShoppingListForStore,
+  type CurrentStoreInput,
 } from "@/services/active-shopping-list";
 import { getLearnedProducts } from "@/services/product-corrections";
 import { getCurrentStoreLayout } from "@/services/store-layout";
@@ -47,27 +47,33 @@ async function loadShoppingItemsPageData<Key extends ShoppingListPageDataKey>({
   resultKey,
 }: {
   loadList: (
-    store: StoreSummary | null,
+    store: CurrentStoreInput,
     userId: string,
   ) => Promise<ActiveShoppingListPayload | null>;
   pageName: string;
   resultKey: Key;
 }) {
   const userId = await requirePageSession();
-  const layoutData = await loadStoreLayoutData(userId, pageName);
-
-  if (layoutData.dataError) {
-    return { ...layoutData, [resultKey]: null } as {
-      dataError: boolean;
-      layout: StoreLayout | null;
-    } & Record<Key, ActiveShoppingListPayload | null>;
-  }
+  // The layout is only needed for page chrome; the list loader accepts the
+  // pending store lookup, so both loads run concurrently.
+  const layoutDataPromise = loadStoreLayoutData(userId, pageName);
 
   try {
     const list = await withDataTimeout(
-      loadList(layoutData.layout, userId),
+      loadList(
+        layoutDataPromise.then((data) => data.layout),
+        userId,
+      ),
       PAGE_DATA_TIMEOUT_MS,
     );
+    const layoutData = await layoutDataPromise;
+
+    if (layoutData.dataError) {
+      return { ...layoutData, [resultKey]: null } as {
+        dataError: boolean;
+        layout: StoreLayout | null;
+      } & Record<Key, ActiveShoppingListPayload | null>;
+    }
 
     return { ...layoutData, [resultKey]: list } as {
       dataError: boolean;

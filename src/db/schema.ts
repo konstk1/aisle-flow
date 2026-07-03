@@ -371,10 +371,6 @@ export const productLocations = pgTable(
       table.storeId,
       table.productConceptId,
     ),
-    index("product_locations_product_store_index").on(
-      table.productConceptId,
-      table.storeId,
-    ),
     index("product_locations_section_position_index").on(
       table.aisleSectionId,
       table.positionWithinSection,

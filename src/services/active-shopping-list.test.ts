@@ -538,6 +538,17 @@ describe("setActiveShoppingItemChecked", () => {
       fieldErrors: { itemId: ["Choose an item in the active list."] },
     });
   });
+
+  it("does not create a list as a side effect when the user has none", async () => {
+    mocks.buildActiveShoppingListQuery.mockResolvedValue([]);
+
+    await expect(
+      setActiveShoppingItemChecked({ userId, itemId, isChecked: true }),
+    ).rejects.toMatchObject({ status: 404 });
+
+    expect(mocks.buildActiveShoppingListCreateQuery).not.toHaveBeenCalled();
+    expect(mocks.buildShoppingItemCheckStateQuery).not.toHaveBeenCalled();
+  });
 });
 
 describe("snoozeActiveShoppingItem", () => {

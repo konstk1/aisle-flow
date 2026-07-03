@@ -128,7 +128,8 @@ interface RouteOrderedShoppingItemRow {
 
 // The current store is only needed for the final payload read, so callers may
 // pass a pending lookup and let it resolve alongside the list queries.
-type CurrentStoreInput = StoreSummary | null | Promise<StoreSummary | null>;
+export type CurrentStoreInput =
+  StoreSummary | null | Promise<StoreSummary | null>;
 
 export function getActiveShoppingList(
   userId: string,
@@ -140,13 +141,18 @@ export async function getActiveShoppingListForStore(
   store: CurrentStoreInput,
   userId: string,
 ): Promise<ActiveShoppingListPayload> {
-  const db = getDb();
-  const [resolvedStore, list] = await Promise.all([
+  const context = await loadShoppingListContext(
+    userId,
+    getOrCreateActiveShoppingList,
     store,
-    getOrCreateActiveShoppingList(db, userId),
-  ]);
+  );
 
-  return readShoppingListPayload(db, resolvedStore, list, "active");
+  return readShoppingListPayload(
+    context.db,
+    context.store,
+    context.list,
+    "active",
+  );
 }
 
 export function getCompletedShoppingList(
@@ -180,24 +186,27 @@ async function readExistingShoppingList(
   userId: string,
   view: ShoppingListView,
 ): Promise<ActiveShoppingListPayload | null> {
-  const db = getDb();
-  const [resolvedStore, [list]] = await Promise.all([
+  const context = await loadShoppingListContext(
+    userId,
+    findActiveShoppingList,
     store,
-    buildActiveShoppingListQuery(db, userId),
-  ]);
+  );
 
-  if (!list) {
+  if (!context.list) {
     return null;
   }
 
-  return readShoppingListPayload(db, resolvedStore, list, view);
+  return readShoppingListPayload(context.db, context.store, context.list, view);
 }
 
 export async function addActiveShoppingListItem(
   userId: string,
   input: ActiveShoppingItemCreateRequest,
 ): Promise<ActiveShoppingListPayload> {
-  const { db, store, list } = await loadActiveShoppingListContext(userId);
+  const { db, store, storeId, list } = await loadShoppingListContext(
+    userId,
+    getOrCreateActiveShoppingList,
+  );
   const now = new Date();
   const sourceIdentifier = `manual:${input.mutationId}`;
   await ensureShoppingItemsAreNew(db, {
@@ -211,7 +220,7 @@ export async function addActiveShoppingListItem(
   });
   const resolveProductMatch = await createStoreProductMatcher({
     db,
-    storeId: store?.id ?? null,
+    storeId,
   });
 
   await persistShoppingItem(db, {
@@ -240,7 +249,10 @@ export async function importActiveShoppingListItems(
     );
   }
 
-  const { db, store, list } = await loadActiveShoppingListContext(userId);
+  const { db, store, storeId, list } = await loadShoppingListContext(
+    userId,
+    getOrCreateActiveShoppingList,
+  );
   const now = new Date();
   const normalizedItems = parsed.lines.map((line, index) => ({
     lineNumber: line.lineNumber,
@@ -254,7 +266,7 @@ export async function importActiveShoppingListItems(
   });
   const resolveProductMatch = await createStoreProductMatcher({
     db,
-    storeId: store?.id ?? null,
+    storeId,
   });
 
   const upsertInputs = await Promise.all(
@@ -289,7 +301,15 @@ export async function setActiveShoppingItemChecked({
   isChecked: boolean;
   responseView?: ShoppingListView;
 }): Promise<ActiveShoppingListPayload> {
-  const { db, store, list } = await loadActiveShoppingListContext(userId);
+  const { db, store, list } = await loadShoppingListContext(
+    userId,
+    findActiveShoppingList,
+  );
+
+  if (!list) {
+    throw activeShoppingItemNotFoundError();
+  }
+
   const [updatedItem] = await buildShoppingItemCheckStateQuery(db, {
     shoppingListId: list.id,
     itemId,
@@ -297,11 +317,7 @@ export async function setActiveShoppingItemChecked({
   });
 
   if (!updatedItem) {
-    throw new ActiveShoppingListRequestError(
-      "Choose an item in the active list.",
-      { itemId: ["Choose an item in the active list."] },
-      404,
-    );
+    throw activeShoppingItemNotFoundError();
   }
 
   return readShoppingListPayload(db, store, list, responseView);
@@ -318,7 +334,15 @@ export async function snoozeActiveShoppingItem({
   snoozed: boolean;
   responseView?: ShoppingListView;
 }): Promise<ActiveShoppingListPayload> {
-  const { db, store, list } = await loadActiveShoppingListContext(userId);
+  const { db, store, list } = await loadShoppingListContext(
+    userId,
+    findActiveShoppingList,
+  );
+
+  if (!list) {
+    throw activeShoppingItemNotFoundError();
+  }
+
   const now = new Date();
   const snoozedUntil = snoozed
     ? new Date(now.getTime() + SNOOZE_DURATION_MS)
@@ -331,11 +355,7 @@ export async function snoozeActiveShoppingItem({
   });
 
   if (!updatedItem) {
-    throw new ActiveShoppingListRequestError(
-      "Choose an item in the active list.",
-      { itemId: ["Choose an item in the active list."] },
-      404,
-    );
+    throw activeShoppingItemNotFoundError();
   }
 
   return readShoppingListPayload(db, store, list, responseView);
@@ -352,7 +372,15 @@ export async function updateActiveShoppingItemText({
   text: string;
   responseView?: ShoppingListView;
 }): Promise<ActiveShoppingListPayload> {
-  const { db, store, list } = await loadActiveShoppingListContext(userId);
+  const { db, store, storeId, list } = await loadShoppingListContext(
+    userId,
+    findActiveShoppingList,
+  );
+
+  if (!list) {
+    throw activeShoppingItemNotFoundError();
+  }
+
   const normalizedText = normalizeProductText(text);
   await ensureShoppingItemTextIsAvailable(db, {
     currentItemId: itemId,
@@ -361,7 +389,7 @@ export async function updateActiveShoppingItemText({
   });
   const resolveProductMatch = await createStoreProductMatcher({
     db,
-    storeId: store?.id ?? null,
+    storeId,
   });
   const match = await resolveProductMatch(text);
   const matched = match.state === "matched";
@@ -374,11 +402,7 @@ export async function updateActiveShoppingItemText({
   });
 
   if (!updatedItem) {
-    throw new ActiveShoppingListRequestError(
-      "Choose an item in the active list.",
-      { itemId: ["Choose an item in the active list."] },
-      404,
-    );
+    throw activeShoppingItemNotFoundError();
   }
 
   return readShoppingListPayload(db, store, list, responseView);
@@ -393,44 +417,72 @@ export async function deleteActiveShoppingItem({
   itemId: string;
   responseView?: ShoppingListView;
 }): Promise<ActiveShoppingListPayload> {
-  const { db, store, list } = await loadActiveShoppingListContext(userId);
+  const { db, store, list } = await loadShoppingListContext(
+    userId,
+    findActiveShoppingList,
+  );
+
+  if (!list) {
+    throw activeShoppingItemNotFoundError();
+  }
+
   const [deletedItem] = await buildShoppingItemDeleteQuery(db, {
     shoppingListId: list.id,
     itemId,
   });
 
   if (!deletedItem) {
-    throw new ActiveShoppingListRequestError(
-      "Choose an item in the active list.",
-      { itemId: ["Choose an item in the active list."] },
-      404,
-    );
+    throw activeShoppingItemNotFoundError();
   }
 
   return readShoppingListPayload(db, store, list, responseView);
 }
 
-// The current store and the user's list are independent lookups, so item
-// mutations resolve them concurrently.
-async function loadActiveShoppingListContext(userId: string): Promise<{
+// The current store and the user's list are independent lookups, so every
+// entry point resolves them concurrently. Reads and item creation materialize
+// the list; item mutations only look it up, so a failed mutation leaves no row
+// behind.
+async function loadShoppingListContext<List extends ShoppingList | null>(
+  userId: string,
+  lookupList: (db: Database, userId: string) => Promise<List>,
+  store: CurrentStoreInput = resolveCurrentStore(userId),
+): Promise<{
   db: Database;
   store: StoreSummary | null;
-  list: ShoppingList;
+  storeId: string | null;
+  list: List;
 }> {
   const db = getDb();
-  const [store, list] = await Promise.all([
-    resolveCurrentStore(userId),
-    getOrCreateActiveShoppingList(db, userId),
+  const [resolvedStore, list] = await Promise.all([
+    store,
+    lookupList(db, userId),
   ]);
 
-  return { db, store, list };
+  return { db, store: resolvedStore, storeId: resolvedStore?.id ?? null, list };
+}
+
+function activeShoppingItemNotFoundError() {
+  return new ActiveShoppingListRequestError(
+    "Choose an item in the active list.",
+    { itemId: ["Choose an item in the active list."] },
+    404,
+  );
+}
+
+async function findActiveShoppingList(
+  db: Database,
+  userId: string,
+): Promise<ShoppingList | null> {
+  const [existing] = await buildActiveShoppingListQuery(db, userId);
+
+  return existing ?? null;
 }
 
 async function getOrCreateActiveShoppingList(
   db: Database,
   userId: string,
 ): Promise<ShoppingList> {
-  const [existing] = await buildActiveShoppingListQuery(db, userId);
+  const existing = await findActiveShoppingList(db, userId);
 
   if (existing) {
     return existing;
