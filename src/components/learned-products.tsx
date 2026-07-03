@@ -12,6 +12,7 @@ import type {
 import {
   ADD_PRODUCT_OPTION_VALUE,
   buildProductCorrectionRequest,
+  buildProductSelectionPatch,
   createProductCorrectionFormState,
   type ProductCorrectionFormState,
 } from "./active-shopping-list-state";
@@ -26,6 +27,7 @@ type ProductCorrectionProductConcept = {
   id: string;
   canonicalName: string;
   normalizedName: string;
+  aisleSectionId: string | null;
 };
 
 type ProductCorrectionAisleSection = {
@@ -514,10 +516,12 @@ function LearnedProductEditor({
               disabled={formDisabled}
               id={productControlId}
               onChange={(event) =>
-                onFormChange({
-                  productSelection: event.target.value,
-                  canonicalName: "",
-                })
+                onFormChange(
+                  buildProductSelectionPatch(
+                    event.target.value,
+                    productConcepts,
+                  ),
+                )
               }
               value={form.productSelection}
             >

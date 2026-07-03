@@ -120,6 +120,11 @@ export interface ProductCorrectionProductConcept {
   normalizedName: string;
 }
 
+export interface ProductCorrectionProductConceptOption
+  extends ProductCorrectionProductConcept {
+  aisleSectionId: string | null;
+}
+
 export interface ProductCorrectionAisleSection {
   id: string;
   aisleId: string;
@@ -132,7 +137,7 @@ export interface ProductCorrectionAisleSection {
 
 export interface ProductCorrectionOptions {
   store: { id: string; name: string } | null;
-  productConcepts: ProductCorrectionProductConcept[];
+  productConcepts: ProductCorrectionProductConceptOption[];
   aisleSections: ProductCorrectionAisleSection[];
 }
 
@@ -174,14 +179,18 @@ export async function getProductCorrectionOptions(
   userId: string,
 ): Promise<ProductCorrectionOptions> {
   const db = getDb();
-  const [layout, concepts] = await Promise.all([
-    getCurrentStoreLayout(userId),
-    buildProductConceptListQuery(db),
-  ]);
+  const layout = await getCurrentStoreLayout(userId);
+  const conceptRows = await buildProductConceptListQuery(
+    db,
+    layout?.id ?? null,
+  );
 
   return {
     store: layout ? { id: layout.id, name: layout.name } : null,
-    productConcepts: concepts.map(toProductConceptPayload),
+    productConcepts: conceptRows.map((row) => ({
+      ...toProductConceptPayload(row.productConcept),
+      aisleSectionId: row.aisleSectionId,
+    })),
     aisleSections: layout ? listAisleSections(layout) : [],
   };
 }

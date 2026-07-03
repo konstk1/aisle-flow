@@ -55,6 +55,7 @@ import {
   applyProductCorrection,
   deleteLearnedProduct,
   getLearnedProducts,
+  getProductCorrectionOptions,
   learnedProductUpdateRequestSchema,
   productCorrectionRequestSchema,
   updateLearnedProduct,
@@ -215,6 +216,58 @@ describe("productCorrectionRequestSchema", () => {
         ]),
       );
     }
+  });
+});
+
+describe("getProductCorrectionOptions", () => {
+  it("returns concepts with their learned location in the current store", async () => {
+    mocks.buildProductConceptListQuery.mockResolvedValue([
+      { productConcept, aisleSectionId: validSectionId },
+      {
+        productConcept: { ...productConcept, id: "concept-2" },
+        aisleSectionId: null,
+      },
+    ]);
+
+    const options = await getProductCorrectionOptions(userId);
+
+    expect(mocks.buildProductConceptListQuery).toHaveBeenCalledWith(
+      mocks.db,
+      storeId,
+    );
+    expect(options.store).toEqual({ id: storeId, name: "Example Market" });
+    expect(options.productConcepts).toEqual([
+      {
+        id: validConceptId,
+        canonicalName: "Dried fruit",
+        normalizedName: "dried fruit",
+        aisleSectionId: validSectionId,
+      },
+      {
+        id: "concept-2",
+        canonicalName: "Dried fruit",
+        normalizedName: "dried fruit",
+        aisleSectionId: null,
+      },
+    ]);
+    expect(options.aisleSections).toHaveLength(1);
+  });
+
+  it("queries without a store when the user has no layout", async () => {
+    mocks.getStoreLayout.mockResolvedValue(null);
+    mocks.buildProductConceptListQuery.mockResolvedValue([]);
+
+    const options = await getProductCorrectionOptions(userId);
+
+    expect(mocks.buildProductConceptListQuery).toHaveBeenCalledWith(
+      mocks.db,
+      null,
+    );
+    expect(options).toEqual({
+      store: null,
+      productConcepts: [],
+      aisleSections: [],
+    });
   });
 });
 

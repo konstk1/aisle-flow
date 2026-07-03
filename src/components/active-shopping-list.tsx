@@ -27,6 +27,7 @@ import { formatAisleLabel, formatSectionLabel } from "@/domain/store-layout";
 import {
   ADD_PRODUCT_OPTION_VALUE,
   buildProductCorrectionRequest,
+  buildProductSelectionPatch,
   createProductCorrectionFormState,
   getStableMutationForText,
   mergeVisibleListSnapshotAfterCheck,
@@ -90,6 +91,7 @@ type ProductCorrectionProductConcept = {
   id: string;
   canonicalName: string;
   normalizedName: string;
+  aisleSectionId: string | null;
 };
 
 type ProductCorrectionAisleSection = {
@@ -1276,10 +1278,12 @@ function InlineLocationEditor({
                 disabled={formDisabled}
                 id={productControlId}
                 onChange={(event) =>
-                  onFormChange({
-                    productSelection: event.target.value,
-                    canonicalName: "",
-                  })
+                  onFormChange(
+                    buildProductSelectionPatch(
+                      event.target.value,
+                      productConcepts,
+                    ),
+                  )
                 }
                 value={form.productSelection}
               >

@@ -33,10 +33,23 @@ export interface ManualProductLocationCorrectionInput {
   now?: Date;
 }
 
-export function buildProductConceptListQuery(db: Database) {
+export function buildProductConceptListQuery(
+  db: Database,
+  storeId: string | null,
+) {
   return db
-    .select()
+    .select({
+      productConcept: productConcepts,
+      aisleSectionId: productLocations.aisleSectionId,
+    })
     .from(productConcepts)
+    .leftJoin(
+      productLocations,
+      and(
+        eq(productLocations.productConceptId, productConcepts.id),
+        storeId === null ? sql`false` : eq(productLocations.storeId, storeId),
+      ),
+    )
     .orderBy(asc(productConcepts.normalizedName));
 }
 

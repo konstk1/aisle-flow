@@ -8,6 +8,7 @@ import type {
 import {
   ADD_PRODUCT_OPTION_VALUE,
   buildProductCorrectionRequest,
+  buildProductSelectionPatch,
   createProductCorrectionFormState,
   getStableMutationForText,
   mergeVisibleListSnapshotAfterCheck,
@@ -73,6 +74,37 @@ describe("createProductCorrectionFormState", () => {
       }),
     ).toMatchObject({
       productSelection: ADD_PRODUCT_OPTION_VALUE,
+    });
+  });
+});
+
+describe("buildProductSelectionPatch", () => {
+  const productConcepts = [
+    { id: "concept-1", aisleSectionId: "section-9" },
+    { id: "concept-2", aisleSectionId: null },
+  ];
+
+  it("fills the section from the selected product's learned location", () => {
+    expect(buildProductSelectionPatch("concept-1", productConcepts)).toEqual({
+      productSelection: "concept-1",
+      canonicalName: "",
+      aisleSectionId: "section-9",
+    });
+  });
+
+  it("leaves the section untouched when the product has no location", () => {
+    expect(buildProductSelectionPatch("concept-2", productConcepts)).toEqual({
+      productSelection: "concept-2",
+      canonicalName: "",
+    });
+  });
+
+  it("only switches modes for the add-product option", () => {
+    expect(
+      buildProductSelectionPatch(ADD_PRODUCT_OPTION_VALUE, productConcepts),
+    ).toEqual({
+      productSelection: ADD_PRODUCT_OPTION_VALUE,
+      canonicalName: "",
     });
   });
 });

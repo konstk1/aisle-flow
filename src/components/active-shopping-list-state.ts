@@ -67,6 +67,23 @@ export function createProductCorrectionFormState({
   };
 }
 
+export function buildProductSelectionPatch(
+  productSelection: string,
+  productConcepts: readonly { id: string; aisleSectionId: string | null }[],
+): Partial<ProductCorrectionFormState> {
+  const selected = productConcepts.find(
+    (concept) => concept.id === productSelection,
+  );
+
+  return {
+    productSelection,
+    canonicalName: "",
+    ...(selected?.aisleSectionId
+      ? { aisleSectionId: selected.aisleSectionId }
+      : {}),
+  };
+}
+
 export function buildProductCorrectionRequest({
   form,
   rawText,
