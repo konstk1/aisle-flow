@@ -16,6 +16,7 @@ import {
   buildProductSelectionPatch,
   createProductCorrectionFormState,
   getLocationChangeWarning,
+  getProductSelectionState,
   type LocationChangeWarning,
   type ProductCorrectionFormState,
   type ProductCorrectionRequestBody,
@@ -176,25 +177,27 @@ export function LearnedProducts({
       return;
     }
 
-    const warning = getLocationChangeWarning({
-      body: request.body,
-      productConcepts: options?.productConcepts ?? [],
-      items: [],
-    });
+    const productConcepts = options?.productConcepts ?? [];
+    const concept = productConcepts.find(
+      (candidate) => candidate.id === request.body.productConceptId,
+    );
 
-    if (warning) {
-      const items = await fetchActiveListItems();
-      setLocationChangeConfirm({
-        learning,
+    // Only relocating an existing product needs a confirmation; fetch the list
+    // just then to show which of the user's items will move.
+    if (
+      concept?.aisleSectionId &&
+      concept.aisleSectionId !== request.body.aisleSectionId
+    ) {
+      const warning = getLocationChangeWarning({
         body: request.body,
-        warning:
-          getLocationChangeWarning({
-            body: request.body,
-            productConcepts: options?.productConcepts ?? [],
-            items,
-          }) ?? warning,
+        productConcepts,
+        items: await fetchActiveListItems(),
       });
-      return;
+
+      if (warning) {
+        setLocationChangeConfirm({ learning, body: request.body, warning });
+        return;
+      }
     }
 
     await performSaveLearning(learning, request.body);
@@ -518,11 +521,8 @@ function LearnedProductEditor({
 }) {
   const productConcepts = options?.productConcepts ?? [];
   const aisleSections = options?.aisleSections ?? [];
-  const isAddingProduct = form.productSelection === ADD_PRODUCT_OPTION_VALUE;
-  const selectedConceptIsMissing =
-    form.productSelection.length > 0 &&
-    !isAddingProduct &&
-    !productConcepts.some((concept) => concept.id === form.productSelection);
+  const { isAddingProduct, selectedConceptIsMissing, selectValue } =
+    getProductSelectionState(form, productConcepts);
   const formDisabled = pending || loadingOptions || !options || !!optionsError;
   const productControlId = `learned-product-${learning.aliasId}`;
   const [isNewProductDialogOpen, setIsNewProductDialogOpen] = useState(false);
@@ -576,11 +576,7 @@ function LearnedProductEditor({
                 ),
               );
             }}
-            value={
-              isAddingProduct && !form.canonicalName
-                ? ""
-                : form.productSelection
-            }
+            value={selectValue}
           >
             <option value="">Choose product</option>
             {isAddingProduct && form.canonicalName ? (

@@ -97,6 +97,26 @@ export function applyCorrectedConceptLocation(
   );
 }
 
+// Shared derivations for the product select in both correction editors: which
+// mode it's in, whether the current selection is a concept no longer offered,
+// and the bound value (blank while a new product has no name yet).
+export function getProductSelectionState(
+  form: ProductCorrectionFormState,
+  productConcepts: readonly { id: string }[],
+) {
+  const isAddingProduct = form.productSelection === ADD_PRODUCT_OPTION_VALUE;
+
+  return {
+    isAddingProduct,
+    selectedConceptIsMissing:
+      form.productSelection.length > 0 &&
+      !isAddingProduct &&
+      !productConcepts.some((concept) => concept.id === form.productSelection),
+    selectValue:
+      isAddingProduct && !form.canonicalName ? "" : form.productSelection,
+  };
+}
+
 export function buildProductSelectionPatch(
   productSelection: string,
   productConcepts: readonly { id: string; aisleSectionId: string | null }[],

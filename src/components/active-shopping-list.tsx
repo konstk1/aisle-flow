@@ -34,6 +34,7 @@ import {
   buildProductSelectionPatch,
   createProductCorrectionFormState,
   getLocationChangeWarning,
+  getProductSelectionState,
   getStableMutationForText,
   mergeVisibleListSnapshotAfterCheck,
   removeItemFromActiveList,
@@ -1268,11 +1269,8 @@ function InlineLocationEditor({
 }) {
   const productConcepts = options?.productConcepts ?? [];
   const aisleSections = options?.aisleSections ?? [];
-  const isAddingProduct = form.productSelection === ADD_PRODUCT_OPTION_VALUE;
-  const selectedConceptIsMissing =
-    form.productSelection.length > 0 &&
-    !isAddingProduct &&
-    !productConcepts.some((concept) => concept.id === form.productSelection);
+  const { isAddingProduct, selectedConceptIsMissing, selectValue } =
+    getProductSelectionState(form, productConcepts);
   const selectedSectionIsMissing =
     form.aisleSectionId.length > 0 &&
     !aisleSections.some((section) => section.id === form.aisleSectionId);
@@ -1341,11 +1339,7 @@ function InlineLocationEditor({
                   ),
                 );
               }}
-              value={
-                isAddingProduct && !form.canonicalName
-                  ? ""
-                  : form.productSelection
-              }
+              value={selectValue}
             >
               <option value="">Choose product</option>
               {isAddingProduct && form.canonicalName ? (
