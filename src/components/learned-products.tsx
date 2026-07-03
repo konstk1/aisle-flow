@@ -1,6 +1,6 @@
 "use client";
 
-import { History, Pencil, RotateCw, Trash2, X } from "lucide-react";
+import { History, Pencil, Plus, RotateCw, Trash2, X } from "lucide-react";
 import { useState } from "react";
 
 import type { FieldErrors } from "@/domain/active-shopping-list";
@@ -16,6 +16,7 @@ import {
   createProductCorrectionFormState,
   type ProductCorrectionFormState,
 } from "./active-shopping-list-state";
+import { NewProductDialog } from "./new-product-dialog";
 
 type ProductCorrectionOptions = {
   store: { id: string; name: string } | null;
@@ -448,6 +449,7 @@ function LearnedProductEditor({
     !productConcepts.some((concept) => concept.id === form.productSelection);
   const formDisabled = pending || loadingOptions || !options || !!optionsError;
   const productControlId = `learned-product-${learning.aliasId}`;
+  const [isNewProductDialogOpen, setIsNewProductDialogOpen] = useState(false);
 
   return (
     <div className="space-y-2">
@@ -481,38 +483,9 @@ function LearnedProductEditor({
           <label className="sr-only" htmlFor={productControlId}>
             Product
           </label>
-          {isAddingProduct ? (
-            <span className="flex">
-              <input
-                autoFocus
-                className="min-h-10 min-w-0 flex-1 border bg-white px-3 text-sm outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={formDisabled}
-                id={productControlId}
-                onChange={(event) =>
-                  onFormChange({ canonicalName: event.target.value })
-                }
-                placeholder="New product"
-                value={form.canonicalName}
-              />
-              <button
-                aria-label="Choose existing product"
-                className="inline-flex size-10 shrink-0 items-center justify-center border border-l-0 text-zinc-700 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={formDisabled}
-                onClick={() =>
-                  onFormChange({
-                    canonicalName: "",
-                    productSelection: "",
-                  })
-                }
-                title="Choose existing product"
-                type="button"
-              >
-                <X aria-hidden="true" className="size-4" />
-              </button>
-            </span>
-          ) : (
+          <span className="flex">
             <select
-              className="min-h-10 w-full border bg-white px-3 text-sm outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
+              className="min-h-10 w-full min-w-0 flex-1 border bg-white px-3 text-sm outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
               disabled={formDisabled}
               id={productControlId}
               onChange={(event) =>
@@ -526,6 +499,11 @@ function LearnedProductEditor({
               value={form.productSelection}
             >
               <option value="">Choose product</option>
+              {isAddingProduct && form.canonicalName ? (
+                <option value={ADD_PRODUCT_OPTION_VALUE}>
+                  {form.canonicalName} (new)
+                </option>
+              ) : null}
               {selectedConceptIsMissing ? (
                 <option value={learning.productConcept.id}>
                   {learning.productConcept.canonicalName}
@@ -536,9 +514,18 @@ function LearnedProductEditor({
                   {concept.canonicalName}
                 </option>
               ))}
-              <option value={ADD_PRODUCT_OPTION_VALUE}>Add product</option>
             </select>
-          )}
+            <button
+              aria-label="New product"
+              className="inline-flex size-10 shrink-0 items-center justify-center border border-l-0 text-zinc-700 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={formDisabled}
+              onClick={() => setIsNewProductDialogOpen(true)}
+              title="New product"
+              type="button"
+            >
+              <Plus aria-hidden="true" className="size-4" />
+            </button>
+          </span>
           <FieldError messages={fieldErrors.productConceptId} />
           <FieldError messages={fieldErrors.canonicalName} />
         </div>
@@ -568,6 +555,29 @@ function LearnedProductEditor({
         Products are shared across all stores; the route section
         applies only to {options?.store?.name ?? "this store"}.
       </p>
+
+      {isNewProductDialogOpen ? (
+        <NewProductDialog
+          initialValues={{
+            canonicalName: form.canonicalName,
+            aisleSectionId: form.aisleSectionId,
+          }}
+          onCancel={() => setIsNewProductDialogOpen(false)}
+          onSave={(values) => {
+            onFormChange({
+              productSelection: ADD_PRODUCT_OPTION_VALUE,
+              canonicalName: values.canonicalName,
+              aisleSectionId: values.aisleSectionId,
+            });
+            setIsNewProductDialogOpen(false);
+          }}
+          sections={aisleSections.map((section) => ({
+            id: section.id,
+            label: sectionOptionLabel(section),
+          }))}
+          storeName={options?.store?.name ?? null}
+        />
+      ) : null}
     </div>
   );
 }
