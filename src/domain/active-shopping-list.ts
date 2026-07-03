@@ -18,11 +18,10 @@ export interface ActiveShoppingListPayload {
   store: {
     id: string;
     name: string;
-  };
+  } | null;
   list: {
     id: string;
     source: "manual" | "import" | "provider";
-    syncState: "synced" | "pending" | "error";
   };
   items: ActiveShoppingItemPayload[];
 }
@@ -34,7 +33,6 @@ export interface ActiveShoppingItemPayload {
   isChecked: boolean;
   checkedAt: string | null;
   snoozedUntil: string | null;
-  syncState: "synced" | "pending" | "error";
   resolutionState: "route-resolved" | "matched-unlocated" | "needs-correction";
   productConcept: {
     id: string;

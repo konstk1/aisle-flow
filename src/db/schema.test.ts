@@ -83,29 +83,25 @@ describe("data model constraints", () => {
     );
   });
 
-  it("keeps a resolved location and list item within the same store", () => {
+  it("keeps items on their list and locations in their store", () => {
     expect(foreignKeyNames(productLocations)).toContain(
       "product_locations_store_section_foreign_key",
     );
-    expect(foreignKeyNames(shoppingItems)).toEqual(
-      expect.arrayContaining([
-        "shopping_items_store_list_foreign_key",
-        "shopping_items_store_location_foreign_key",
-      ]),
+    expect(foreignKeyNames(shoppingItems)).toContain(
+      "shopping_items_shopping_list_id_shopping_lists_id_fk",
     );
+    expect(shoppingItems).not.toHaveProperty("storeId");
+    expect(shoppingItems).not.toHaveProperty("resolvedLocationId");
   });
 
-  it("allows at most one active list per user/store and indexes its item reads", () => {
+  it("allows at most one active list per user and indexes its item reads", () => {
     expect(shoppingLists).toHaveProperty("userId");
+    expect(shoppingLists).not.toHaveProperty("storeId");
     expect(foreignKeyNames(shoppingLists)).toContain(
       "shopping_lists_user_id_user_id_fk",
     );
     expect(indexNames(shoppingLists)).toEqual(
-      expect.arrayContaining([
-        "shopping_lists_one_active_per_user_store",
-        "shopping_lists_active_store_index",
-        "shopping_lists_user_store_index",
-      ]),
+      expect.arrayContaining(["shopping_lists_one_active_per_user"]),
     );
     expect(indexNames(shoppingItems)).toEqual(
       expect.arrayContaining([

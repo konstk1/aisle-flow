@@ -1,4 +1,5 @@
 import { loadSnoozedShoppingListPageData } from "@/app/_lib/page-data";
+import { getRouteSections } from "@/domain/store-layout";
 import { SnoozedShoppingList } from "@/components/active-shopping-list";
 import { DataUnavailable } from "@/components/data-unavailable";
 
@@ -12,7 +13,7 @@ export default async function SnoozedPage() {
 
   return (
     <SnoozedShoppingList
-      hasStoreLayout={layout !== null}
+      hasStoreRoute={layout !== null && getRouteSections(layout).length > 0}
       initialSnoozedList={snoozedList}
       key={layout?.id ?? "no-store"}
     />

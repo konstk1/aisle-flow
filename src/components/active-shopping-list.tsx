@@ -39,24 +39,24 @@ import {
 
 type ActiveShoppingListProps = {
   initialActiveList: ActiveShoppingListPayload | null;
-  hasStoreLayout: boolean;
+  hasStoreRoute: boolean;
 };
 
 type CompletedShoppingListProps = {
   initialCompletedList: ActiveShoppingListPayload | null;
-  hasStoreLayout: boolean;
+  hasStoreRoute: boolean;
 };
 
 type SnoozedShoppingListProps = {
   initialSnoozedList: ActiveShoppingListPayload | null;
-  hasStoreLayout: boolean;
+  hasStoreRoute: boolean;
 };
 
 type ShoppingListMode = "active" | "completed" | "snoozed";
 
 type ShoppingListViewProps = {
   initialList: ActiveShoppingListPayload | null;
-  hasStoreLayout: boolean;
+  hasStoreRoute: boolean;
   mode: ShoppingListMode;
 };
 
@@ -143,12 +143,12 @@ const MODE_CONFIG: Record<ShoppingListMode, ShoppingListModeConfig> = {
 };
 
 export function ActiveShoppingList({
-  hasStoreLayout,
+  hasStoreRoute,
   initialActiveList,
 }: ActiveShoppingListProps) {
   return (
     <ShoppingListView
-      hasStoreLayout={hasStoreLayout}
+      hasStoreRoute={hasStoreRoute}
       initialList={initialActiveList}
       mode="active"
     />
@@ -156,12 +156,12 @@ export function ActiveShoppingList({
 }
 
 export function CompletedShoppingList({
-  hasStoreLayout,
+  hasStoreRoute,
   initialCompletedList,
 }: CompletedShoppingListProps) {
   return (
     <ShoppingListView
-      hasStoreLayout={hasStoreLayout}
+      hasStoreRoute={hasStoreRoute}
       initialList={initialCompletedList}
       mode="completed"
     />
@@ -169,12 +169,12 @@ export function CompletedShoppingList({
 }
 
 export function SnoozedShoppingList({
-  hasStoreLayout,
+  hasStoreRoute,
   initialSnoozedList,
 }: SnoozedShoppingListProps) {
   return (
     <ShoppingListView
-      hasStoreLayout={hasStoreLayout}
+      hasStoreRoute={hasStoreRoute}
       initialList={initialSnoozedList}
       mode="snoozed"
     />
@@ -182,7 +182,7 @@ export function SnoozedShoppingList({
 }
 
 function ShoppingListView({
-  hasStoreLayout,
+  hasStoreRoute,
   initialList,
   mode,
 }: ShoppingListViewProps) {
@@ -778,7 +778,7 @@ function ShoppingListView({
             <span className="sr-only">Item text</span>
             <input
               className="min-h-11 w-full border bg-white px-3 text-base transition outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={!hasStoreLayout || pendingAction !== null}
+              disabled={pendingAction !== null}
               onChange={(event) => setItemText(event.target.value)}
               placeholder="Milk"
               value={itemText}
@@ -790,7 +790,7 @@ function ShoppingListView({
           <div className="flex shrink-0 gap-2">
             <button
               className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 border border-zinc-950 bg-zinc-950 px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none"
-              disabled={!hasStoreLayout || pendingAction !== null}
+              disabled={pendingAction !== null}
               type="submit"
             >
               <Plus aria-hidden="true" className="size-4" />
@@ -799,7 +799,7 @@ function ShoppingListView({
             <button
               aria-expanded={importExpanded}
               className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 border px-4 text-sm font-medium text-zinc-800 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none"
-              disabled={!hasStoreLayout || pendingAction !== null}
+              disabled={pendingAction !== null}
               onClick={openImport}
               type="button"
             >
@@ -819,7 +819,7 @@ function ShoppingListView({
         </form>
       )}
 
-      {!hasStoreLayout ? (
+      {!hasStoreRoute ? (
         <p className="mt-4 text-sm text-zinc-600">
           <Link
             className="font-medium text-zinc-950 underline-offset-4 hover:underline"
@@ -827,7 +827,7 @@ function ShoppingListView({
           >
             Build a store route
           </Link>{" "}
-          before using shopping items.
+          to see items in aisle order.
         </p>
       ) : null}
 
@@ -837,7 +837,7 @@ function ShoppingListView({
             Paste list
             <textarea
               className="mt-2 min-h-28 w-full resize-y border bg-white px-3 py-2 text-base transition outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={!hasStoreLayout || pendingAction !== null}
+              disabled={pendingAction !== null}
               onChange={(event) => setImportText(event.target.value)}
               placeholder={"Rice\nBroccoli"}
               autoFocus
@@ -852,7 +852,7 @@ function ShoppingListView({
           <div className="mt-2 flex flex-wrap gap-2">
             <button
               className="inline-flex min-h-11 items-center gap-2 border border-zinc-950 bg-zinc-950 px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={!hasStoreLayout || pendingAction !== null}
+              disabled={pendingAction !== null}
               type="submit"
             >
               <Upload aria-hidden="true" className="size-4" />
@@ -1117,9 +1117,6 @@ function ShoppingItemRow({
               {isSnoozedRow && item.snoozedUntil ? (
                 <span>{formatSnoozedUntil(item.snoozedUntil)}</span>
               ) : null}
-              {item.syncState !== "synced" ? (
-                <span>{item.syncState}</span>
-              ) : null}
             </p>
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-2">
@@ -1228,96 +1225,108 @@ function InlineLocationEditor({
       <FieldError messages={fieldErrors.form} />
       <FieldError messages={fieldErrors.rawText} />
 
-      <div className="grid gap-2 sm:grid-cols-2">
-        <div className="block min-w-0">
-          <label className="sr-only" htmlFor={categoryControlId}>
-            Shelf category
-          </label>
-          {isAddingCategory ? (
-            <span className="flex">
-              <input
-                autoFocus
-                className="min-h-10 min-w-0 flex-1 border bg-white px-3 text-sm outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
+      {options && aisleSections.length === 0 ? (
+        <p className="text-sm text-zinc-600">
+          <Link
+            className="font-medium text-zinc-950 underline-offset-4 hover:underline"
+            href="/route"
+          >
+            Build a store route
+          </Link>{" "}
+          before assigning item locations.
+        </p>
+      ) : (
+        <div className="grid gap-2 sm:grid-cols-2">
+          <div className="block min-w-0">
+            <label className="sr-only" htmlFor={categoryControlId}>
+              Shelf category
+            </label>
+            {isAddingCategory ? (
+              <span className="flex">
+                <input
+                  autoFocus
+                  className="min-h-10 min-w-0 flex-1 border bg-white px-3 text-sm outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={formDisabled}
+                  id={categoryControlId}
+                  onChange={(event) =>
+                    onFormChange({ canonicalName: event.target.value })
+                  }
+                  placeholder="New category"
+                  value={form.canonicalName}
+                />
+                <button
+                  aria-label="Choose existing category"
+                  className="inline-flex size-10 shrink-0 items-center justify-center border border-l-0 text-zinc-700 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={formDisabled}
+                  onClick={() =>
+                    onFormChange({
+                      canonicalName: "",
+                      categorySelection: "",
+                    })
+                  }
+                  title="Choose existing category"
+                  type="button"
+                >
+                  <X aria-hidden="true" className="size-4" />
+                </button>
+              </span>
+            ) : (
+              <select
+                className="min-h-10 w-full border bg-white px-3 text-sm outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={formDisabled}
                 id={categoryControlId}
                 onChange={(event) =>
-                  onFormChange({ canonicalName: event.target.value })
-                }
-                placeholder="New category"
-                value={form.canonicalName}
-              />
-              <button
-                aria-label="Choose existing category"
-                className="inline-flex size-10 shrink-0 items-center justify-center border border-l-0 text-zinc-700 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={formDisabled}
-                onClick={() =>
                   onFormChange({
+                    categorySelection: event.target.value,
                     canonicalName: "",
-                    categorySelection: "",
                   })
                 }
-                title="Choose existing category"
-                type="button"
+                value={form.categorySelection}
               >
-                <X aria-hidden="true" className="size-4" />
-              </button>
-            </span>
-          ) : (
+                <option value="">Choose category</option>
+                {selectedConceptIsMissing && item.productConcept ? (
+                  <option value={item.productConcept.id}>
+                    {item.productConcept.canonicalName}
+                  </option>
+                ) : null}
+                {productConcepts.map((concept) => (
+                  <option key={concept.id} value={concept.id}>
+                    {concept.canonicalName}
+                  </option>
+                ))}
+                <option value={ADD_CATEGORY_OPTION_VALUE}>Add category</option>
+              </select>
+            )}
+            <FieldError messages={fieldErrors.productConceptId} />
+            <FieldError messages={fieldErrors.canonicalName} />
+          </div>
+
+          <label className="block min-w-0">
+            <span className="sr-only">Route section</span>
             <select
               className="min-h-10 w-full border bg-white px-3 text-sm outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
               disabled={formDisabled}
-              id={categoryControlId}
               onChange={(event) =>
-                onFormChange({
-                  categorySelection: event.target.value,
-                  canonicalName: "",
-                })
+                onFormChange({ aisleSectionId: event.target.value })
               }
-              value={form.categorySelection}
+              value={form.aisleSectionId}
             >
-              <option value="">Choose category</option>
-              {selectedConceptIsMissing && item.productConcept ? (
-                <option value={item.productConcept.id}>
-                  {item.productConcept.canonicalName}
+              <option value="">Choose section</option>
+              {selectedSectionIsMissing && item.location ? (
+                <option value={item.location.aisleSectionId}>
+                  {correctionSectionLabel(item.location.aisleSection)}
                 </option>
               ) : null}
-              {productConcepts.map((concept) => (
-                <option key={concept.id} value={concept.id}>
-                  {concept.canonicalName}
+              {aisleSections.map((section) => (
+                <option key={section.id} value={section.id}>
+                  {correctionSectionLabel(section)}
                 </option>
               ))}
-              <option value={ADD_CATEGORY_OPTION_VALUE}>Add category</option>
             </select>
-          )}
-          <FieldError messages={fieldErrors.productConceptId} />
-          <FieldError messages={fieldErrors.canonicalName} />
+            <FieldError messages={fieldErrors.aisleSectionId} />
+          </label>
         </div>
-
-        <label className="block min-w-0">
-          <span className="sr-only">Route section</span>
-          <select
-            className="min-h-10 w-full border bg-white px-3 text-sm outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={formDisabled}
-            onChange={(event) =>
-              onFormChange({ aisleSectionId: event.target.value })
-            }
-            value={form.aisleSectionId}
-          >
-            <option value="">Choose section</option>
-            {selectedSectionIsMissing && item.location ? (
-              <option value={item.location.aisleSectionId}>
-                {correctionSectionLabel(item.location.aisleSection)}
-              </option>
-            ) : null}
-            {aisleSections.map((section) => (
-              <option key={section.id} value={section.id}>
-                {correctionSectionLabel(section)}
-              </option>
-            ))}
-          </select>
-          <FieldError messages={fieldErrors.aisleSectionId} />
-        </label>
-      </div>
+      )}
 
       {message ? (
         <p className="text-sm text-zinc-700" role="status">

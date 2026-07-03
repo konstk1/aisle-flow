@@ -1,4 +1,5 @@
 import { loadShoppingListPageData } from "@/app/_lib/page-data";
+import { getRouteSections } from "@/domain/store-layout";
 import { ActiveShoppingList } from "@/components/active-shopping-list";
 import { DataUnavailable } from "@/components/data-unavailable";
 
@@ -11,7 +12,7 @@ export default async function Home() {
 
   return (
     <ActiveShoppingList
-      hasStoreLayout={layout !== null}
+      hasStoreRoute={layout !== null && getRouteSections(layout).length > 0}
       initialActiveList={activeList}
       key={layout?.id ?? "no-store"}
     />

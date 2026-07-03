@@ -3,10 +3,10 @@ import type { LearnedProductsPayload } from "@/domain/learned-products";
 import type { StoreLayout } from "@/domain/store-layout";
 import { requirePageSession } from "@/auth/access";
 import {
-  ActiveShoppingListRequestError,
-  getActiveShoppingListForLayout,
-  getCompletedShoppingListForLayout,
-  getSnoozedShoppingListForLayout,
+  getActiveShoppingListForStore,
+  getCompletedShoppingListForStore,
+  getSnoozedShoppingListForStore,
+  type CurrentStoreInput,
 } from "@/services/active-shopping-list";
 import { getLearnedProducts } from "@/services/product-corrections";
 import { getCurrentStoreLayout } from "@/services/store-layout";
@@ -19,7 +19,7 @@ type ShoppingListPageDataKey = "activeList" | "completedList" | "snoozedList";
 
 export async function loadShoppingListPageData() {
   return loadShoppingItemsPageData({
-    loadList: getActiveShoppingListForLayout,
+    loadList: getActiveShoppingListForStore,
     pageName: "Shopping list",
     resultKey: "activeList",
   });
@@ -27,7 +27,7 @@ export async function loadShoppingListPageData() {
 
 export async function loadCompletedShoppingListPageData() {
   return loadShoppingItemsPageData({
-    loadList: getCompletedShoppingListForLayout,
+    loadList: getCompletedShoppingListForStore,
     pageName: "Completed items",
     resultKey: "completedList",
   });
@@ -35,7 +35,7 @@ export async function loadCompletedShoppingListPageData() {
 
 export async function loadSnoozedShoppingListPageData() {
   return loadShoppingItemsPageData({
-    loadList: getSnoozedShoppingListForLayout,
+    loadList: getSnoozedShoppingListForStore,
     pageName: "Snoozed items",
     resultKey: "snoozedList",
   });
@@ -47,40 +47,39 @@ async function loadShoppingItemsPageData<Key extends ShoppingListPageDataKey>({
   resultKey,
 }: {
   loadList: (
-    layout: StoreLayout,
+    store: CurrentStoreInput,
     userId: string,
   ) => Promise<ActiveShoppingListPayload | null>;
   pageName: string;
   resultKey: Key;
 }) {
   const userId = await requirePageSession();
-  const layoutData = await loadStoreLayoutData(userId, pageName);
-
-  if (layoutData.dataError || !layoutData.layout) {
-    return { ...layoutData, [resultKey]: null } as {
-      dataError: boolean;
-      layout: StoreLayout | null;
-    } & Record<Key, ActiveShoppingListPayload | null>;
-  }
+  // The layout is only needed for page chrome; the list loader accepts the
+  // pending store lookup, so both loads run concurrently.
+  const layoutDataPromise = loadStoreLayoutData(userId, pageName);
 
   try {
     const list = await withDataTimeout(
-      loadList(layoutData.layout, userId),
+      loadList(
+        layoutDataPromise.then((data) => data.layout),
+        userId,
+      ),
       PAGE_DATA_TIMEOUT_MS,
     );
+    const layoutData = await layoutDataPromise;
 
-    return { ...layoutData, [resultKey]: list } as {
-      dataError: boolean;
-      layout: StoreLayout | null;
-    } & Record<Key, ActiveShoppingListPayload | null>;
-  } catch (error) {
-    if (error instanceof ActiveShoppingListRequestError) {
+    if (layoutData.dataError) {
       return { ...layoutData, [resultKey]: null } as {
         dataError: boolean;
         layout: StoreLayout | null;
       } & Record<Key, ActiveShoppingListPayload | null>;
     }
 
+    return { ...layoutData, [resultKey]: list } as {
+      dataError: boolean;
+      layout: StoreLayout | null;
+    } & Record<Key, ActiveShoppingListPayload | null>;
+  } catch (error) {
     console.error(`${pageName} data could not be loaded.`, error);
     return { [resultKey]: null, dataError: true, layout: null } as {
       dataError: boolean;

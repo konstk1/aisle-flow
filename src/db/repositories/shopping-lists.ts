@@ -32,7 +32,9 @@ const shoppingItemRouteSelection = {
   aisle: aisles,
 };
 
-function buildShoppingItemRouteRowsQuery(db: Database) {
+// Locations are resolved at read time against the viewer's current store, so
+// the same list routes differently per store. No store means no locations.
+function buildShoppingItemRouteRowsQuery(db: Database, storeId: string | null) {
   return db
     .select(shoppingItemRouteSelection)
     .from(shoppingItems)
@@ -42,10 +44,12 @@ function buildShoppingItemRouteRowsQuery(db: Database) {
     )
     .leftJoin(
       productLocations,
-      and(
-        eq(shoppingItems.resolvedLocationId, productLocations.id),
-        eq(shoppingItems.storeId, productLocations.storeId),
-      ),
+      storeId
+        ? and(
+            eq(productLocations.productConceptId, shoppingItems.productConceptId),
+            eq(productLocations.storeId, storeId),
+          )
+        : sql`false`,
     )
     .leftJoin(
       aisleSections,
@@ -64,12 +68,10 @@ function buildShoppingItemRouteRowsQuery(db: Database) {
 }
 
 export interface ShoppingItemUpsertInput {
-  storeId: string;
   shoppingListId: string;
   rawText: string;
   normalizedText: string;
   productConceptId: string | null;
-  resolvedLocationId: string | null;
   orderKey: string;
   sourceIdentifier: string;
   mutationId: string;
@@ -77,7 +79,6 @@ export interface ShoppingItemUpsertInput {
 }
 
 export interface ShoppingItemCheckStateInput {
-  storeId: string;
   shoppingListId: string;
   itemId: string;
   isChecked: boolean;
@@ -85,7 +86,6 @@ export interface ShoppingItemCheckStateInput {
 }
 
 export interface ShoppingItemSnoozeStateInput {
-  storeId: string;
   shoppingListId: string;
   itemId: string;
   snoozedUntil: Date | null;
@@ -93,49 +93,38 @@ export interface ShoppingItemSnoozeStateInput {
 }
 
 export interface ShoppingItemTextUpdateInput {
-  storeId: string;
   shoppingListId: string;
   itemId: string;
   rawText: string;
   normalizedText: string;
   productConceptId: string | null;
-  resolvedLocationId: string | null;
   now?: Date;
 }
 
 export interface ShoppingItemDeleteInput {
-  storeId: string;
   shoppingListId: string;
   itemId: string;
 }
 
 export interface ShoppingItemProductResolutionInput {
-  storeId: string;
   shoppingListId: string;
   normalizedText: string;
   productConceptId: string | SQL;
-  resolvedLocationId: string | SQL;
   now?: Date;
 }
 
 export interface ShoppingItemNormalizedTextLookupInput {
-  storeId: string;
   shoppingListId: string;
   normalizedTexts: string[];
 }
 
-export function buildActiveShoppingListQuery(
-  db: Database,
-  storeId: string,
-  userId: string,
-) {
+export function buildActiveShoppingListQuery(db: Database, userId: string) {
   return db
     .select()
     .from(shoppingLists)
     .where(
       and(
         eq(shoppingLists.userId, userId),
-        eq(shoppingLists.storeId, storeId),
         eq(shoppingLists.state, "active"),
       ),
     )
@@ -144,20 +133,17 @@ export function buildActiveShoppingListQuery(
 
 export function buildActiveShoppingListCreateQuery(
   db: Database,
-  storeId: string,
   userId: string,
 ) {
   return db
     .insert(shoppingLists)
     .values({
       userId,
-      storeId,
       source: "manual",
       state: "active",
-      syncState: "synced",
     })
     .onConflictDoUpdate({
-      target: [shoppingLists.userId, shoppingLists.storeId],
+      target: [shoppingLists.userId],
       targetWhere: sql`${shoppingLists.state} = 'active'`,
       set: {
         updatedAt: sql`${shoppingLists.updatedAt}`,
@@ -168,15 +154,14 @@ export function buildActiveShoppingListCreateQuery(
 
 export function buildRouteOrderedShoppingItemsQuery(
   db: Database,
-  storeId: string,
+  storeId: string | null,
   shoppingListId: string,
   now: Date,
 ) {
-  return buildShoppingItemRouteRowsQuery(db)
+  return buildShoppingItemRouteRowsQuery(db, storeId)
     .where(
       and(
         eq(shoppingItems.shoppingListId, shoppingListId),
-        eq(shoppingItems.storeId, storeId),
         eq(shoppingItems.isChecked, false),
         or(
           isNull(shoppingItems.snoozedUntil),
@@ -199,14 +184,13 @@ export function buildRouteOrderedShoppingItemsQuery(
 
 export function buildCompletedShoppingItemsQuery(
   db: Database,
-  storeId: string,
+  storeId: string | null,
   shoppingListId: string,
 ) {
-  return buildShoppingItemRouteRowsQuery(db)
+  return buildShoppingItemRouteRowsQuery(db, storeId)
     .where(
       and(
         eq(shoppingItems.shoppingListId, shoppingListId),
-        eq(shoppingItems.storeId, storeId),
         eq(shoppingItems.isChecked, true),
       ),
     )
@@ -219,15 +203,14 @@ export function buildCompletedShoppingItemsQuery(
 
 export function buildSnoozedShoppingItemsQuery(
   db: Database,
-  storeId: string,
+  storeId: string | null,
   shoppingListId: string,
   now: Date,
 ) {
-  return buildShoppingItemRouteRowsQuery(db)
+  return buildShoppingItemRouteRowsQuery(db, storeId)
     .where(
       and(
         eq(shoppingItems.shoppingListId, shoppingListId),
-        eq(shoppingItems.storeId, storeId),
         eq(shoppingItems.isChecked, false),
         isNotNull(shoppingItems.snoozedUntil),
         gt(shoppingItems.snoozedUntil, now),
@@ -249,15 +232,12 @@ export function buildShoppingItemUpsertQuery(
   return db
     .insert(shoppingItems)
     .values({
-      storeId: input.storeId,
       shoppingListId: input.shoppingListId,
       rawText: input.rawText,
       normalizedText: input.normalizedText,
       productConceptId: input.productConceptId,
-      resolvedLocationId: input.resolvedLocationId,
       orderKey: input.orderKey,
       sourceIdentifier: input.sourceIdentifier,
-      syncState: "synced",
       mutationId: input.mutationId,
       updatedAt: now,
     })
@@ -290,7 +270,6 @@ export function buildShoppingItemCheckStateQuery(
     })
     .where(
       and(
-        eq(shoppingItems.storeId, input.storeId),
         eq(shoppingItems.shoppingListId, input.shoppingListId),
         eq(shoppingItems.id, input.itemId),
       ),
@@ -314,7 +293,6 @@ export function buildShoppingItemSnoozeStateQuery(
     })
     .where(
       and(
-        eq(shoppingItems.storeId, input.storeId),
         eq(shoppingItems.shoppingListId, input.shoppingListId),
         eq(shoppingItems.id, input.itemId),
         eq(shoppingItems.isChecked, false),
@@ -335,13 +313,11 @@ export function buildShoppingItemTextUpdateQuery(
       rawText: input.rawText,
       normalizedText: input.normalizedText,
       productConceptId: input.productConceptId,
-      resolvedLocationId: input.resolvedLocationId,
       updatedAt: now,
       version: sql`${shoppingItems.version} + 1`,
     })
     .where(
       and(
-        eq(shoppingItems.storeId, input.storeId),
         eq(shoppingItems.shoppingListId, input.shoppingListId),
         eq(shoppingItems.id, input.itemId),
       ),
@@ -357,7 +333,6 @@ export function buildShoppingItemDeleteQuery(
     .delete(shoppingItems)
     .where(
       and(
-        eq(shoppingItems.storeId, input.storeId),
         eq(shoppingItems.shoppingListId, input.shoppingListId),
         eq(shoppingItems.id, input.itemId),
       ),
@@ -375,13 +350,11 @@ export function buildShoppingItemProductResolutionQuery(
     .update(shoppingItems)
     .set({
       productConceptId: input.productConceptId,
-      resolvedLocationId: input.resolvedLocationId,
       updatedAt: now,
       version: sql`${shoppingItems.version} + 1`,
     })
     .where(
       and(
-        eq(shoppingItems.storeId, input.storeId),
         eq(shoppingItems.shoppingListId, input.shoppingListId),
         eq(shoppingItems.normalizedText, input.normalizedText),
       ),
@@ -389,6 +362,8 @@ export function buildShoppingItemProductResolutionQuery(
     .returning();
 }
 
+// Only unchecked items count as duplicates: a checked-off item is history and
+// must not block re-adding the same product on a later trip.
 export function buildShoppingItemsByNormalizedTextQuery(
   db: Database,
   input: ShoppingItemNormalizedTextLookupInput,
@@ -403,16 +378,34 @@ export function buildShoppingItemsByNormalizedTextQuery(
     .from(shoppingItems)
     .where(
       and(
-        eq(shoppingItems.storeId, input.storeId),
         eq(shoppingItems.shoppingListId, input.shoppingListId),
+        eq(shoppingItems.isChecked, false),
         inArray(shoppingItems.normalizedText, input.normalizedTexts),
       ),
     );
 }
 
+// Which aliases are visible for a (possibly absent) store: global aliases
+// always, plus the store's own when one is selected.
+export function productAliasStoreScopeFilter(storeId: string | null): SQL {
+  const globalScope = eq(productAliases.scope, "global");
+
+  if (!storeId) {
+    return globalScope;
+  }
+
+  return or(
+    globalScope,
+    and(
+      eq(productAliases.scope, "store"),
+      eq(productAliases.storeId, storeId),
+    ),
+  ) as SQL;
+}
+
 export function buildExactProductAliasLookupQuery(
   db: Database,
-  storeId: string,
+  storeId: string | null,
   normalizedText: string,
 ) {
   return db
@@ -432,13 +425,7 @@ export function buildExactProductAliasLookupQuery(
           eq(productAliases.source, "learned"),
           eq(productAliases.source, "imported"),
         ),
-        or(
-          eq(productAliases.scope, "global"),
-          and(
-            eq(productAliases.scope, "store"),
-            eq(productAliases.storeId, storeId),
-          ),
-        ),
+        productAliasStoreScopeFilter(storeId),
       ),
     )
     .orderBy(
@@ -453,7 +440,7 @@ export function buildExactProductAliasLookupQuery(
 
 export async function findExactProductAlias(
   db: Database,
-  storeId: string,
+  storeId: string | null,
   normalizedText: string,
 ) {
   const [match] = await buildExactProductAliasLookupQuery(

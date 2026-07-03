@@ -163,7 +163,7 @@ describe("shopping list item route", () => {
     requireSessionUserId.mockResolvedValue(userId);
     setActiveShoppingItemChecked.mockResolvedValue({
       store: { id: "store-1", name: "Example Market" },
-      list: { id: "list-1", source: "manual", syncState: "synced" },
+      list: { id: "list-1", source: "manual" },
       items: [],
     });
 
@@ -182,7 +182,7 @@ describe("shopping list item route", () => {
     requireSessionUserId.mockResolvedValue("user-b");
     setActiveShoppingItemChecked.mockResolvedValue({
       store: { id: "store-1", name: "Example Market" },
-      list: { id: "list-1", source: "manual", syncState: "synced" },
+      list: { id: "list-1", source: "manual" },
       items: [],
     });
 
@@ -198,7 +198,7 @@ describe("shopping list item route", () => {
     requireSessionUserId.mockResolvedValue(userId);
     setActiveShoppingItemChecked.mockResolvedValue({
       store: { id: "store-1", name: "Example Market" },
-      list: { id: "list-1", source: "manual", syncState: "synced" },
+      list: { id: "list-1", source: "manual" },
       items: [],
     });
 
@@ -217,7 +217,7 @@ describe("shopping list item route", () => {
     await expect(response.json()).resolves.toEqual({
       list: {
         store: { id: "store-1", name: "Example Market" },
-        list: { id: "list-1", source: "manual", syncState: "synced" },
+        list: { id: "list-1", source: "manual" },
         items: [],
       },
     });
@@ -227,7 +227,7 @@ describe("shopping list item route", () => {
     requireSessionUserId.mockResolvedValue(userId);
     snoozeActiveShoppingItem.mockResolvedValue({
       store: { id: "store-1", name: "Example Market" },
-      list: { id: "list-1", source: "manual", syncState: "synced" },
+      list: { id: "list-1", source: "manual" },
       items: [],
     });
 
@@ -250,7 +250,7 @@ describe("shopping list item route", () => {
     requireSessionUserId.mockResolvedValue(userId);
     updateActiveShoppingItemText.mockResolvedValue({
       store: { id: "store-1", name: "Example Market" },
-      list: { id: "list-1", source: "manual", syncState: "synced" },
+      list: { id: "list-1", source: "manual" },
       items: [],
     });
 
@@ -270,7 +270,7 @@ describe("shopping list item route", () => {
     requireSessionUserId.mockResolvedValue(userId);
     updateActiveShoppingItemText.mockResolvedValue({
       store: { id: "store-1", name: "Example Market" },
-      list: { id: "list-1", source: "manual", syncState: "synced" },
+      list: { id: "list-1", source: "manual" },
       items: [],
     });
 
@@ -289,7 +289,7 @@ describe("shopping list item route", () => {
     await expect(response.json()).resolves.toEqual({
       list: {
         store: { id: "store-1", name: "Example Market" },
-        list: { id: "list-1", source: "manual", syncState: "synced" },
+        list: { id: "list-1", source: "manual" },
         items: [],
       },
     });
@@ -307,7 +307,7 @@ describe("shopping list item route", () => {
     requireSessionUserId.mockResolvedValue(userId);
     deleteActiveShoppingItem.mockResolvedValue({
       store: { id: "store-1", name: "Example Market" },
-      list: { id: "list-1", source: "manual", syncState: "synced" },
+      list: { id: "list-1", source: "manual" },
       items: [],
     });
 
@@ -325,7 +325,7 @@ describe("shopping list item route", () => {
     requireSessionUserId.mockResolvedValue(userId);
     deleteActiveShoppingItem.mockResolvedValue({
       store: { id: "store-1", name: "Example Market" },
-      list: { id: "list-1", source: "manual", syncState: "synced" },
+      list: { id: "list-1", source: "manual" },
       items: [],
     });
 
@@ -340,7 +340,7 @@ describe("shopping list item route", () => {
     await expect(response.json()).resolves.toEqual({
       list: {
         store: { id: "store-1", name: "Example Market" },
-        list: { id: "list-1", source: "manual", syncState: "synced" },
+        list: { id: "list-1", source: "manual" },
         items: [],
       },
     });
