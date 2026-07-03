@@ -77,16 +77,6 @@ export function productConceptIdByNormalizedName(
   return sql`(select ${productConcepts.id} from ${productConcepts} where ${productConcepts.normalizedName} = ${normalizedName} limit 1)`;
 }
 
-export function productLocationIdByStoreAndConcept({
-  productConceptId,
-  storeId,
-}: {
-  productConceptId: string | SQL;
-  storeId: string;
-}): SQL<string> {
-  return sql`(select ${productLocations.id} from ${productLocations} where ${productLocations.storeId} = ${storeId} and ${productLocations.productConceptId} = ${productConceptId} limit 1)`;
-}
-
 export function buildManualProductAliasCorrectionQuery(
   db: Database,
   input: ManualProductAliasCorrectionInput,

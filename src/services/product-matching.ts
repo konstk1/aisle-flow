@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, or } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import {
   normalizeProductText,
@@ -15,6 +15,7 @@ import type { Database } from "@/db/create-client";
 import {
   findExactProductAlias,
   findProductLocation,
+  productAliasStoreScopeFilter,
 } from "@/db/repositories/shopping-lists";
 import { productAliases, productConcepts } from "@/db/schema";
 
@@ -42,7 +43,7 @@ export async function resolveProductMatchForStore({
   storeId,
   text,
 }: {
-  storeId: string;
+  storeId: string | null;
   text: string;
 }): Promise<StoreProductMatchResult> {
   const db = getDb();
@@ -65,7 +66,7 @@ export async function createStoreProductMatcher({
   storeId,
 }: {
   db?: Database;
-  storeId: string;
+  storeId: string | null;
 }): Promise<StoreProductMatcher> {
   const catalog = await loadProductMatchingCatalog(db, storeId);
 
@@ -96,7 +97,7 @@ async function resolveProductMatchWithCatalog({
   catalog: PreparedProductMatchingCatalog;
   db: Database;
   learnedAlias: Awaited<ReturnType<typeof findExactProductAlias>>;
-  storeId: string;
+  storeId: string | null;
   text: string;
 }): Promise<StoreProductMatchResult> {
   const result = resolveProductMatch({
@@ -115,11 +116,9 @@ async function resolveProductMatchWithCatalog({
     return result;
   }
 
-  const match = await findProductLocation(
-    db,
-    storeId,
-    result.productConcept.id,
-  );
+  const match = storeId
+    ? await findProductLocation(db, storeId, result.productConcept.id)
+    : null;
 
   return {
     ...result,
@@ -137,7 +136,7 @@ async function resolveProductMatchWithCatalog({
 
 async function loadProductMatchingCatalog(
   db: Database,
-  storeId: string,
+  storeId: string | null,
 ): Promise<PreparedProductMatchingCatalog> {
   const [concepts, curatedAliases] = await Promise.all([
     db.select().from(productConcepts),
@@ -150,13 +149,7 @@ async function loadProductMatchingCatalog(
           // source vocabulary may be store- or provider-specific, and learned
           // corrections are persisted as exact aliases for manual precedence.
           eq(productAliases.source, "curated"),
-          or(
-            eq(productAliases.scope, "global"),
-            and(
-              eq(productAliases.scope, "store"),
-              eq(productAliases.storeId, storeId),
-            ),
-          ),
+          productAliasStoreScopeFilter(storeId),
         ),
       ),
   ]);

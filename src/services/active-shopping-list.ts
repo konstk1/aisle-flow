@@ -12,7 +12,7 @@ import {
   type FieldErrors,
 } from "@/domain/active-shopping-list";
 import { normalizeProductText } from "@/domain/product-matching";
-import type { StoreLayout } from "@/domain/store-layout";
+import type { StoreSummary } from "@/domain/stores";
 
 import { getDb } from "@/db/client";
 import type { Database } from "@/db/create-client";
@@ -43,7 +43,7 @@ import {
   createStoreProductMatcher,
   type StoreProductMatcher,
 } from "./product-matching";
-import { getCurrentStoreLayout } from "./store-layout";
+import { resolveCurrentStore } from "./stores";
 
 const mutationIdSchema = z.uuid("Provide a valid mutation id.");
 const duplicateShoppingItemMessage = "This item is already on the list.";
@@ -126,76 +126,78 @@ interface RouteOrderedShoppingItemRow {
   aisle: Aisle | null;
 }
 
-export async function getActiveShoppingList(
+// The current store is only needed for the final payload read, so callers may
+// pass a pending lookup and let it resolve alongside the list queries.
+type CurrentStoreInput = StoreSummary | null | Promise<StoreSummary | null>;
+
+export function getActiveShoppingList(
   userId: string,
 ): Promise<ActiveShoppingListPayload> {
-  const layout = await requireActiveStoreLayout(userId);
-
-  return getActiveShoppingListForLayout(layout, userId);
+  return getActiveShoppingListForStore(resolveCurrentStore(userId), userId);
 }
 
-export async function getActiveShoppingListForLayout(
-  layout: StoreLayout,
+export async function getActiveShoppingListForStore(
+  store: CurrentStoreInput,
   userId: string,
 ): Promise<ActiveShoppingListPayload> {
   const db = getDb();
-  const list = await getOrCreateActiveShoppingList(db, layout.id, userId);
+  const [resolvedStore, list] = await Promise.all([
+    store,
+    getOrCreateActiveShoppingList(db, userId),
+  ]);
 
-  return readShoppingListPayload(db, layout, list, "active");
+  return readShoppingListPayload(db, resolvedStore, list, "active");
 }
 
-export async function getCompletedShoppingList(
+export function getCompletedShoppingList(
   userId: string,
 ): Promise<ActiveShoppingListPayload | null> {
-  const layout = await requireActiveStoreLayout(userId);
-
-  return getCompletedShoppingListForLayout(layout, userId);
+  return getCompletedShoppingListForStore(resolveCurrentStore(userId), userId);
 }
 
-export function getCompletedShoppingListForLayout(
-  layout: StoreLayout,
+export function getCompletedShoppingListForStore(
+  store: CurrentStoreInput,
   userId: string,
 ): Promise<ActiveShoppingListPayload | null> {
-  return readExistingShoppingList(layout, userId, "completed");
+  return readExistingShoppingList(store, userId, "completed");
 }
 
-export async function getSnoozedShoppingList(
+export function getSnoozedShoppingList(
   userId: string,
 ): Promise<ActiveShoppingListPayload | null> {
-  const layout = await requireActiveStoreLayout(userId);
-
-  return getSnoozedShoppingListForLayout(layout, userId);
+  return getSnoozedShoppingListForStore(resolveCurrentStore(userId), userId);
 }
 
-export function getSnoozedShoppingListForLayout(
-  layout: StoreLayout,
+export function getSnoozedShoppingListForStore(
+  store: CurrentStoreInput,
   userId: string,
 ): Promise<ActiveShoppingListPayload | null> {
-  return readExistingShoppingList(layout, userId, "snoozed");
+  return readExistingShoppingList(store, userId, "snoozed");
 }
 
 async function readExistingShoppingList(
-  layout: StoreLayout,
+  store: CurrentStoreInput,
   userId: string,
   view: ShoppingListView,
 ): Promise<ActiveShoppingListPayload | null> {
   const db = getDb();
-  const [list] = await buildActiveShoppingListQuery(db, layout.id, userId);
+  const [resolvedStore, [list]] = await Promise.all([
+    store,
+    buildActiveShoppingListQuery(db, userId),
+  ]);
 
   if (!list) {
     return null;
   }
 
-  return readShoppingListPayload(db, layout, list, view);
+  return readShoppingListPayload(db, resolvedStore, list, view);
 }
 
 export async function addActiveShoppingListItem(
   userId: string,
   input: ActiveShoppingItemCreateRequest,
 ): Promise<ActiveShoppingListPayload> {
-  const layout = await requireActiveStoreLayout(userId);
-  const db = getDb();
-  const list = await getOrCreateActiveShoppingList(db, layout.id, userId);
+  const { db, store, list } = await loadActiveShoppingListContext(userId);
   const now = new Date();
   const sourceIdentifier = `manual:${input.mutationId}`;
   await ensureShoppingItemsAreNew(db, {
@@ -206,15 +208,13 @@ export async function addActiveShoppingListItem(
         sourceIdentifier,
       },
     ],
-    storeId: layout.id,
   });
   const resolveProductMatch = await createStoreProductMatcher({
     db,
-    storeId: layout.id,
+    storeId: store?.id ?? null,
   });
 
   await persistShoppingItem(db, {
-    layout,
     list,
     mutationId: input.mutationId,
     now,
@@ -224,7 +224,7 @@ export async function addActiveShoppingListItem(
     sourceIdentifier,
   });
 
-  return readShoppingListPayload(db, layout, list, "active");
+  return readShoppingListPayload(db, store, list, "active");
 }
 
 export async function importActiveShoppingListItems(
@@ -240,9 +240,7 @@ export async function importActiveShoppingListItems(
     );
   }
 
-  const layout = await requireActiveStoreLayout(userId);
-  const db = getDb();
-  const list = await getOrCreateActiveShoppingList(db, layout.id, userId);
+  const { db, store, list } = await loadActiveShoppingListContext(userId);
   const now = new Date();
   const normalizedItems = parsed.lines.map((line, index) => ({
     lineNumber: line.lineNumber,
@@ -253,11 +251,10 @@ export async function importActiveShoppingListItems(
   await ensureShoppingItemsAreNew(db, {
     list,
     normalizedItems,
-    storeId: layout.id,
   });
   const resolveProductMatch = await createStoreProductMatcher({
     db,
-    storeId: layout.id,
+    storeId: store?.id ?? null,
   });
 
   const upsertInputs = await Promise.all(
@@ -265,7 +262,6 @@ export async function importActiveShoppingListItems(
       const sourceIdentifier = `import:${input.mutationId}:${index}`;
 
       return buildShoppingItemUpsertInput({
-        layout,
         list,
         mutationId: deterministicUuid(sourceIdentifier),
         now,
@@ -279,7 +275,7 @@ export async function importActiveShoppingListItems(
 
   await batchShoppingItemUpserts(db, upsertInputs);
 
-  return readShoppingListPayload(db, layout, list, "active");
+  return readShoppingListPayload(db, store, list, "active");
 }
 
 export async function setActiveShoppingItemChecked({
@@ -293,11 +289,8 @@ export async function setActiveShoppingItemChecked({
   isChecked: boolean;
   responseView?: ShoppingListView;
 }): Promise<ActiveShoppingListPayload> {
-  const layout = await requireActiveStoreLayout(userId);
-  const db = getDb();
-  const list = await getOrCreateActiveShoppingList(db, layout.id, userId);
+  const { db, store, list } = await loadActiveShoppingListContext(userId);
   const [updatedItem] = await buildShoppingItemCheckStateQuery(db, {
-    storeId: layout.id,
     shoppingListId: list.id,
     itemId,
     isChecked,
@@ -311,7 +304,7 @@ export async function setActiveShoppingItemChecked({
     );
   }
 
-  return readShoppingListPayload(db, layout, list, responseView);
+  return readShoppingListPayload(db, store, list, responseView);
 }
 
 export async function snoozeActiveShoppingItem({
@@ -325,15 +318,12 @@ export async function snoozeActiveShoppingItem({
   snoozed: boolean;
   responseView?: ShoppingListView;
 }): Promise<ActiveShoppingListPayload> {
-  const layout = await requireActiveStoreLayout(userId);
-  const db = getDb();
-  const list = await getOrCreateActiveShoppingList(db, layout.id, userId);
+  const { db, store, list } = await loadActiveShoppingListContext(userId);
   const now = new Date();
   const snoozedUntil = snoozed
     ? new Date(now.getTime() + SNOOZE_DURATION_MS)
     : null;
   const [updatedItem] = await buildShoppingItemSnoozeStateQuery(db, {
-    storeId: layout.id,
     shoppingListId: list.id,
     itemId,
     snoozedUntil,
@@ -348,7 +338,7 @@ export async function snoozeActiveShoppingItem({
     );
   }
 
-  return readShoppingListPayload(db, layout, list, responseView);
+  return readShoppingListPayload(db, store, list, responseView);
 }
 
 export async function updateActiveShoppingItemText({
@@ -362,30 +352,25 @@ export async function updateActiveShoppingItemText({
   text: string;
   responseView?: ShoppingListView;
 }): Promise<ActiveShoppingListPayload> {
-  const layout = await requireActiveStoreLayout(userId);
-  const db = getDb();
-  const list = await getOrCreateActiveShoppingList(db, layout.id, userId);
+  const { db, store, list } = await loadActiveShoppingListContext(userId);
   const normalizedText = normalizeProductText(text);
   await ensureShoppingItemTextIsAvailable(db, {
     currentItemId: itemId,
     list,
     normalizedText,
-    storeId: layout.id,
   });
   const resolveProductMatch = await createStoreProductMatcher({
     db,
-    storeId: layout.id,
+    storeId: store?.id ?? null,
   });
   const match = await resolveProductMatch(text);
   const matched = match.state === "matched";
   const [updatedItem] = await buildShoppingItemTextUpdateQuery(db, {
-    storeId: layout.id,
     shoppingListId: list.id,
     itemId,
     rawText: text,
     normalizedText,
     productConceptId: matched ? match.productConcept.id : null,
-    resolvedLocationId: matched ? (match.location?.id ?? null) : null,
   });
 
   if (!updatedItem) {
@@ -396,7 +381,7 @@ export async function updateActiveShoppingItemText({
     );
   }
 
-  return readShoppingListPayload(db, layout, list, responseView);
+  return readShoppingListPayload(db, store, list, responseView);
 }
 
 export async function deleteActiveShoppingItem({
@@ -408,11 +393,8 @@ export async function deleteActiveShoppingItem({
   itemId: string;
   responseView?: ShoppingListView;
 }): Promise<ActiveShoppingListPayload> {
-  const layout = await requireActiveStoreLayout(userId);
-  const db = getDb();
-  const list = await getOrCreateActiveShoppingList(db, layout.id, userId);
+  const { db, store, list } = await loadActiveShoppingListContext(userId);
   const [deletedItem] = await buildShoppingItemDeleteQuery(db, {
-    storeId: layout.id,
     shoppingListId: list.id,
     itemId,
   });
@@ -425,41 +407,36 @@ export async function deleteActiveShoppingItem({
     );
   }
 
-  return readShoppingListPayload(db, layout, list, responseView);
+  return readShoppingListPayload(db, store, list, responseView);
 }
 
-async function requireActiveStoreLayout(userId: string): Promise<StoreLayout> {
-  const layout = await getCurrentStoreLayout(userId);
+// The current store and the user's list are independent lookups, so item
+// mutations resolve them concurrently.
+async function loadActiveShoppingListContext(userId: string): Promise<{
+  db: Database;
+  store: StoreSummary | null;
+  list: ShoppingList;
+}> {
+  const db = getDb();
+  const [store, list] = await Promise.all([
+    resolveCurrentStore(userId),
+    getOrCreateActiveShoppingList(db, userId),
+  ]);
 
-  if (!layout) {
-    throw new ActiveShoppingListRequestError(
-      "Create and save a store layout before adding shopping items.",
-      {
-        form: ["Create and save a store layout before adding shopping items."],
-      },
-      409,
-    );
-  }
-
-  return layout;
+  return { db, store, list };
 }
 
 async function getOrCreateActiveShoppingList(
   db: Database,
-  storeId: string,
   userId: string,
 ): Promise<ShoppingList> {
-  const [existing] = await buildActiveShoppingListQuery(db, storeId, userId);
+  const [existing] = await buildActiveShoppingListQuery(db, userId);
 
   if (existing) {
     return existing;
   }
 
-  const [created] = await buildActiveShoppingListCreateQuery(
-    db,
-    storeId,
-    userId,
-  );
+  const [created] = await buildActiveShoppingListCreateQuery(db, userId);
 
   if (created) {
     return created;
@@ -471,7 +448,6 @@ async function getOrCreateActiveShoppingList(
 async function persistShoppingItem(
   db: Database,
   input: {
-    layout: StoreLayout;
     list: ShoppingList;
     rawText: string;
     mutationId: string;
@@ -517,7 +493,6 @@ function ensureImportLinesAreUnique(
 async function ensureShoppingItemsAreNew(
   db: Database,
   input: {
-    storeId: string;
     list: ShoppingList;
     normalizedItems: Array<{
       normalizedText: string;
@@ -530,7 +505,6 @@ async function ensureShoppingItemsAreNew(
     ...new Set(input.normalizedItems.map((item) => item.normalizedText)),
   ];
   const existingItems = await buildShoppingItemsByNormalizedTextQuery(db, {
-    storeId: input.storeId,
     shoppingListId: input.list.id,
     normalizedTexts: uniqueNormalizedTexts,
   });
@@ -561,14 +535,12 @@ async function ensureShoppingItemsAreNew(
 async function ensureShoppingItemTextIsAvailable(
   db: Database,
   input: {
-    storeId: string;
     list: ShoppingList;
     currentItemId: string;
     normalizedText: string;
   },
 ) {
   const existingItems = await buildShoppingItemsByNormalizedTextQuery(db, {
-    storeId: input.storeId,
     shoppingListId: input.list.id,
     normalizedTexts: [input.normalizedText],
   });
@@ -586,7 +558,6 @@ async function ensureShoppingItemTextIsAvailable(
 }
 
 async function buildShoppingItemUpsertInput(input: {
-  layout: StoreLayout;
   list: ShoppingList;
   rawText: string;
   mutationId: string;
@@ -599,12 +570,10 @@ async function buildShoppingItemUpsertInput(input: {
   const matched = match.state === "matched";
 
   return {
-    storeId: input.layout.id,
     shoppingListId: input.list.id,
     rawText: input.rawText,
     normalizedText: normalizeProductText(input.rawText),
     productConceptId: matched ? match.productConcept.id : null,
-    resolvedLocationId: matched ? (match.location?.id ?? null) : null,
     orderKey: createOrderKey(
       input.now,
       input.orderIndex,
@@ -635,32 +604,29 @@ async function batchShoppingItemUpserts(
 
 async function readShoppingListPayload(
   db: Database,
-  layout: StoreLayout,
+  store: StoreSummary | null,
   list: ShoppingList,
   view: ShoppingListView,
 ): Promise<ActiveShoppingListPayload> {
   const now = new Date();
+  const storeId = store?.id ?? null;
   const rows =
     view === "completed"
-      ? await buildCompletedShoppingItemsQuery(db, layout.id, list.id)
+      ? await buildCompletedShoppingItemsQuery(db, storeId, list.id)
       : view === "snoozed"
-        ? await buildSnoozedShoppingItemsQuery(db, layout.id, list.id, now)
-        : await buildRouteOrderedShoppingItemsQuery(
-            db,
-            layout.id,
-            list.id,
-            now,
-          );
+        ? await buildSnoozedShoppingItemsQuery(db, storeId, list.id, now)
+        : await buildRouteOrderedShoppingItemsQuery(db, storeId, list.id, now);
 
   return {
-    store: {
-      id: layout.id,
-      name: layout.name,
-    },
+    store: store
+      ? {
+          id: store.id,
+          name: store.name,
+        }
+      : null,
     list: {
       id: list.id,
       source: list.source,
-      syncState: list.syncState,
     },
     items: (rows as RouteOrderedShoppingItemRow[]).map(toItemPayload),
   };
@@ -700,7 +666,6 @@ function toItemPayload({
     isChecked: item.isChecked,
     checkedAt: item.checkedAt?.toISOString() ?? null,
     snoozedUntil: item.snoozedUntil?.toISOString() ?? null,
-    syncState: item.syncState,
     resolutionState: location
       ? "route-resolved"
       : productConcept

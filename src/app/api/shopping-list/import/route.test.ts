@@ -69,7 +69,7 @@ describe("shopping list import route", () => {
     requireSessionUserId.mockResolvedValue(userId);
     importActiveShoppingListItems.mockResolvedValue({
       store: { id: "store-1", name: "Example Market" },
-      list: { id: "list-1", source: "manual", syncState: "synced" },
+      list: { id: "list-1", source: "manual" },
       items: [],
     });
 

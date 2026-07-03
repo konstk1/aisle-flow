@@ -20,7 +20,7 @@ const mocks = vi.hoisted(() => {
     createStoreProductMatcher: vi.fn(),
     db,
     getDb: vi.fn(() => db),
-    getStoreLayout: vi.fn(),
+    resolveCurrentStore: vi.fn(),
     resolveProductMatch: vi.fn(),
   };
 });
@@ -44,12 +44,11 @@ vi.mock("@/db/repositories/shopping-lists", () => ({
 vi.mock("./product-matching", () => ({
   createStoreProductMatcher: mocks.createStoreProductMatcher,
 }));
-vi.mock("./store-layout", () => ({
-  getCurrentStoreLayout: mocks.getStoreLayout,
+vi.mock("./stores", () => ({
+  resolveCurrentStore: mocks.resolveCurrentStore,
 }));
 
 import {
-  ActiveShoppingListRequestError,
   addActiveShoppingListItem,
   deleteActiveShoppingItem,
   getActiveShoppingList,
@@ -69,23 +68,16 @@ const itemId = "33333333-3333-4333-8333-333333333333";
 const mutationId = "44444444-4444-4444-8444-444444444444";
 const now = new Date("2026-01-01T00:00:00Z");
 
-const layout = {
+const store = {
   id: storeId,
   name: "Example Market",
-  aisles: [],
 };
 
 const list = {
   id: listId,
   userId,
-  storeId,
-  sourceConnectionId: null,
-  externalId: null,
   state: "active" as const,
   source: "manual" as const,
-  syncState: "synced" as const,
-  syncCursor: null,
-  lastSyncedAt: null,
   version: 1,
   createdAt: now,
   updatedAt: now,
@@ -128,10 +120,10 @@ beforeEach(() => {
   mocks.createStoreProductMatcher.mockReset();
   mocks.db.batch.mockReset();
   mocks.getDb.mockClear();
-  mocks.getStoreLayout.mockReset();
+  mocks.resolveCurrentStore.mockReset();
   mocks.resolveProductMatch.mockReset();
 
-  mocks.getStoreLayout.mockResolvedValue(layout);
+  mocks.resolveCurrentStore.mockResolvedValue(store);
   mocks.buildActiveShoppingListQuery.mockResolvedValue([list]);
   mocks.buildCompletedShoppingItemsQuery.mockResolvedValue([]);
   mocks.buildRouteOrderedShoppingItemsQuery.mockResolvedValue([]);
@@ -150,18 +142,18 @@ beforeEach(() => {
 });
 
 describe("getActiveShoppingList", () => {
-  it("requires a saved store layout before creating list data", async () => {
-    mocks.getStoreLayout.mockResolvedValue(null);
+  it("returns the list without a store when no store exists", async () => {
+    mocks.resolveCurrentStore.mockResolvedValue(null);
 
-    await expect(getActiveShoppingList(userId)).rejects.toBeInstanceOf(
-      ActiveShoppingListRequestError,
+    const result = await getActiveShoppingList(userId);
+
+    expect(result.store).toBeNull();
+    expect(mocks.buildRouteOrderedShoppingItemsQuery).toHaveBeenCalledWith(
+      mocks.db,
+      null,
+      listId,
+      expect.any(Date),
     );
-    await expect(getActiveShoppingList(userId)).rejects.toMatchObject({
-      status: 409,
-      fieldErrors: {
-        form: ["Create and save a store layout before adding shopping items."],
-      },
-    });
   });
 
   it("creates the active list when none exists and returns route-ordered items", async () => {
@@ -173,17 +165,14 @@ describe("getActiveShoppingList", () => {
       {
         item: {
           id: itemId,
-          storeId,
           shoppingListId: listId,
           rawText: "Rice",
           normalizedText: "rice",
           productConceptId: "rice",
-          resolvedLocationId: "location-1",
           isChecked: false,
           checkedAt: null,
           orderKey: "1",
           sourceIdentifier: "manual:1",
-          syncState: "synced",
           mutationId,
           version: 1,
           createdAt: now,
@@ -238,7 +227,6 @@ describe("getActiveShoppingList", () => {
 
     expect(mocks.buildActiveShoppingListCreateQuery).toHaveBeenCalledWith(
       mocks.db,
-      storeId,
       userId,
     );
     expect(result.items[0]).toMatchObject({
@@ -255,78 +243,6 @@ describe("getActiveShoppingList", () => {
     });
   });
 
-  it("keeps resolution state coherent when a route location is joined without a product concept", async () => {
-    mocks.buildRouteOrderedShoppingItemsQuery.mockResolvedValue([
-      {
-        item: {
-          id: itemId,
-          storeId,
-          shoppingListId: listId,
-          rawText: "Rice",
-          normalizedText: "rice",
-          productConceptId: null,
-          resolvedLocationId: "location-1",
-          isChecked: false,
-          checkedAt: null,
-          orderKey: "1",
-          sourceIdentifier: "manual:1",
-          syncState: "synced",
-          mutationId,
-          version: 1,
-          createdAt: now,
-          updatedAt: now,
-        },
-        productConcept: null,
-        productLocation: {
-          id: "location-1",
-          storeId,
-          productConceptId: "deleted-rice",
-          aisleSectionId: "section-1",
-          positionWithinSection: 2,
-          confidence: 1,
-          source: "curated",
-          version: 1,
-          createdAt: now,
-          updatedAt: now,
-        },
-        aisleSection: {
-          id: "section-1",
-          storeId,
-          aisleId: "aisle-1",
-          label: "Dry goods",
-          pathOrder: 4,
-          side: "center",
-          version: 1,
-          createdAt: now,
-          updatedAt: now,
-        },
-        aisle: {
-          id: "aisle-1",
-          storeId,
-          identifier: "3",
-          displayName: null,
-          displayOrder: 0,
-          version: 1,
-          createdAt: now,
-          updatedAt: now,
-        },
-      },
-    ]);
-
-    const result = await getActiveShoppingList(userId);
-
-    expect(result.items[0]).toMatchObject({
-      resolutionState: "route-resolved",
-      productConcept: null,
-      location: {
-        id: "location-1",
-        aisleSection: {
-          aisleIdentifier: "3",
-          label: "Dry goods",
-        },
-      },
-    });
-  });
 });
 
 describe("getCompletedShoppingList", () => {
@@ -346,17 +262,14 @@ describe("getCompletedShoppingList", () => {
       {
         item: {
           id: itemId,
-          storeId,
           shoppingListId: listId,
           rawText: "Rice",
           normalizedText: "rice",
           productConceptId: null,
-          resolvedLocationId: null,
           isChecked: true,
           checkedAt: completedAt,
           orderKey: "1",
           sourceIdentifier: "manual:1",
-          syncState: "synced",
           mutationId,
           version: 1,
           createdAt: now,
@@ -406,12 +319,10 @@ describe("addActiveShoppingListItem", () => {
     expect(mocks.buildShoppingItemUpsertQuery).toHaveBeenCalledWith(
       mocks.db,
       expect.objectContaining({
-        storeId,
         shoppingListId: listId,
         rawText: "Rice",
         normalizedText: "rice",
         productConceptId: "rice",
-        resolvedLocationId: "location-1",
         sourceIdentifier: `manual:${mutationId}`,
         mutationId,
       }),
@@ -587,7 +498,6 @@ describe("setActiveShoppingItemChecked", () => {
     expect(mocks.buildShoppingItemCheckStateQuery).toHaveBeenCalledWith(
       mocks.db,
       {
-        storeId,
         shoppingListId: listId,
         itemId,
         isChecked: true,
@@ -606,7 +516,6 @@ describe("setActiveShoppingItemChecked", () => {
     expect(mocks.buildShoppingItemCheckStateQuery).toHaveBeenCalledWith(
       mocks.db,
       {
-        storeId,
         shoppingListId: listId,
         itemId,
         isChecked: false,
@@ -640,7 +549,6 @@ describe("snoozeActiveShoppingItem", () => {
     expect(mocks.buildShoppingItemSnoozeStateQuery).toHaveBeenCalledWith(
       mocks.db,
       expect.objectContaining({
-        storeId,
         shoppingListId: listId,
         itemId,
         snoozedUntil: expect.any(Date),
@@ -702,18 +610,15 @@ describe("getSnoozedShoppingList", () => {
       {
         item: {
           id: itemId,
-          storeId,
           shoppingListId: listId,
           rawText: "Rice",
           normalizedText: "rice",
           productConceptId: null,
-          resolvedLocationId: null,
           isChecked: false,
           checkedAt: null,
           snoozedUntil,
           orderKey: "1",
           sourceIdentifier: "manual:1",
-          syncState: "synced",
           mutationId,
           version: 1,
           createdAt: now,
@@ -755,7 +660,6 @@ describe("updateActiveShoppingItemText", () => {
     expect(mocks.buildShoppingItemsByNormalizedTextQuery).toHaveBeenCalledWith(
       mocks.db,
       {
-        storeId,
         shoppingListId: listId,
         normalizedTexts: ["rice"],
       },
@@ -768,13 +672,11 @@ describe("updateActiveShoppingItemText", () => {
     expect(mocks.buildShoppingItemTextUpdateQuery).toHaveBeenCalledWith(
       mocks.db,
       expect.objectContaining({
-        storeId,
         shoppingListId: listId,
         itemId,
         rawText: "Rice",
         normalizedText: "rice",
         productConceptId: "rice",
-        resolvedLocationId: "location-1",
       }),
     );
   });
@@ -851,7 +753,6 @@ describe("deleteActiveShoppingItem", () => {
     await deleteActiveShoppingItem({ userId, itemId });
 
     expect(mocks.buildShoppingItemDeleteQuery).toHaveBeenCalledWith(mocks.db, {
-      storeId,
       shoppingListId: listId,
       itemId,
     });
@@ -877,7 +778,7 @@ describe("cross-user isolation", () => {
   beforeEach(() => {
     // Each user resolves strictly their own active list.
     mocks.buildActiveShoppingListQuery.mockImplementation(
-      (_db, _storeId, requestedUserId) =>
+      (_db, requestedUserId) =>
         Promise.resolve(requestedUserId === otherUserId ? [otherList] : [list]),
     );
     // The item exists only in user A's list; a mutation scoped to any other
@@ -899,7 +800,6 @@ describe("cross-user isolation", () => {
 
     expect(mocks.buildActiveShoppingListQuery).toHaveBeenCalledWith(
       mocks.db,
-      storeId,
       otherUserId,
     );
   });

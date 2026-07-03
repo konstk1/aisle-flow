@@ -1,12 +1,12 @@
 import type { ActiveShoppingListPayload } from "@/domain/active-shopping-list";
 import type { LearnedProductsPayload } from "@/domain/learned-products";
 import type { StoreLayout } from "@/domain/store-layout";
+import type { StoreSummary } from "@/domain/stores";
 import { requirePageSession } from "@/auth/access";
 import {
-  ActiveShoppingListRequestError,
-  getActiveShoppingListForLayout,
-  getCompletedShoppingListForLayout,
-  getSnoozedShoppingListForLayout,
+  getActiveShoppingListForStore,
+  getCompletedShoppingListForStore,
+  getSnoozedShoppingListForStore,
 } from "@/services/active-shopping-list";
 import { getLearnedProducts } from "@/services/product-corrections";
 import { getCurrentStoreLayout } from "@/services/store-layout";
@@ -19,7 +19,7 @@ type ShoppingListPageDataKey = "activeList" | "completedList" | "snoozedList";
 
 export async function loadShoppingListPageData() {
   return loadShoppingItemsPageData({
-    loadList: getActiveShoppingListForLayout,
+    loadList: getActiveShoppingListForStore,
     pageName: "Shopping list",
     resultKey: "activeList",
   });
@@ -27,7 +27,7 @@ export async function loadShoppingListPageData() {
 
 export async function loadCompletedShoppingListPageData() {
   return loadShoppingItemsPageData({
-    loadList: getCompletedShoppingListForLayout,
+    loadList: getCompletedShoppingListForStore,
     pageName: "Completed items",
     resultKey: "completedList",
   });
@@ -35,7 +35,7 @@ export async function loadCompletedShoppingListPageData() {
 
 export async function loadSnoozedShoppingListPageData() {
   return loadShoppingItemsPageData({
-    loadList: getSnoozedShoppingListForLayout,
+    loadList: getSnoozedShoppingListForStore,
     pageName: "Snoozed items",
     resultKey: "snoozedList",
   });
@@ -47,7 +47,7 @@ async function loadShoppingItemsPageData<Key extends ShoppingListPageDataKey>({
   resultKey,
 }: {
   loadList: (
-    layout: StoreLayout,
+    store: StoreSummary | null,
     userId: string,
   ) => Promise<ActiveShoppingListPayload | null>;
   pageName: string;
@@ -56,7 +56,7 @@ async function loadShoppingItemsPageData<Key extends ShoppingListPageDataKey>({
   const userId = await requirePageSession();
   const layoutData = await loadStoreLayoutData(userId, pageName);
 
-  if (layoutData.dataError || !layoutData.layout) {
+  if (layoutData.dataError) {
     return { ...layoutData, [resultKey]: null } as {
       dataError: boolean;
       layout: StoreLayout | null;
@@ -74,13 +74,6 @@ async function loadShoppingItemsPageData<Key extends ShoppingListPageDataKey>({
       layout: StoreLayout | null;
     } & Record<Key, ActiveShoppingListPayload | null>;
   } catch (error) {
-    if (error instanceof ActiveShoppingListRequestError) {
-      return { ...layoutData, [resultKey]: null } as {
-        dataError: boolean;
-        layout: StoreLayout | null;
-      } & Record<Key, ActiveShoppingListPayload | null>;
-    }
-
     console.error(`${pageName} data could not be loaded.`, error);
     return { [resultKey]: null, dataError: true, layout: null } as {
       dataError: boolean;

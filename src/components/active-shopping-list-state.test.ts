@@ -255,7 +255,6 @@ function listWithItems(
     list: {
       id: "list-1",
       source: "manual",
-      syncState: "synced",
     },
     items,
   };
@@ -272,7 +271,6 @@ function itemWithState(
     isChecked,
     checkedAt: isChecked ? "2026-01-01T00:00:00.000Z" : null,
     snoozedUntil: null,
-    syncState: "synced",
     resolutionState: "needs-correction",
     productConcept: null,
     location: null,

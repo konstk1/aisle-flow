@@ -30,7 +30,6 @@ import {
   buildProductLearningEventInsertQuery,
   buildProductLearningEventListQuery,
   productConceptIdByNormalizedName,
-  productLocationIdByStoreAndConcept,
 } from "@/db/repositories/product-corrections";
 import {
   buildActiveShoppingListQuery,
@@ -220,7 +219,7 @@ export async function applyProductCorrection(
   const normalizedText = normalizeProductText(input.rawText);
   const now = new Date();
   const [[activeList], [existingAlias]] = await Promise.all([
-    buildActiveShoppingListQuery(db, layout.id, userId),
+    buildActiveShoppingListQuery(db, userId),
     buildLearnedAliasByTextQuery(db, layout.id, normalizedText),
   ]);
   const learningAction = existingAlias ? "updated" : "created";
@@ -267,14 +266,9 @@ export async function applyProductCorrection(
             locationQuery,
             eventQuery,
             buildShoppingItemProductResolutionQuery(db, {
-              storeId: layout.id,
               shoppingListId: activeList.id,
               normalizedText,
               productConceptId: productConcept.id,
-              resolvedLocationId: productLocationIdByStoreAndConcept({
-                storeId: layout.id,
-                productConceptId: productConcept.id,
-              }),
               now,
             }),
           ])
@@ -327,14 +321,9 @@ export async function applyProductCorrection(
             locationQuery,
             eventQuery,
             buildShoppingItemProductResolutionQuery(db, {
-              storeId: layout.id,
               shoppingListId: activeList.id,
               normalizedText,
               productConceptId,
-              resolvedLocationId: productLocationIdByStoreAndConcept({
-                storeId: layout.id,
-                productConceptId,
-              }),
               now,
             }),
           ])

@@ -39,7 +39,7 @@ describe("completed shopping list route", () => {
     requireSessionUserId.mockResolvedValue(userId);
     getCompletedShoppingList.mockResolvedValue({
       store: { id: "store-1", name: "Example Market" },
-      list: { id: "list-1", source: "manual", syncState: "synced" },
+      list: { id: "list-1", source: "manual" },
       items: [],
     });
 
@@ -50,7 +50,7 @@ describe("completed shopping list route", () => {
     await expect(response.json()).resolves.toEqual({
       completedList: {
         store: { id: "store-1", name: "Example Market" },
-        list: { id: "list-1", source: "manual", syncState: "synced" },
+        list: { id: "list-1", source: "manual" },
         items: [],
       },
     });

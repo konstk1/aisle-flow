@@ -21,7 +21,6 @@ const mocks = vi.hoisted(() => {
     getDb: vi.fn(() => db),
     getStoreLayout: vi.fn(),
     productConceptIdByNormalizedName: vi.fn(),
-    productLocationIdByStoreAndConcept: vi.fn(),
   };
 });
 
@@ -42,7 +41,6 @@ vi.mock("@/db/repositories/product-corrections", () => ({
     mocks.buildProductLearningEventInsertQuery,
   buildProductLearningEventListQuery: mocks.buildProductLearningEventListQuery,
   productConceptIdByNormalizedName: mocks.productConceptIdByNormalizedName,
-  productLocationIdByStoreAndConcept: mocks.productLocationIdByStoreAndConcept,
 }));
 vi.mock("@/db/repositories/shopping-lists", () => ({
   buildActiveShoppingListQuery: mocks.buildActiveShoppingListQuery,
@@ -144,7 +142,6 @@ beforeEach(() => {
   mocks.getDb.mockClear();
   mocks.getStoreLayout.mockReset();
   mocks.productConceptIdByNormalizedName.mockReset();
-  mocks.productLocationIdByStoreAndConcept.mockReset();
 
   mocks.buildLearnedAliasByTextQuery.mockResolvedValue([]);
   mocks.buildLearnedAliasListQuery.mockResolvedValue([]);
@@ -159,9 +156,6 @@ beforeEach(() => {
   mocks.buildShoppingItemProductResolutionQuery.mockReturnValue("relink-query");
   mocks.getStoreLayout.mockResolvedValue(layout);
   mocks.productConceptIdByNormalizedName.mockReturnValue("concept-id-subquery");
-  mocks.productLocationIdByStoreAndConcept.mockReturnValue(
-    "location-id-subquery",
-  );
 });
 
 describe("productCorrectionRequestSchema", () => {
@@ -317,23 +311,16 @@ describe("applyProductCorrection", () => {
     });
     expect(mocks.buildActiveShoppingListQuery).toHaveBeenCalledWith(
       mocks.db,
-      storeId,
       userId,
     );
     expect(mocks.buildShoppingItemProductResolutionQuery).toHaveBeenCalledWith(
       mocks.db,
       expect.objectContaining({
-        storeId,
         shoppingListId: activeListId,
         normalizedText: "dried mango",
         productConceptId: "concept-id-subquery",
-        resolvedLocationId: "location-id-subquery",
       }),
     );
-    expect(mocks.productLocationIdByStoreAndConcept).toHaveBeenCalledWith({
-      storeId,
-      productConceptId: "concept-id-subquery",
-    });
   });
 
   it("maps FK failures from the batched new-concept write to a correction conflict", async () => {

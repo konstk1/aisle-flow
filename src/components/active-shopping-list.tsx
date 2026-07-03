@@ -239,6 +239,9 @@ function ShoppingListView({
   const isActiveMode = mode === "active";
   const modeConfig = MODE_CONFIG[mode];
   const listEndpoint = modeConfig.listEndpoint;
+  // The refreshed payload knows the current store; the server-rendered prop
+  // only covers the no-list case.
+  const hasStore = activeList ? activeList.store !== null : hasStoreLayout;
   const items = activeList?.items ?? EMPTY_ITEMS;
   const itemGroups = useMemo(() => groupShoppingItemsByAisle(items), [items]);
   const editItem = items.find((item) => item.id === editItemId) ?? null;
@@ -778,7 +781,7 @@ function ShoppingListView({
             <span className="sr-only">Item text</span>
             <input
               className="min-h-11 w-full border bg-white px-3 text-base transition outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={!hasStoreLayout || pendingAction !== null}
+              disabled={pendingAction !== null}
               onChange={(event) => setItemText(event.target.value)}
               placeholder="Milk"
               value={itemText}
@@ -790,7 +793,7 @@ function ShoppingListView({
           <div className="flex shrink-0 gap-2">
             <button
               className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 border border-zinc-950 bg-zinc-950 px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none"
-              disabled={!hasStoreLayout || pendingAction !== null}
+              disabled={pendingAction !== null}
               type="submit"
             >
               <Plus aria-hidden="true" className="size-4" />
@@ -799,7 +802,7 @@ function ShoppingListView({
             <button
               aria-expanded={importExpanded}
               className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 border px-4 text-sm font-medium text-zinc-800 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none"
-              disabled={!hasStoreLayout || pendingAction !== null}
+              disabled={pendingAction !== null}
               onClick={openImport}
               type="button"
             >
@@ -819,7 +822,7 @@ function ShoppingListView({
         </form>
       )}
 
-      {!hasStoreLayout ? (
+      {!hasStore ? (
         <p className="mt-4 text-sm text-zinc-600">
           <Link
             className="font-medium text-zinc-950 underline-offset-4 hover:underline"
@@ -827,7 +830,7 @@ function ShoppingListView({
           >
             Build a store route
           </Link>{" "}
-          before using shopping items.
+          to see items in aisle order.
         </p>
       ) : null}
 
@@ -837,7 +840,7 @@ function ShoppingListView({
             Paste list
             <textarea
               className="mt-2 min-h-28 w-full resize-y border bg-white px-3 py-2 text-base transition outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={!hasStoreLayout || pendingAction !== null}
+              disabled={pendingAction !== null}
               onChange={(event) => setImportText(event.target.value)}
               placeholder={"Rice\nBroccoli"}
               autoFocus
@@ -852,7 +855,7 @@ function ShoppingListView({
           <div className="mt-2 flex flex-wrap gap-2">
             <button
               className="inline-flex min-h-11 items-center gap-2 border border-zinc-950 bg-zinc-950 px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={!hasStoreLayout || pendingAction !== null}
+              disabled={pendingAction !== null}
               type="submit"
             >
               <Upload aria-hidden="true" className="size-4" />
@@ -1116,9 +1119,6 @@ function ShoppingItemRow({
               ) : null}
               {isSnoozedRow && item.snoozedUntil ? (
                 <span>{formatSnoozedUntil(item.snoozedUntil)}</span>
-              ) : null}
-              {item.syncState !== "synced" ? (
-                <span>{item.syncState}</span>
               ) : null}
             </p>
           </div>

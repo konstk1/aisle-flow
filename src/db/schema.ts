@@ -5,7 +5,6 @@ import {
   foreignKey,
   index,
   integer,
-  jsonb,
   pgEnum,
   pgTable,
   real,
@@ -55,27 +54,6 @@ export const shoppingListSource = pgEnum("shopping_list_source", [
   "manual",
   "import",
   "provider",
-]);
-
-export const synchronizationState = pgEnum("synchronization_state", [
-  "synced",
-  "pending",
-  "error",
-]);
-
-export const sourceConnectionStatus = pgEnum("source_connection_status", [
-  "active",
-  "disconnected",
-  "error",
-]);
-
-export const syncDirection = pgEnum("sync_direction", ["pull", "push"]);
-
-export const syncOperationStatus = pgEnum("sync_operation_status", [
-  "pending",
-  "running",
-  "succeeded",
-  "failed",
 ]);
 
 export const user = pgTable(
@@ -462,43 +440,6 @@ export const productLearningEvents = pgTable(
   ],
 );
 
-export const sourceConnections = pgTable(
-  "source_connections",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    storeId: uuid("store_id")
-      .notNull()
-      .references(() => stores.id, { onDelete: "cascade" }),
-    provider: text("provider").notNull(),
-    externalAccountId: text("external_account_id"),
-    status: sourceConnectionStatus("status").default("active").notNull(),
-    encryptedCredentialsRef: text("encrypted_credentials_ref"),
-    protectedMetadata: jsonb("protected_metadata")
-      .$type<Record<string, unknown>>()
-      .notNull()
-      .default({}),
-    syncCursor: text("sync_cursor"),
-    version: integer("version").default(1).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-  },
-  (table) => [
-    unique("source_connections_store_id_id_unique").on(table.storeId, table.id),
-    uniqueIndex("source_connections_store_provider_account_unique")
-      .on(table.storeId, table.provider, table.externalAccountId)
-      .where(sql`${table.externalAccountId} IS NOT NULL`),
-    check(
-      "source_connections_provider_not_blank",
-      sql`length(btrim(${table.provider})) > 0`,
-    ),
-    check("source_connections_version_positive", sql`${table.version} > 0`),
-  ],
-);
-
 export const shoppingLists = pgTable(
   "shopping_lists",
   {
@@ -506,16 +447,8 @@ export const shoppingLists = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id),
-    storeId: uuid("store_id")
-      .notNull()
-      .references(() => stores.id, { onDelete: "cascade" }),
-    sourceConnectionId: uuid("source_connection_id"),
-    externalId: text("external_id"),
     state: shoppingListState("state").default("active").notNull(),
     source: shoppingListSource("source").default("manual").notNull(),
-    syncState: synchronizationState("sync_state").default("synced").notNull(),
-    syncCursor: text("sync_cursor"),
-    lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
     version: integer("version").default(1).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -525,28 +458,9 @@ export const shoppingLists = pgTable(
       .notNull(),
   },
   (table) => [
-    unique("shopping_lists_store_id_id_unique").on(table.storeId, table.id),
-    uniqueIndex("shopping_lists_one_active_per_user_store")
-      .on(table.userId, table.storeId)
+    uniqueIndex("shopping_lists_one_active_per_user")
+      .on(table.userId)
       .where(sql`${table.state} = 'active'`),
-    uniqueIndex("shopping_lists_source_external_id_unique")
-      .on(table.sourceConnectionId, table.externalId)
-      .where(
-        sql`${table.sourceConnectionId} IS NOT NULL AND ${table.externalId} IS NOT NULL`,
-      ),
-    index("shopping_lists_active_store_index")
-      .on(table.storeId, table.updatedAt)
-      .where(sql`${table.state} = 'active'`),
-    index("shopping_lists_user_store_index").on(table.userId, table.storeId),
-    foreignKey({
-      name: "shopping_lists_store_connection_foreign_key",
-      columns: [table.storeId, table.sourceConnectionId],
-      foreignColumns: [sourceConnections.storeId, sourceConnections.id],
-    }).onDelete("restrict"),
-    check(
-      "shopping_lists_provider_connection_consistency",
-      sql`(${table.source} = 'provider' AND ${table.sourceConnectionId} IS NOT NULL AND ${table.externalId} IS NOT NULL) OR (${table.source} <> 'provider' AND ${table.sourceConnectionId} IS NULL)`,
-    ),
     check("shopping_lists_version_positive", sql`${table.version} > 0`),
   ],
 );
@@ -555,21 +469,20 @@ export const shoppingItems = pgTable(
   "shopping_items",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    storeId: uuid("store_id").notNull(),
-    shoppingListId: uuid("shopping_list_id").notNull(),
+    shoppingListId: uuid("shopping_list_id")
+      .notNull()
+      .references(() => shoppingLists.id, { onDelete: "cascade" }),
     rawText: text("raw_text").notNull(),
     normalizedText: text("normalized_text").notNull(),
     productConceptId: uuid("product_concept_id").references(
       () => productConcepts.id,
       { onDelete: "set null" },
     ),
-    resolvedLocationId: uuid("resolved_location_id"),
     isChecked: boolean("is_checked").default(false).notNull(),
     checkedAt: timestamp("checked_at", { withTimezone: true }),
     snoozedUntil: timestamp("snoozed_until", { withTimezone: true }),
     orderKey: text("order_key").notNull(),
     sourceIdentifier: text("source_identifier"),
-    syncState: synchronizationState("sync_state").default("synced").notNull(),
     mutationId: uuid("mutation_id").defaultRandom().notNull(),
     version: integer("version").default(1).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
@@ -596,16 +509,6 @@ export const shoppingItems = pgTable(
       .on(table.shoppingListId, table.snoozedUntil)
       .where(sql`${table.snoozedUntil} IS NOT NULL`),
     index("shopping_items_normalized_text_index").on(table.normalizedText),
-    foreignKey({
-      name: "shopping_items_store_list_foreign_key",
-      columns: [table.storeId, table.shoppingListId],
-      foreignColumns: [shoppingLists.storeId, shoppingLists.id],
-    }).onDelete("cascade"),
-    foreignKey({
-      name: "shopping_items_store_location_foreign_key",
-      columns: [table.storeId, table.resolvedLocationId],
-      foreignColumns: [productLocations.storeId, productLocations.id],
-    }).onDelete("restrict"),
     check(
       "shopping_items_raw_text_not_blank",
       sql`length(btrim(${table.rawText})) > 0`,
@@ -623,56 +526,6 @@ export const shoppingItems = pgTable(
       sql`(${table.isChecked} = false AND ${table.checkedAt} IS NULL) OR (${table.isChecked} = true AND ${table.checkedAt} IS NOT NULL)`,
     ),
     check("shopping_items_version_positive", sql`${table.version} > 0`),
-  ],
-);
-
-export const syncOperations = pgTable(
-  "sync_operations",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    storeId: uuid("store_id").notNull(),
-    shoppingListId: uuid("shopping_list_id").notNull(),
-    sourceConnectionId: uuid("source_connection_id").notNull(),
-    mutationId: uuid("mutation_id").notNull(),
-    direction: syncDirection("direction").notNull(),
-    status: syncOperationStatus("status").default("pending").notNull(),
-    cursorBefore: text("cursor_before"),
-    cursorAfter: text("cursor_after"),
-    errorCode: text("error_code"),
-    errorMessage: text("error_message"),
-    startedAt: timestamp("started_at", { withTimezone: true }),
-    completedAt: timestamp("completed_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-  },
-  (table) => [
-    unique("sync_operations_connection_mutation_unique").on(
-      table.sourceConnectionId,
-      table.mutationId,
-    ),
-    index("sync_operations_list_status_index").on(
-      table.shoppingListId,
-      table.status,
-      table.createdAt,
-    ),
-    foreignKey({
-      name: "sync_operations_store_list_foreign_key",
-      columns: [table.storeId, table.shoppingListId],
-      foreignColumns: [shoppingLists.storeId, shoppingLists.id],
-    }).onDelete("cascade"),
-    foreignKey({
-      name: "sync_operations_store_connection_foreign_key",
-      columns: [table.storeId, table.sourceConnectionId],
-      foreignColumns: [sourceConnections.storeId, sourceConnections.id],
-    }).onDelete("cascade"),
-    check(
-      "sync_operations_completion_order",
-      sql`${table.completedAt} IS NULL OR ${table.startedAt} IS NULL OR ${table.completedAt} >= ${table.startedAt}`,
-    ),
   ],
 );
 
@@ -694,10 +547,6 @@ export type ShoppingList = typeof shoppingLists.$inferSelect;
 export type NewShoppingList = typeof shoppingLists.$inferInsert;
 export type ShoppingItem = typeof shoppingItems.$inferSelect;
 export type NewShoppingItem = typeof shoppingItems.$inferInsert;
-export type SourceConnection = typeof sourceConnections.$inferSelect;
-export type NewSourceConnection = typeof sourceConnections.$inferInsert;
-export type SyncOperation = typeof syncOperations.$inferSelect;
-export type NewSyncOperation = typeof syncOperations.$inferInsert;
 export type User = typeof user.$inferSelect;
 export type NewUser = typeof user.$inferInsert;
 export type Session = typeof session.$inferSelect;

@@ -12,11 +12,7 @@ import {
   productAliases,
   productLearningEvents,
   productLocations,
-  shoppingItems,
-  shoppingLists,
-  sourceConnections,
   stores,
-  syncOperations,
   user,
 } from "@/db/schema";
 
@@ -146,19 +142,15 @@ export async function renameStore(
 
 export async function deleteStore(storeId: string): Promise<void> {
   const db = getDb();
-  // Restrict foreign keys (shopping items → product locations → aisle
-  // sections) make a bare store delete order-dependent, so remove the
-  // dependents leaf-first in one transaction.
-  const [, , , , , , , , , deleted] = await db.batch([
-    db.delete(syncOperations).where(eq(syncOperations.storeId, storeId)),
-    db.delete(shoppingItems).where(eq(shoppingItems.storeId, storeId)),
-    db.delete(shoppingLists).where(eq(shoppingLists.storeId, storeId)),
+  // Shopping lists are per-user and survive store deletion; their items
+  // resolve locations at read time, so only the store-scoped layout and
+  // product data go. Remove the dependents leaf-first in one transaction.
+  const [, , , , , deleted] = await db.batch([
     db.delete(productLocations).where(eq(productLocations.storeId, storeId)),
     db.delete(productAliases).where(eq(productAliases.storeId, storeId)),
     db
       .delete(productLearningEvents)
       .where(eq(productLearningEvents.storeId, storeId)),
-    db.delete(sourceConnections).where(eq(sourceConnections.storeId, storeId)),
     db.delete(aisleSections).where(eq(aisleSections.storeId, storeId)),
     db.delete(aisles).where(eq(aisles.storeId, storeId)),
     db
