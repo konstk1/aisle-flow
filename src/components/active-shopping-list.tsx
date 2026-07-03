@@ -27,6 +27,7 @@ import { formatAisleLabel, formatSectionLabel } from "@/domain/store-layout";
 import { NewProductDialog } from "./new-product-dialog";
 import {
   ADD_PRODUCT_OPTION_VALUE,
+  NEW_PRODUCT_DIALOG_OPTION_VALUE,
   buildProductCorrectionRequest,
   buildProductSelectionPatch,
   createProductCorrectionFormState,
@@ -1245,49 +1246,49 @@ function InlineLocationEditor({
             <label className="sr-only" htmlFor={productControlId}>
               Product
             </label>
-            <span className="flex">
-              <select
-                className="min-h-10 w-full min-w-0 flex-1 border bg-white px-3 text-sm outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={formDisabled}
-                id={productControlId}
-                onChange={(event) =>
-                  onFormChange(
-                    buildProductSelectionPatch(
-                      event.target.value,
-                      productConcepts,
-                    ),
-                  )
+            <select
+              className="min-h-10 w-full border bg-white px-3 text-sm outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={formDisabled}
+              id={productControlId}
+              onChange={(event) => {
+                if (event.target.value === NEW_PRODUCT_DIALOG_OPTION_VALUE) {
+                  setIsNewProductDialogOpen(true);
+                  return;
                 }
-                value={form.productSelection}
-              >
-                <option value="">Choose product</option>
-                {isAddingProduct && form.canonicalName ? (
-                  <option value={ADD_PRODUCT_OPTION_VALUE}>
-                    {form.canonicalName} (new)
-                  </option>
-                ) : null}
-                {selectedConceptIsMissing && item.productConcept ? (
-                  <option value={item.productConcept.id}>
-                    {item.productConcept.canonicalName}
-                  </option>
-                ) : null}
-                {productConcepts.map((concept) => (
-                  <option key={concept.id} value={concept.id}>
-                    {concept.canonicalName}
-                  </option>
-                ))}
-              </select>
-              <button
-                aria-label="New product"
-                className="inline-flex size-10 shrink-0 items-center justify-center border border-l-0 text-zinc-700 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={formDisabled}
-                onClick={() => setIsNewProductDialogOpen(true)}
-                title="New product"
-                type="button"
-              >
-                <Plus aria-hidden="true" className="size-4" />
-              </button>
-            </span>
+
+                onFormChange(
+                  buildProductSelectionPatch(
+                    event.target.value,
+                    productConcepts,
+                  ),
+                );
+              }}
+              value={
+                isAddingProduct && !form.canonicalName
+                  ? ""
+                  : form.productSelection
+              }
+            >
+              <option value="">Choose product</option>
+              {isAddingProduct && form.canonicalName ? (
+                <option value={ADD_PRODUCT_OPTION_VALUE}>
+                  {form.canonicalName} (new)
+                </option>
+              ) : null}
+              {selectedConceptIsMissing && item.productConcept ? (
+                <option value={item.productConcept.id}>
+                  {item.productConcept.canonicalName}
+                </option>
+              ) : null}
+              {productConcepts.map((concept) => (
+                <option key={concept.id} value={concept.id}>
+                  {concept.canonicalName}
+                </option>
+              ))}
+              <option value={NEW_PRODUCT_DIALOG_OPTION_VALUE}>
+                Add product
+              </option>
+            </select>
             <FieldError messages={fieldErrors.productConceptId} />
             <FieldError messages={fieldErrors.canonicalName} />
           </div>

@@ -11,6 +11,10 @@ export type PendingTextMutation = {
 
 export const ADD_PRODUCT_OPTION_VALUE = "__add_product__";
 
+// Distinct from ADD_PRODUCT_OPTION_VALUE so choosing it always fires a change
+// event, even while a pending new product is the current selection.
+export const NEW_PRODUCT_DIALOG_OPTION_VALUE = "__new_product_dialog__";
+
 export type ProductCorrectionFormState = {
   productSelection: string;
   canonicalName: string;
