@@ -254,6 +254,9 @@ export function LearnedProducts({
 
       setPayload(result.learnedProducts);
       setEditingAliasId(null);
+      // Refresh cached options so a product's location reflects this save on
+      // the next edit rather than warning against the stale section.
+      void loadOptions();
     } catch {
       setMessage("The learned product could not be saved.");
     } finally {

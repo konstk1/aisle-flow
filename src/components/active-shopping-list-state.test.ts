@@ -7,6 +7,7 @@ import type {
 
 import {
   ADD_PRODUCT_OPTION_VALUE,
+  applyCorrectedConceptLocation,
   buildProductCorrectionRequest,
   buildProductSelectionPatch,
   createProductCorrectionFormState,
@@ -168,6 +169,38 @@ describe("buildProductCorrectionRequest", () => {
         aisleSectionId: ["Choose an aisle section."],
       },
     });
+  });
+});
+
+describe("applyCorrectedConceptLocation", () => {
+  const concepts = [
+    { id: "a", canonicalName: "Apples", normalizedName: "apples", aisleSectionId: "s1" },
+    { id: "b", canonicalName: "Bread", normalizedName: "bread", aisleSectionId: "s2" },
+  ];
+
+  it("updates the location of an existing concept in place", () => {
+    const result = applyCorrectedConceptLocation(concepts, {
+      id: "b",
+      canonicalName: "Bread",
+      normalizedName: "bread",
+      aisleSectionId: "s9",
+    });
+
+    expect(result).toEqual([
+      { id: "a", canonicalName: "Apples", normalizedName: "apples", aisleSectionId: "s1" },
+      { id: "b", canonicalName: "Bread", normalizedName: "bread", aisleSectionId: "s9" },
+    ]);
+  });
+
+  it("inserts a newly created concept sorted by normalized name", () => {
+    const result = applyCorrectedConceptLocation(concepts, {
+      id: "c",
+      canonicalName: "Avocado",
+      normalizedName: "avocado",
+      aisleSectionId: "s3",
+    });
+
+    expect(result.map((concept) => concept.id)).toEqual(["a", "c", "b"]);
   });
 });
 

@@ -29,6 +29,7 @@ import { NewProductDialog } from "./new-product-dialog";
 import {
   ADD_PRODUCT_OPTION_VALUE,
   NEW_PRODUCT_DIALOG_OPTION_VALUE,
+  applyCorrectedConceptLocation,
   buildProductCorrectionRequest,
   buildProductSelectionPatch,
   createProductCorrectionFormState,
@@ -82,7 +83,15 @@ type ProductCorrectionOptionsResponse = {
 };
 
 type ProductCorrectionResponse = {
-  correction?: { normalizedText: string };
+  correction?: {
+    normalizedText: string;
+    productConcept: {
+      id: string;
+      canonicalName: string;
+      normalizedName: string;
+    };
+    location: { aisleSectionId: string };
+  };
   error?: string;
   fieldErrors?: FieldErrors;
 };
@@ -620,6 +629,24 @@ function ShoppingListView({
           );
           return;
         }
+
+        const corrected = correctionResult.correction;
+        setCorrectionOptions((current) =>
+          current
+            ? {
+                ...current,
+                productConcepts: applyCorrectedConceptLocation(
+                  current.productConcepts,
+                  {
+                    id: corrected.productConcept.id,
+                    canonicalName: corrected.productConcept.canonicalName,
+                    normalizedName: corrected.productConcept.normalizedName,
+                    aisleSectionId: corrected.location.aisleSectionId,
+                  },
+                ),
+              }
+            : current,
+        );
 
         const refreshResponse = await fetch(listEndpoint);
         const refreshResult =

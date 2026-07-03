@@ -71,6 +71,32 @@ export function createProductCorrectionFormState({
   };
 }
 
+export type ProductConceptOption = {
+  id: string;
+  canonicalName: string;
+  normalizedName: string;
+  aisleSectionId: string | null;
+};
+
+// After a correction is saved, refresh the concept's location in the cached
+// options so later edits compare against the new section, not the stale one.
+export function applyCorrectedConceptLocation(
+  productConcepts: readonly ProductConceptOption[],
+  corrected: ProductConceptOption,
+): ProductConceptOption[] {
+  if (productConcepts.some((concept) => concept.id === corrected.id)) {
+    return productConcepts.map((concept) =>
+      concept.id === corrected.id
+        ? { ...concept, aisleSectionId: corrected.aisleSectionId }
+        : concept,
+    );
+  }
+
+  return [...productConcepts, corrected].sort((first, second) =>
+    first.normalizedName.localeCompare(second.normalizedName),
+  );
+}
+
 export function buildProductSelectionPatch(
   productSelection: string,
   productConcepts: readonly { id: string; aisleSectionId: string | null }[],
