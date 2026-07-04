@@ -11,6 +11,7 @@ import * as schema from "@/db/schema";
 import { user } from "@/db/schema";
 
 import { emailIsAllowed } from "./allowlist";
+import { devLogin, devLoginEnabled } from "./dev-login";
 import { getAuthEnv } from "./env";
 
 async function userIdIsAllowed(userId: string) {
@@ -100,6 +101,10 @@ export const auth = betterAuth({
       productionURL: authEnv.BETTER_AUTH_URL,
       secret: authEnv.BETTER_AUTH_SECRET,
     }),
+    // Local-only Google-OAuth bypass; never registered in production. See
+    // dev-login.ts. Kept before nextCookies() so its session cookie is
+    // forwarded onto the Next.js response.
+    ...(devLoginEnabled() ? [devLogin()] : []),
     nextCookies(),
   ],
 });
