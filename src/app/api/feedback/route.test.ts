@@ -1,11 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { createFeedbackIssue, hasValidSession } = vi.hoisted(() => ({
+const { createFeedbackIssue, getServerSession } = vi.hoisted(() => ({
   createFeedbackIssue: vi.fn(),
-  hasValidSession: vi.fn(),
+  getServerSession: vi.fn(),
 }));
 
-vi.mock("@/auth/access", () => ({ hasValidSession }));
+vi.mock("@/auth/access", () => ({ getServerSession }));
+
+const session = {
+  user: { id: "user-1", email: "shopper@aisle-flow.example" },
+};
 vi.mock("@/services/feedback", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/services/feedback")>();
 
@@ -44,7 +48,7 @@ const validBody = {
 describe("feedback route", () => {
   beforeEach(() => {
     createFeedbackIssue.mockReset();
-    hasValidSession.mockResolvedValue(false);
+    getServerSession.mockResolvedValue(null);
   });
 
   it("rejects unauthenticated reports before parsing the body", async () => {
@@ -61,7 +65,7 @@ describe("feedback route", () => {
   });
 
   it("rejects malformed JSON for authenticated callers", async () => {
-    hasValidSession.mockResolvedValue(true);
+    getServerSession.mockResolvedValue(session);
 
     const response = await POST(
       new Request("https://aisle-flow.example/api/feedback", {
@@ -78,7 +82,7 @@ describe("feedback route", () => {
   });
 
   it("returns field errors for invalid report input", async () => {
-    hasValidSession.mockResolvedValue(true);
+    getServerSession.mockResolvedValue(session);
 
     const response = await POST(
       feedbackRequest({
@@ -102,7 +106,7 @@ describe("feedback route", () => {
   });
 
   it("rejects oversized report text", async () => {
-    hasValidSession.mockResolvedValue(true);
+    getServerSession.mockResolvedValue(session);
 
     const response = await POST(
       feedbackRequest({
@@ -120,7 +124,7 @@ describe("feedback route", () => {
   });
 
   it("rejects reports whose page URL does not match the request origin", async () => {
-    hasValidSession.mockResolvedValue(true);
+    getServerSession.mockResolvedValue(session);
 
     const response = await POST(
       feedbackRequest(
@@ -143,7 +147,7 @@ describe("feedback route", () => {
   });
 
   it("creates feedback issues for valid reports", async () => {
-    hasValidSession.mockResolvedValue(true);
+    getServerSession.mockResolvedValue(session);
     createFeedbackIssue.mockResolvedValue({
       number: 45,
       url: "https://github.com/konstk1/aisle-flow/issues/45",
@@ -161,6 +165,7 @@ describe("feedback route", () => {
       ...validBody,
       text: validBody.text,
       userAgent: "Test Browser/1.0",
+      userEmail: "shopper@aisle-flow.example",
     });
     await expect(response.json()).resolves.toEqual({
       issue: {
@@ -172,7 +177,7 @@ describe("feedback route", () => {
 
   it("returns a safe error when GitHub submission fails", async () => {
     const token = `github-token-${"x".repeat(20)}`;
-    hasValidSession.mockResolvedValue(true);
+    getServerSession.mockResolvedValue(session);
     createFeedbackIssue.mockRejectedValue(
       new FeedbackSubmissionError(`GitHub rejected ${token}`),
     );

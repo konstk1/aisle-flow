@@ -1,4 +1,4 @@
-import { hasValidSession } from "@/auth/access";
+import { getServerSession } from "@/auth/access";
 import {
   createFeedbackIssue,
   feedbackRequestSchema,
@@ -25,7 +25,9 @@ function pageUrlOriginMatchesRequest(pageUrl: string, origin: string | null) {
 }
 
 export async function POST(request: Request) {
-  if (!(await hasValidSession())) {
+  const session = await getServerSession();
+
+  if (!session) {
     return unauthorizedResponse();
   }
 
@@ -64,6 +66,7 @@ export async function POST(request: Request) {
     const issue = await createFeedbackIssue({
       ...parsed.data,
       userAgent: request.headers.get("user-agent"),
+      userEmail: session.user.email ?? null,
     });
 
     return Response.json({ issue });

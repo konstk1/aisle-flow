@@ -18,6 +18,7 @@ const report = {
   text: "The save button failed after I renamed an aisle.",
   pageUrl: "https://aisle-flow.example/",
   userAgent: "Test Browser/1.0",
+  userEmail: "shopper@aisle-flow.example",
   viewport: {
     width: 1440,
     height: 900,
@@ -94,7 +95,7 @@ describe("createFeedbackIssue", () => {
     expect(createIssueBody).toEqual(
       expect.objectContaining({
         title:
-          "In-app feedback: The save button failed after I renamed an aisle.",
+          "In-app: The save button failed after I renamed an aisle.",
         labels: [FEEDBACK_LABEL],
       }),
     );
@@ -104,6 +105,9 @@ describe("createFeedbackIssue", () => {
     );
     expect(createIssueBody.body).toContain(
       "- Submitted at: 2026-06-28T12:34:56.000Z",
+    );
+    expect(createIssueBody.body).toContain(
+      "- User: shopper@aisle-flow.example",
     );
     expect(createIssueBody.body).toContain("- User agent: Test Browser/1.0");
     expect(createIssueBody.body).toContain("- Viewport: 1440 x 900 @ 2x");
@@ -178,7 +182,7 @@ describe("createFeedbackIssue", () => {
     };
 
     expect(createIssueBody.title).toBe(
-      `In-app feedback: ${"🙂".repeat(69)}...`,
+      `In-app: ${"🙂".repeat(69)}...`,
     );
     expect(createIssueBody.title).not.toContain("\uFFFD");
   });

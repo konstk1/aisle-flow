@@ -10,7 +10,7 @@ const GITHUB_API_VERSION = "2022-11-28";
 const FEEDBACK_REPOSITORY_OWNER = "konstk1";
 const FEEDBACK_REPOSITORY_NAME = "aisle-flow";
 
-export const FEEDBACK_LABEL = "reported-in-app";
+export const FEEDBACK_LABEL = "in-app report";
 
 const urlSchema = z
   .string()
@@ -59,6 +59,7 @@ export type FeedbackRequest = z.infer<typeof feedbackRequestSchema>;
 
 type FeedbackIssueInput = FeedbackRequest & {
   userAgent: string | null;
+  userEmail: string | null;
 };
 
 export type CreatedFeedbackIssue = {
@@ -136,6 +137,7 @@ export function buildFeedbackIssuePayload(
     "",
     "## Context",
     "",
+    `- User: ${input.userEmail?.trim() || "Unknown"}`,
     `- Page URL: ${input.pageUrl}`,
     `- Submitted at: ${options.now.toISOString()}`,
     `- User agent: ${input.userAgent?.trim() || "Unknown"}`,
@@ -148,7 +150,7 @@ export function buildFeedbackIssuePayload(
 
   return {
     title: redactSecret(
-      `In-app feedback: ${truncateTitleText(input.text)}`,
+      `In-app: ${truncateTitleText(input.text)}`,
       options.token,
     ),
     body: redactSecret(body, options.token),
