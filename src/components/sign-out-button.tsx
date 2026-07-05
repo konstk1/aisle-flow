@@ -11,7 +11,7 @@ export function SignOutButton() {
 
   return (
     <button
-      className="text-sm text-zinc-500 underline-offset-4 hover:underline disabled:cursor-not-allowed disabled:opacity-70"
+      className="text-sm font-semibold text-[#9a9aa2] transition hover:text-[#5a5a64] disabled:cursor-not-allowed disabled:opacity-70"
       disabled={isPending}
       onClick={async () => {
         setIsPending(true);

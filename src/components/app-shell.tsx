@@ -2,6 +2,10 @@ import type { StoreSummary } from "@/domain/stores";
 
 import { AppNav } from "@/components/app-nav";
 import { FeedbackButton } from "@/components/feedback-button";
+import {
+  ShellProgressBar,
+  ShellProgressProvider,
+} from "@/components/shell-progress";
 import { SignOutButton } from "@/components/sign-out-button";
 import { StorePicker } from "@/components/store-picker";
 
@@ -15,18 +19,21 @@ export function AppShell({
   stores: StoreSummary[];
 }) {
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-5 py-6 sm:px-8 sm:py-10">
-      <header>
-        <div className="flex items-center justify-between gap-3 sm:gap-4">
-          <AppNav />
-          <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-            <StorePicker currentStoreId={currentStoreId} stores={stores} />
-            <SignOutButton />
+    <ShellProgressProvider>
+      <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-6 pb-20">
+        <header className="sticky top-0 z-20 -mx-6 bg-[#f4f6fb]/80 px-6 py-4 backdrop-blur-md">
+          <div className="flex items-center justify-between gap-3 sm:gap-4">
+            <AppNav />
+            <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+              <StorePicker currentStoreId={currentStoreId} stores={stores} />
+              <SignOutButton />
+            </div>
           </div>
-        </div>
-      </header>
-      {children}
-      <FeedbackButton />
-    </main>
+          <ShellProgressBar />
+        </header>
+        {children}
+        <FeedbackButton />
+      </main>
+    </ShellProgressProvider>
   );
 }
