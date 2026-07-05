@@ -22,8 +22,10 @@
     var(--font-inter), "Inter", system-ui, sans-serif;
 }
 
-* {
-  border-color: var(--divider);
+@layer base {
+  * {
+    border-color: var(--divider);
+  }
 }
 
 body {

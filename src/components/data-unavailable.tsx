@@ -8,21 +8,25 @@ export function DataUnavailable({
   retryHref: string;
 }) {
   return (
-    <section className="py-12">
-      <p className="text-sm font-medium text-zinc-500">{eyebrow}</p>
-      <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">
-        Store data is unavailable.
-      </h1>
-      <p className="mt-3 max-w-2xl text-base leading-7 text-zinc-600">
-        The database did not respond after sign-in. Refresh in a moment; if it
-        keeps happening, check the local database connection.
-      </p>
-      <Link
-        className="mt-6 inline-flex min-h-11 items-center border border-zinc-950 bg-zinc-950 px-4 text-sm font-medium text-white"
-        href={retryHref}
-      >
-        Retry
-      </Link>
+    <section className="pt-6 pb-12">
+      <div className="rounded-[20px] bg-white p-6 shadow-[0_2px_20px_rgba(20,23,40,0.06)] sm:p-8">
+        <p className="text-[13px] font-bold tracking-[0.05em] text-[#8a8a92] uppercase">
+          {eyebrow}
+        </p>
+        <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">
+          Store data is unavailable.
+        </h1>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-[#9a9aa2]">
+          The database did not respond after sign-in. Refresh in a moment; if it
+          keeps happening, check the local database connection.
+        </p>
+        <Link
+          className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-[14px] bg-gradient-to-br from-[#0a84ff] to-[#3b9dff] px-5 text-sm font-semibold text-white shadow-[0_6px_16px_rgba(10,132,255,0.32)] transition hover:brightness-105"
+          href={retryHref}
+        >
+          Retry
+        </Link>
+      </div>
     </section>
   );
 }
