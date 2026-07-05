@@ -25,6 +25,7 @@ import type {
 } from "@/domain/active-shopping-list";
 import { formatAisleLabel, formatSectionLabel } from "@/domain/store-layout";
 
+import { colorForKey } from "@/components/aisle-accents";
 import { useShellProgress } from "@/components/shell-progress";
 
 import { LocationChangeDialog } from "./location-change-dialog";
@@ -162,27 +163,6 @@ const MODE_CONFIG: Record<ShoppingListMode, ShoppingListModeConfig> = {
     refreshLabel: "Refresh snoozed items",
   },
 };
-
-const AISLE_ACCENT_COLORS = [
-  "#34c759",
-  "#0a84ff",
-  "#ff9f0a",
-  "#af52de",
-  "#5e5ce6",
-  "#ff2d55",
-  "#30b0c7",
-  "#ff9500",
-];
-
-function colorForKey(key: string) {
-  let hash = 0;
-
-  for (let index = 0; index < key.length; index += 1) {
-    hash = (hash * 31 + key.charCodeAt(index)) >>> 0;
-  }
-
-  return AISLE_ACCENT_COLORS[hash % AISLE_ACCENT_COLORS.length];
-}
 
 function itemAccentColor(item: ActiveShoppingItemPayload) {
   return colorForKey(shoppingItemAisleGroup(item).id);

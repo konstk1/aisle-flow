@@ -11,6 +11,7 @@ import {
   Save,
   Trash2,
 } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
   closestCenter,
@@ -28,6 +29,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 
+import { aisleAccentColor } from "@/components/aisle-accents";
 import {
   formatAisleLabel,
   formatSectionLabel,
@@ -323,16 +325,18 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
   const orderedAisles = orderAisles(layout.aisles);
 
   return (
-    <section className="pt-6 pb-12 sm:pt-8">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium text-zinc-500">Store layout</p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight text-zinc-950 sm:text-4xl">
-            Build your route.
+    <section className="pt-1 pb-12">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[13px] font-bold tracking-[0.05em] text-[#8a8a92] uppercase">
+            Store route
+          </p>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
+            Build your route
           </h1>
         </div>
         <button
-          className="inline-flex min-h-11 items-center gap-2 border border-zinc-950 bg-zinc-950 px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-[14px] bg-gradient-to-br from-[#0a84ff] to-[#3b9dff] px-5 text-sm font-semibold text-white shadow-[0_6px_16px_rgba(10,132,255,0.32)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
           disabled={isSaving}
           onClick={saveLayout}
           type="button"
@@ -342,32 +346,38 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
         </button>
       </div>
 
-      <p className="mt-4 max-w-xl text-sm leading-6 text-zinc-600">
+      <p className="mt-3 max-w-xl text-sm leading-6 text-[#9a9aa2]">
         Add any aisles, then arrange their sections. The path numbers are
         assigned automatically; section side is informational only.
       </p>
+      <p className="mt-2 text-sm text-[#9a9aa2]">
+        Editing{" "}
+        <span className="font-semibold text-[#3a3a44]">{layout.name}</span> —
+        rename this store on the{" "}
+        <Link
+          className="font-semibold text-[#0a84ff] underline-offset-4 hover:underline"
+          href="/stores"
+        >
+          Manage stores
+        </Link>{" "}
+        page.
+      </p>
 
-      <div className="mt-8 text-sm font-medium text-zinc-800">
-        Store name
-        <p className="mt-2 text-base font-normal text-zinc-950">
-          {layout.name}
-        </p>
-        <p className="mt-1 text-xs font-normal text-zinc-500">
-          Rename this store on the Manage stores page.
-        </p>
-      </div>
-
-      <div className="mt-10 space-y-5">
+      <div className="mt-7 space-y-4">
         {orderedAisles.map((aisle, aisleIndex) => {
           const isCollapsed = collapsedAisleIds.has(aisle.id);
+          const accentColor = aisleAccentColor(aisle.id);
 
           return (
-            <article key={aisle.id}>
-              <div className="flex min-h-11 items-center gap-2">
+            <article
+              className="overflow-hidden rounded-[20px] bg-white shadow-[0_2px_20px_rgba(20,23,40,0.06)]"
+              key={aisle.id}
+            >
+              <div className="flex min-h-14 items-center gap-1.5 py-2 pr-3 pl-2 sm:gap-2 sm:pr-4">
                 <button
                   aria-expanded={!isCollapsed}
                   aria-label={isCollapsed ? "Expand aisle" : "Collapse aisle"}
-                  className="inline-flex size-8 shrink-0 items-center justify-center text-zinc-500 transition hover:text-zinc-950"
+                  className="inline-flex size-9 shrink-0 items-center justify-center rounded-[10px] text-[#c2c2ca] transition hover:text-[#0a84ff]"
                   onClick={() => toggleAisle(aisle.id)}
                   type="button"
                 >
@@ -377,31 +387,16 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
                     <ChevronDown aria-hidden="true" className="size-4" />
                   )}
                 </button>
-                <div className="flex shrink-0">
-                  <button
-                    aria-label="Move aisle earlier"
-                    className="inline-flex size-7 items-center justify-center text-zinc-400 transition hover:text-zinc-950 disabled:cursor-not-allowed disabled:opacity-30"
-                    disabled={aisleIndex === 0}
-                    onClick={() => moveAisle(aisle.id, -1)}
-                    type="button"
-                  >
-                    <ArrowUp aria-hidden="true" className="size-3.5" />
-                  </button>
-                  <button
-                    aria-label="Move aisle later"
-                    className="inline-flex size-7 items-center justify-center text-zinc-400 transition hover:text-zinc-950 disabled:cursor-not-allowed disabled:opacity-30"
-                    disabled={aisleIndex === orderedAisles.length - 1}
-                    onClick={() => moveAisle(aisle.id, 1)}
-                    type="button"
-                  >
-                    <ArrowDown aria-hidden="true" className="size-3.5" />
-                  </button>
-                </div>
-                <label className="flex shrink-0 items-baseline gap-1 text-sm text-zinc-500">
+                <span
+                  aria-hidden="true"
+                  className="size-2.5 shrink-0 rounded-[4px]"
+                  style={{ background: accentColor }}
+                />
+                <label className="flex shrink-0 items-baseline gap-1.5 text-sm font-medium text-[#9a9aa2]">
                   Aisle
                   <input
                     aria-label="Aisle number"
-                    className="w-7 bg-transparent px-0 text-base font-semibold text-zinc-950 tabular-nums outline-none focus:ring-1 focus:ring-zinc-400"
+                    className="w-9 rounded-lg border border-transparent bg-transparent px-1 text-center text-base font-bold text-[#1c1c24] tabular-nums outline-none transition focus:border-[#0a84ff] focus:bg-white"
                     onChange={(event) =>
                       updateAisle(aisle.id, { identifier: event.target.value })
                     }
@@ -410,7 +405,7 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
                 </label>
                 <input
                   aria-label="Aisle display name"
-                  className="w-36 max-w-[40vw] bg-transparent px-1 text-sm text-zinc-700 outline-none placeholder:text-zinc-400 focus:ring-1 focus:ring-zinc-400"
+                  className="min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 py-1 text-sm font-medium text-[#3a3a44] outline-none transition focus:border-[#0a84ff] focus:bg-white"
                   onChange={(event) =>
                     updateAisle(aisle.id, {
                       displayName: event.target.value || null,
@@ -419,7 +414,30 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
                   placeholder="Name (optional)"
                   value={aisle.displayName ?? ""}
                 />
-                <div className="ml-auto shrink-0">
+                {isCollapsed ? (
+                  <span className="shrink-0 rounded-full bg-[#eceef4] px-2.5 py-0.5 text-xs font-semibold text-[#b8b8bf]">
+                    {aisle.sections.length}
+                  </span>
+                ) : null}
+                <div className="flex shrink-0 items-center gap-1">
+                  <button
+                    aria-label="Move aisle earlier"
+                    className="inline-flex size-8 items-center justify-center rounded-[10px] bg-[#f4f5f9] text-[#8a8a92] transition hover:text-[#0a84ff] disabled:cursor-not-allowed disabled:opacity-30"
+                    disabled={aisleIndex === 0}
+                    onClick={() => moveAisle(aisle.id, -1)}
+                    type="button"
+                  >
+                    <ArrowUp aria-hidden="true" className="size-3.5" />
+                  </button>
+                  <button
+                    aria-label="Move aisle later"
+                    className="inline-flex size-8 items-center justify-center rounded-[10px] bg-[#f4f5f9] text-[#8a8a92] transition hover:text-[#0a84ff] disabled:cursor-not-allowed disabled:opacity-30"
+                    disabled={aisleIndex === orderedAisles.length - 1}
+                    onClick={() => moveAisle(aisle.id, 1)}
+                    type="button"
+                  >
+                    <ArrowDown aria-hidden="true" className="size-3.5" />
+                  </button>
                   <IconButton
                     disabled={orderedAisles.length === 1}
                     label="Delete aisle"
@@ -431,7 +449,7 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
               </div>
 
               {isCollapsed ? null : (
-                <div className="mt-1 ml-8">
+                <div>
                   <DndContext
                     collisionDetection={closestCenter}
                     id={`store-layout-aisle-${aisle.id}`}
@@ -455,26 +473,31 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
                       items={aisle.sections.map((section) => section.id)}
                       strategy={verticalListSortingStrategy}
                     >
-                      <div className="mt-2 space-y-1">
+                      <div>
                         {aisle.sections.map((section) => (
-                          <SortableSectionRow
-                            disabled={aisle.sections.length === 1}
+                          <div
+                            className="border-t border-[#f0f1f5]"
                             key={section.id}
-                            onDelete={() => removeSection(aisle.id, section.id)}
-                            onUpdate={(patch) =>
-                              updateSection(aisle.id, section.id, patch)
-                            }
-                            section={section}
-                          />
+                          >
+                            <SortableSectionRow
+                              disabled={aisle.sections.length === 1}
+                              onDelete={() =>
+                                removeSection(aisle.id, section.id)
+                              }
+                              onUpdate={(patch) =>
+                                updateSection(aisle.id, section.id, patch)
+                              }
+                              section={section}
+                            />
+                          </div>
                         ))}
                       </div>
                     </SortableContext>
                     <button
-                      className="mt-1 flex min-h-10 w-full items-center gap-2 text-sm font-medium text-zinc-500 transition hover:text-zinc-950"
+                      className="flex min-h-12 w-full items-center gap-2 border-t border-[#f0f1f5] px-4 text-sm font-semibold text-[#8a8a92] transition hover:text-[#0a84ff]"
                       onClick={() => addSection(aisle.id)}
                       type="button"
                     >
-                      <span aria-hidden="true" className="size-8 shrink-0" />
                       <Plus aria-hidden="true" className="size-4" />
                       Add section
                     </button>
@@ -497,51 +520,70 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
       </div>
 
       <button
-        className="mt-7 inline-flex min-h-11 items-center gap-2 border px-4 text-sm font-medium text-zinc-800 hover:border-zinc-950"
+        className="mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-[#3a3a44] shadow-[0_2px_14px_rgba(20,23,40,0.05)] transition hover:text-[#0a84ff]"
         onClick={addAisle}
         type="button"
       >
-        <Plus aria-hidden="true" className="size-4" />
+        <Plus aria-hidden="true" className="size-4 text-[#a0a0a8]" />
         Add aisle
       </button>
 
       <section
-        className="mt-12 border-y py-6"
         aria-labelledby="route-preview-heading"
+        className="mt-8 overflow-hidden rounded-[20px] bg-white shadow-[0_2px_20px_rgba(20,23,40,0.06)]"
       >
         <button
           aria-controls="route-preview-list"
           aria-expanded={routePreviewExpanded}
-          className="flex min-h-11 w-full items-center gap-3 text-left"
+          className="flex min-h-14 w-full items-center gap-3 px-4 text-left sm:px-5"
           onClick={() => setRoutePreviewExpanded((current) => !current)}
           type="button"
         >
-          <Route aria-hidden="true" className="size-5" />
-          <h2 className="font-medium text-zinc-950" id="route-preview-heading">
+          <Route aria-hidden="true" className="size-[18px] text-[#0a84ff]" />
+          <h2
+            className="text-base font-bold tracking-tight"
+            id="route-preview-heading"
+          >
             Route preview
           </h2>
+          <span className="rounded-full bg-[#eceef4] px-2.5 py-0.5 text-xs font-semibold text-[#b8b8bf]">
+            {routeSections.length}
+          </span>
           {routePreviewExpanded ? (
-            <ChevronDown aria-hidden="true" className="ml-auto size-4" />
+            <ChevronDown
+              aria-hidden="true"
+              className="ml-auto size-4 text-[#c2c2ca]"
+            />
           ) : (
-            <ChevronRight aria-hidden="true" className="ml-auto size-4" />
+            <ChevronRight
+              aria-hidden="true"
+              className="ml-auto size-4 text-[#c2c2ca]"
+            />
           )}
         </button>
         {routePreviewExpanded ? (
           <ol
-            className="mt-4 space-y-3 text-sm leading-6 text-zinc-700"
+            className="border-t border-[#f0f1f5] px-4 py-3 sm:px-5"
             id="route-preview-list"
           >
             {routeSections.map(({ aisle, section }, index) => (
-              <li className="flex gap-3" key={section.id}>
-                <span className="font-medium text-zinc-500 tabular-nums">
+              <li
+                className="flex gap-3 py-1.5 text-sm leading-6 text-[#3a3a44]"
+                key={section.id}
+              >
+                <span className="w-5 shrink-0 text-right font-semibold text-[#b8b8bf] tabular-nums">
                   {index + 1}
                 </span>
                 <span>
-                  {formatAisleLabel(aisle)}
-                  {" · "}
-                  {formatSectionLabel(section)}
-                  {" · "}
-                  <span className="text-zinc-500">{section.side}</span>
+                  <span className="font-semibold">
+                    {formatAisleLabel(aisle)}
+                  </span>
+                  <span className="text-[#9a9aa2]">
+                    {" · "}
+                    {formatSectionLabel(section)}
+                    {" · "}
+                    {section.side}
+                  </span>
                 </span>
               </li>
             ))}
@@ -550,7 +592,7 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
       </section>
 
       {message ? (
-        <p className="mt-5 text-sm text-zinc-700" role="status">
+        <p className="mt-5 text-sm text-[#6a6a72]" role="status">
           {message}
         </p>
       ) : null}
@@ -587,13 +629,13 @@ function SortableSectionRow({
 
   return (
     <div
-      className={`flex min-h-10 items-center gap-2 py-0.5 ${isDragging ? "opacity-0" : ""}`}
+      className={`flex min-h-12 items-center gap-1 py-1 pr-3 pl-2 sm:gap-1.5 sm:pr-4 ${isDragging ? "opacity-0" : ""}`}
       ref={setNodeRef}
       style={style}
     >
       <button
         aria-label={`Drag ${section.label || "section"}`}
-        className="inline-flex size-8 shrink-0 cursor-grab items-center justify-center text-zinc-400 active:cursor-grabbing"
+        className="inline-flex size-9 shrink-0 cursor-grab items-center justify-center rounded-[10px] text-[#c2c2ca] transition hover:text-[#0a84ff] active:cursor-grabbing"
         ref={setActivatorNodeRef}
         style={{ touchAction: "none" }}
         type="button"
@@ -602,19 +644,19 @@ function SortableSectionRow({
       >
         <GripVertical aria-hidden="true" className="size-4" />
       </button>
-      <span className="w-6 shrink-0 text-right text-sm font-medium text-zinc-500 tabular-nums">
+      <span className="w-5 shrink-0 text-right text-sm font-semibold text-[#b8b8bf] tabular-nums">
         {section.pathOrder + 1}.
       </span>
       <input
         aria-label="Section label"
-        className="min-w-0 flex-1 bg-transparent py-1 text-base outline-none placeholder:text-zinc-400"
+        className="min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 py-1.5 text-base outline-none transition focus:border-[#0a84ff] focus:bg-white"
         onChange={(event) => onUpdate({ label: event.target.value || null })}
         placeholder="Section label"
         value={section.label ?? ""}
       />
       <select
         aria-label="Section side"
-        className="min-h-8 w-24 shrink-0 bg-transparent px-1 text-sm text-zinc-700 outline-none"
+        className="h-8 w-20 shrink-0 rounded-lg border border-transparent bg-transparent px-1 text-sm font-medium text-[#8a8a92] outline-none transition focus:border-[#0a84ff] sm:w-24"
         onChange={(event) =>
           onUpdate({ side: event.target.value as StoreLayoutSection["side"] })
         }
@@ -643,18 +685,18 @@ function SectionDragOverlay({ section }: { section?: StoreLayoutSection }) {
   }
 
   return (
-    <div className="flex min-h-12 w-[min(36rem,calc(100vw-2.5rem))] items-center gap-2 border bg-white px-2 py-2 shadow-lg">
+    <div className="flex min-h-12 w-[min(36rem,calc(100vw-2.5rem))] items-center gap-2 rounded-xl border border-black/[0.05] bg-white px-3 py-2 shadow-[0_10px_30px_rgba(20,23,40,0.18)]">
       <GripVertical
         aria-hidden="true"
-        className="size-5 shrink-0 text-zinc-400"
+        className="size-5 shrink-0 text-[#c2c2ca]"
       />
-      <span className="w-6 shrink-0 text-right text-sm font-medium text-zinc-500 tabular-nums">
+      <span className="w-5 shrink-0 text-right text-sm font-semibold text-[#b8b8bf] tabular-nums">
         {section.pathOrder + 1}.
       </span>
-      <span className="min-w-0 flex-1 truncate text-base text-zinc-900">
+      <span className="min-w-0 flex-1 truncate text-base text-[#3a3a44]">
         {section.label || "Section label"}
       </span>
-      <span className="text-sm text-zinc-600">{section.side}</span>
+      <span className="text-sm text-[#9a9aa2]">{section.side}</span>
     </div>
   );
 }
@@ -665,7 +707,7 @@ function FieldError({ message }: { message?: string }) {
   }
 
   return (
-    <span className="mt-1 block text-sm font-normal text-red-700">
+    <span className="block px-4 pb-3 text-sm font-medium text-[#ff453a]">
       {message}
     </span>
   );
@@ -687,7 +729,7 @@ function IconButton({
   return (
     <button
       aria-label={label}
-      className={`inline-flex items-center justify-center border text-zinc-700 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-30 ${compact ? "size-8" : "size-10"}`}
+      className={`inline-flex shrink-0 items-center justify-center rounded-[10px] bg-[#fdeeee] text-[#ff453a] transition hover:bg-[#fbdede] disabled:cursor-not-allowed disabled:opacity-30 ${compact ? "size-8" : "size-[34px]"}`}
       disabled={disabled}
       onClick={onClick}
       type="button"
