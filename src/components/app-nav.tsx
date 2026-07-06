@@ -62,7 +62,7 @@ export function AppNav() {
         onClick={() => setIsOpen((current) => !current)}
         type="button"
       >
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-[11px] bg-gradient-to-br from-[#0a84ff] to-[#4db5ff] text-white shadow-[0_6px_16px_rgba(10,132,255,0.32)]">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-[11px] bg-gradient-to-br from-accent to-accent-bright text-white shadow-accent-glow">
           <ActiveIcon aria-hidden="true" className="size-5" />
         </span>
         <span className="truncate text-lg font-bold tracking-tight sm:text-xl">
@@ -70,7 +70,7 @@ export function AppNav() {
         </span>
         <ChevronDown
           aria-hidden="true"
-          className={`size-4 shrink-0 text-[#b0b0b8] transition ${
+          className={`size-4 shrink-0 text-ink-300 transition ${
             isOpen ? "rotate-180" : ""
           }`}
         />
@@ -79,7 +79,7 @@ export function AppNav() {
       {isOpen ? (
         <nav
           aria-label="App sections"
-          className="absolute top-full left-0 z-10 mt-2 w-60 rounded-2xl border-0 bg-white p-1.5 shadow-[0_10px_34px_rgba(20,23,40,0.14)]"
+          className="absolute top-full left-0 z-10 mt-2 w-60 rounded-2xl border-0 bg-white p-1.5 shadow-popover"
         >
           {navItems.map((item) => {
             const Icon = item.icon;
@@ -88,8 +88,8 @@ export function AppNav() {
             return (
               <Link
                 aria-current={isActive ? "page" : undefined}
-                className={`flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold transition hover:bg-[#f4f5f9] ${
-                  isActive ? "text-zinc-950" : "text-[#5a5a64]"
+                className={`flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold transition hover:bg-ink-50 ${
+                  isActive ? "text-zinc-950" : "text-ink-700"
                 }`}
                 href={item.href}
                 key={item.href}
@@ -97,11 +97,11 @@ export function AppNav() {
               >
                 <Icon
                   aria-hidden="true"
-                  className={`size-4 ${isActive ? "text-[#0a84ff]" : "text-[#a0a0a8]"}`}
+                  className={`size-4 ${isActive ? "text-accent" : "text-ink-350"}`}
                 />
                 <span className="min-w-0 flex-1">{item.label}</span>
                 {isActive ? (
-                  <Check aria-hidden="true" className="size-4 text-[#0a84ff]" />
+                  <Check aria-hidden="true" className="size-4 text-accent" />
                 ) : null}
               </Link>
             );

@@ -3,6 +3,15 @@ import { normalizeProductText } from "./product-matching";
 export const MAX_SHOPPING_ITEM_TEXT_LENGTH = 120;
 export const MAX_IMPORT_ITEM_COUNT = 50;
 
+// Checked items stay on the active list (struck through) for this long so a
+// mid-trip list keeps tallying what's already in the cart; only afterwards do
+// they surface in the completed view.
+export const CHECKED_ITEM_RETENTION_MS = 4 * 60 * 60 * 1000;
+
+export function checkedItemRetentionCutoff(now: Date) {
+  return new Date(now.getTime() - CHECKED_ITEM_RETENTION_MS);
+}
+
 export type FieldErrors = Record<string, string[]>;
 
 export interface ParsedShoppingItemLine {

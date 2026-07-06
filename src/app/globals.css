@@ -3,54 +3,80 @@
 :root {
   --background: #f6f7fb;
   --foreground: #1c1c24;
-  --muted: #9a9aa2;
-  --divider: #eceef4;
-  --card: #ffffff;
-  --card-shadow: 0 2px 20px rgba(20, 23, 40, 0.06);
-  --card-shadow-sm: 0 2px 14px rgba(20, 23, 40, 0.05);
-  --accent: #0a84ff;
-  --accent-strong: #0968d3;
-  --danger: #ff453a;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-accent: var(--accent);
   --font-sans:
     "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont,
     var(--font-inter), "Inter", system-ui, sans-serif;
 }
 
+@theme {
+  --color-accent: #0a84ff;
+  --color-accent-bright: #3b9dff;
+  --color-accent-50: #e5f1ff;
+  --color-accent-100: #d8e9fc;
+  /* Neutral text/surface ramp, darkest to lightest. Steps are spaced by
+     lightness, not evenly numbered, to preserve the existing exact colors. */
+  --color-ink-900: #3a3a44;
+  --color-ink-700: #5a5a64;
+  --color-ink-600: #6a6a72;
+  --color-ink-500: #8a8a92;
+  --color-ink-400: #9a9aa2;
+  --color-ink-350: #a0a0a8;
+  --color-ink-300: #b0b0b8;
+  --color-ink-250: #b8b8bf;
+  --color-ink-200: #c2c2ca;
+  --color-ink-150: #d6d8e0;
+  --color-ink-50: #f4f5f9;
+  --color-danger: #ff453a;
+  --color-danger-50: #fdeeee;
+  --color-danger-100: #fbdede;
+  --color-divider: #eceef4;
+  --color-divider-soft: #f0f1f5;
+  --radius-card: 20px;
+  --shadow-card: 0 2px 20px rgba(20, 23, 40, 0.06);
+  --shadow-card-sm: 0 2px 14px rgba(20, 23, 40, 0.05);
+  --shadow-accent-glow: 0 6px 16px rgba(10, 132, 255, 0.32);
+  --shadow-accent-glow-sm: 0 4px 12px rgba(10, 132, 255, 0.3);
+  --shadow-popover: 0 10px 34px rgba(20, 23, 40, 0.14);
+}
+
 @layer base {
   * {
-    border-color: var(--divider);
+    border-color: var(--color-divider);
   }
+}
+
+/* The standard white content card: rounded-card bg-white shadow-card. */
+@utility card {
+  border-radius: var(--radius-card);
+  background-color: var(--color-white);
+  box-shadow: var(--shadow-card);
 }
 
 body {
   min-height: 100vh;
-  background: linear-gradient(180deg, #f6f7fb 0%, #eef0f6 100%);
-  background-attachment: fixed;
+  background-color: var(--background);
   color: var(--foreground);
-  font-family:
-    "SF Pro Display", "SF Pro Text", -apple-system, BlinkMacSystemFont,
-    var(--font-inter), "Inter", system-ui, sans-serif;
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+}
+
+/* Fixed-position layer instead of background-attachment: fixed, which iOS
+   Safari ignores — there the gradient would stretch over the whole scrollable
+   document and visibly shift while scrolling. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(180deg, #f6f7fb 0%, #eef0f6 100%);
 }
 
 input::placeholder,
 textarea::placeholder {
-  color: #b8b8bf;
-}
-
-@keyframes pop-in {
-  from {
-    transform: scale(0.85);
-    opacity: 0;
-  }
-  to {
-    transform: scale(1);
-    opacity: 1;
-  }
+  color: var(--color-ink-250);
 }

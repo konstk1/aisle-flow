@@ -664,7 +664,7 @@ async function readShoppingListPayload(
   const storeId = store?.id ?? null;
   const rows =
     view === "completed"
-      ? await buildCompletedShoppingItemsQuery(db, storeId, list.id)
+      ? await buildCompletedShoppingItemsQuery(db, storeId, list.id, now)
       : view === "snoozed"
         ? await buildSnoozedShoppingItemsQuery(db, storeId, list.id, now)
         : await buildRouteOrderedShoppingItemsQuery(db, storeId, list.id, now);

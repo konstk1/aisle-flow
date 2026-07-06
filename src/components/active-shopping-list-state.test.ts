@@ -312,7 +312,13 @@ describe("shouldSaveProductCorrectionForEdit", () => {
 });
 
 describe("mergeVisibleListSnapshotAfterCheck", () => {
-  it("keeps other in-flight checkbox changes hidden when a server snapshot returns", () => {
+  it("keeps the optimistic state of other in-flight checkbox changes when a server snapshot returns", () => {
+    const currentList = listWithItems([
+      itemWithState("item-a", true),
+      itemWithState("item-b", true),
+      itemWithState("item-c", false),
+    ]);
+    // Snapshot fetched before item-b's check PATCH landed.
     const serverSnapshot = listWithItems([
       itemWithState("item-a", false),
       itemWithState("item-b", false),
@@ -321,14 +327,46 @@ describe("mergeVisibleListSnapshotAfterCheck", () => {
 
     const merged = mergeVisibleListSnapshotAfterCheck({
       completedCheckItemId: "item-a",
+      currentList,
       nextList: serverSnapshot,
       pendingCheckItemIds: new Set(["item-a", "item-b"]),
     });
 
     expect(merged.items.map((item) => [item.id, item.isChecked])).toEqual([
       ["item-a", false],
+      ["item-b", true],
       ["item-c", false],
     ]);
+  });
+
+  it("preserves in-flight unchecks against a stale snapshot", () => {
+    const currentList = listWithItems([itemWithState("item-a", false)]);
+    const serverSnapshot = listWithItems([itemWithState("item-a", true)]);
+
+    const merged = mergeVisibleListSnapshotAfterCheck({
+      completedCheckItemId: null,
+      currentList,
+      nextList: serverSnapshot,
+      pendingCheckItemIds: new Set(["item-a"]),
+    });
+
+    expect(merged.items.map((item) => [item.id, item.isChecked])).toEqual([
+      ["item-a", false],
+    ]);
+  });
+
+  it("returns the snapshot unchanged when nothing is in flight", () => {
+    const currentList = listWithItems([itemWithState("item-a", false)]);
+    const serverSnapshot = listWithItems([itemWithState("item-a", true)]);
+
+    const merged = mergeVisibleListSnapshotAfterCheck({
+      completedCheckItemId: null,
+      currentList,
+      nextList: serverSnapshot,
+      pendingCheckItemIds: new Set(),
+    });
+
+    expect(merged).toBe(serverSnapshot);
   });
 });
 

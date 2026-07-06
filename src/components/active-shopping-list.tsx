@@ -270,14 +270,13 @@ function ShoppingListView({
   const modeConfig = MODE_CONFIG[mode];
   const listEndpoint = modeConfig.listEndpoint;
   const items = activeList?.items ?? EMPTY_ITEMS;
+  const checkedCount = useMemo(
+    () => items.reduce((count, item) => count + (item.isChecked ? 1 : 0), 0),
+    [items],
+  );
 
   useShellProgress(
-    isActiveMode
-      ? {
-          checkedCount: items.filter((item) => item.isChecked).length,
-          totalCount: items.length,
-        }
-      : null,
+    isActiveMode ? { checkedCount, totalCount: items.length } : null,
   );
 
   const itemGroups = useMemo(() => groupShoppingItemsByAisle(items), [items]);
@@ -316,7 +315,17 @@ function ShoppingListView({
       return false;
     }
 
-    setActiveList(listResult.list);
+    const nextList = listResult.list;
+    setActiveList((current) =>
+      nextList
+        ? mergeVisibleListSnapshotAfterCheck({
+            completedCheckItemId: null,
+            currentList: current,
+            nextList,
+            pendingCheckItemIds: pendingRemovalItemIdsRef.current,
+          })
+        : nextList,
+    );
     setFieldErrors({});
     setFieldErrorScope(null);
     setMessage(null);
@@ -337,11 +346,13 @@ function ShoppingListView({
       return false;
     }
 
-    setActiveList(
-      listResult.list
+    const nextList = listResult.list;
+    setActiveList((current) =>
+      nextList
         ? mergeVisibleListSnapshotAfterCheck({
             completedCheckItemId: completedItemId,
-            nextList: listResult.list,
+            currentList: current,
+            nextList,
             pendingCheckItemIds: pendingRemovalItemIdsRef.current,
           })
         : null,
@@ -489,9 +500,10 @@ function ShoppingListView({
   }
 
   // In the active view, checking an item keeps it visible with a strikethrough
-  // so the progress ring can tally it. The item still syncs to the completed
-  // view server-side and clears from here on the next refresh/reload, so we
-  // hold the optimistic state and do not overwrite the list from the response.
+  // so the trip's progress keeps tallying it. The server retains checked items
+  // on the active list for CHECKED_ITEM_RETENTION_MS before they move to the
+  // completed view, so refetches keep them too; we only hold the optimistic
+  // state locally while the PATCH is in flight.
   async function toggleActiveCheck(itemId: string, isChecked: boolean) {
     const previousItemIndex =
       activeList?.items.findIndex((item) => item.id === itemId) ?? -1;
@@ -903,7 +915,7 @@ function ShoppingListView({
       {!isActiveMode ? (
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
           <Link
-            className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-[#3a3a44] shadow-[0_2px_14px_rgba(20,23,40,0.05)] transition hover:text-[#0a84ff]"
+            className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-ink-900 shadow-card-sm transition hover:text-accent"
             href="/"
           >
             <ArrowLeft aria-hidden="true" className="size-4" />
@@ -911,7 +923,7 @@ function ShoppingListView({
           </Link>
           <button
             aria-label={modeConfig.refreshLabel}
-            className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl bg-white text-[#6a6a72] shadow-[0_2px_14px_rgba(20,23,40,0.05)] transition hover:text-[#0a84ff] disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl bg-white text-ink-600 shadow-card-sm transition hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
             disabled={pendingAction !== null}
             onClick={refreshList}
             type="button"
@@ -929,19 +941,22 @@ function ShoppingListView({
               <span className="sr-only">Item text</span>
               <Search
                 aria-hidden="true"
-                className="pointer-events-none absolute top-1/2 left-4 size-[18px] -translate-y-1/2 text-[#c2c2ca]"
+                className="pointer-events-none absolute top-1/2 left-4 size-[18px] -translate-y-1/2 text-ink-200"
               />
               <input
-                className="h-[52px] w-full rounded-[15px] border border-black/[0.07] bg-white pr-4 pl-11 text-base shadow-[0_2px_14px_rgba(20,23,40,0.05)] transition outline-none focus:border-[#0a84ff] disabled:cursor-not-allowed disabled:opacity-60"
+                className="h-[52px] w-full rounded-[15px] border border-black/[0.07] bg-white pr-4 pl-11 text-base shadow-card-sm transition outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={pendingAction !== null}
                 onChange={(event) => setItemText(event.target.value)}
                 placeholder="Add an item…"
                 value={itemText}
               />
+              <FieldError
+                message={fieldErrorScope === "add" ? fieldErrors.text?.[0] : null}
+              />
             </label>
             <div className="flex shrink-0 gap-2.5">
               <button
-                className="inline-flex h-[52px] flex-1 items-center justify-center gap-1.5 rounded-[15px] bg-gradient-to-br from-[#0a84ff] to-[#3b9dff] px-5 text-base font-semibold text-white shadow-[0_6px_16px_rgba(10,132,255,0.32)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none"
+                className="inline-flex h-[52px] flex-1 items-center justify-center gap-1.5 rounded-[15px] bg-gradient-to-br from-accent to-accent-bright px-5 text-base font-semibold text-white shadow-accent-glow transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none"
                 disabled={pendingAction !== null}
                 type="submit"
               >
@@ -951,7 +966,7 @@ function ShoppingListView({
               <button
                 aria-expanded={importExpanded}
                 aria-label="Import a list"
-                className="inline-flex size-[52px] shrink-0 items-center justify-center rounded-[15px] border border-black/[0.07] bg-white text-[#6a6a72] shadow-[0_2px_14px_rgba(20,23,40,0.05)] transition hover:text-[#0a84ff] disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex size-[52px] shrink-0 items-center justify-center rounded-[15px] border border-black/[0.07] bg-white text-ink-600 shadow-card-sm transition hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={pendingAction !== null}
                 onClick={openImport}
                 title="Import"
@@ -961,7 +976,7 @@ function ShoppingListView({
               </button>
               <button
                 aria-label={modeConfig.refreshLabel}
-                className="inline-flex size-[52px] shrink-0 items-center justify-center rounded-[15px] border border-black/[0.07] bg-white text-[#6a6a72] shadow-[0_2px_14px_rgba(20,23,40,0.05)] transition hover:text-[#0a84ff] disabled:cursor-not-allowed disabled:opacity-50"
+                className="inline-flex size-[52px] shrink-0 items-center justify-center rounded-[15px] border border-black/[0.07] bg-white text-ink-600 shadow-card-sm transition hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={pendingAction !== null}
                 onClick={refreshList}
                 title="Refresh"
@@ -971,16 +986,13 @@ function ShoppingListView({
               </button>
             </div>
           </form>
-          <FieldError
-            message={fieldErrorScope === "add" ? fieldErrors.text?.[0] : null}
-          />
         </>
       )}
 
       {!hasStoreRoute ? (
-        <p className="mt-4 text-sm text-[#8a8a92]">
+        <p className="mt-4 text-sm text-ink-500">
           <Link
-            className="font-semibold text-[#0a84ff] underline-offset-4 hover:underline"
+            className="font-semibold text-accent underline-offset-4 hover:underline"
             href="/route"
           >
             Build a store route
@@ -991,13 +1003,13 @@ function ShoppingListView({
 
       {isActiveMode && importExpanded ? (
         <form
-          className="mt-5 rounded-[20px] bg-white p-5 shadow-[0_2px_20px_rgba(20,23,40,0.06)]"
+          className="mt-5 card p-5"
           onSubmit={importItems}
         >
-          <label className="block text-sm font-semibold text-[#3a3a44]">
+          <label className="block text-sm font-semibold text-ink-900">
             Paste list
             <textarea
-              className="mt-2 min-h-28 w-full resize-y rounded-[14px] border border-black/[0.07] bg-white px-3.5 py-2.5 text-base transition outline-none focus:border-[#0a84ff] disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-2 min-h-28 w-full resize-y rounded-[14px] border border-black/[0.07] bg-white px-3.5 py-2.5 text-base transition outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
               disabled={pendingAction !== null}
               onChange={(event) => setImportText(event.target.value)}
               placeholder={"Rice\nBroccoli"}
@@ -1012,7 +1024,7 @@ function ShoppingListView({
           </label>
           <div className="mt-3 flex flex-wrap gap-2.5">
             <button
-              className="inline-flex min-h-11 items-center gap-2 rounded-[14px] bg-gradient-to-br from-[#0a84ff] to-[#3b9dff] px-5 text-sm font-semibold text-white shadow-[0_6px_16px_rgba(10,132,255,0.32)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex min-h-11 items-center gap-2 rounded-[14px] bg-gradient-to-br from-accent to-accent-bright px-5 text-sm font-semibold text-white shadow-accent-glow transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
               disabled={pendingAction !== null}
               type="submit"
             >
@@ -1020,7 +1032,7 @@ function ShoppingListView({
               Import
             </button>
             <button
-              className="inline-flex min-h-11 items-center gap-2 rounded-[14px] bg-[#f4f5f9] px-5 text-sm font-semibold text-[#6a6a72] transition hover:bg-[#eceef4] disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex min-h-11 items-center gap-2 rounded-[14px] bg-ink-50 px-5 text-sm font-semibold text-ink-600 transition hover:bg-divider disabled:cursor-not-allowed disabled:opacity-50"
               disabled={pendingAction !== null}
               onClick={closeImport}
               type="button"
@@ -1034,14 +1046,14 @@ function ShoppingListView({
 
       <div className="mt-7 space-y-6">
         {items.length === 0 ? (
-          <div className="rounded-[20px] bg-white p-6 text-sm text-[#9a9aa2] shadow-[0_2px_20px_rgba(20,23,40,0.06)]">
+          <div className="card p-6 text-sm text-ink-400">
             {modeConfig.emptyText}
           </div>
         ) : !isActiveMode ? (
-          <div className="overflow-hidden rounded-[20px] bg-white shadow-[0_2px_20px_rgba(20,23,40,0.06)]">
+          <div className="overflow-hidden card">
             {items.map((item, index) => (
               <div
-                className={index > 0 ? "border-t border-[#f0f1f5]" : ""}
+                className={index > 0 ? "border-t border-divider-soft" : ""}
                 key={item.id}
               >
                 {renderShoppingItemRow(item, itemAccentColor(item))}
@@ -1060,17 +1072,17 @@ function ShoppingListView({
                     className="size-2.5 shrink-0 rounded-[4px]"
                     style={{ background: accentColor }}
                   />
-                  <h2 className="text-[13px] font-bold tracking-[0.05em] text-[#8a8a92] uppercase">
+                  <h2 className="text-[13px] font-bold tracking-[0.05em] text-ink-500 uppercase">
                     {group.label}
                   </h2>
-                  <span className="rounded-full bg-[#eceef4] px-2.5 py-0.5 text-xs font-semibold text-[#b8b8bf]">
+                  <span className="rounded-full bg-divider px-2.5 py-0.5 text-xs font-semibold text-ink-250">
                     {group.items.length}
                   </span>
                 </div>
-                <div className="overflow-hidden rounded-[20px] bg-white shadow-[0_2px_20px_rgba(20,23,40,0.06)]">
+                <div className="overflow-hidden card">
                   {group.items.map((item, index) => (
                     <div
-                      className={index > 0 ? "border-t border-[#f0f1f5]" : ""}
+                      className={index > 0 ? "border-t border-divider-soft" : ""}
                       key={item.id}
                     >
                       {renderShoppingItemRow(item, accentColor)}
@@ -1084,7 +1096,7 @@ function ShoppingListView({
       </div>
 
       {message ? (
-        <p className="mt-5 text-sm text-[#6a6a72]" role="status">
+        <p className="mt-5 text-sm text-ink-600" role="status">
           {message}
         </p>
       ) : null}
@@ -1092,20 +1104,20 @@ function ShoppingListView({
       {isActiveMode ? (
         <div className="mt-8 flex flex-wrap gap-2.5">
           <Link
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-[#3a3a44] shadow-[0_2px_14px_rgba(20,23,40,0.05)] transition hover:text-[#0a84ff]"
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-ink-900 shadow-card-sm transition hover:text-accent"
             href="/snoozed"
           >
-            <Clock aria-hidden="true" className="size-4 text-[#a0a0a8]" />
+            <Clock aria-hidden="true" className="size-4 text-ink-350" />
             Snoozed
-            <ArrowRight aria-hidden="true" className="size-4 text-[#c2c2ca]" />
+            <ArrowRight aria-hidden="true" className="size-4 text-ink-200" />
           </Link>
           <Link
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-[#3a3a44] shadow-[0_2px_14px_rgba(20,23,40,0.05)] transition hover:text-[#0a84ff]"
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-ink-900 shadow-card-sm transition hover:text-accent"
             href="/completed"
           >
-            <Check aria-hidden="true" className="size-4 text-[#a0a0a8]" />
+            <Check aria-hidden="true" className="size-4 text-ink-350" />
             Completed
-            <ArrowRight aria-hidden="true" className="size-4 text-[#c2c2ca]" />
+            <ArrowRight aria-hidden="true" className="size-4 text-ink-200" />
           </Link>
         </div>
       ) : null}
@@ -1205,7 +1217,7 @@ function ShoppingItemRow({
       {isSnoozedRow ? (
         <button
           aria-label="Restore item to list"
-          className="flex size-[26px] shrink-0 items-center justify-center rounded-full border-2 border-[#d6d8e0] bg-white text-[#8a8a92] transition hover:border-[#0a84ff] hover:text-[#0a84ff] disabled:cursor-not-allowed disabled:opacity-50"
+          className="relative flex size-[26px] shrink-0 items-center justify-center rounded-full border-2 border-ink-150 bg-white text-ink-500 transition after:absolute after:-inset-[9px] hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
           disabled={pending}
           onClick={() => onSnoozeChange(false)}
           title="Restore to list"
@@ -1218,13 +1230,13 @@ function ShoppingItemRow({
           aria-label={
             item.isChecked ? "Mark item unchecked" : "Mark item checked"
           }
-          className="flex size-[26px] shrink-0 items-center justify-center rounded-full border-2 transition disabled:cursor-not-allowed disabled:opacity-50"
+          className="relative flex size-[26px] shrink-0 items-center justify-center rounded-full border-2 transition after:absolute after:-inset-[9px] disabled:cursor-not-allowed disabled:opacity-50"
           disabled={pending}
           onClick={() => onCheckedChange(!item.isChecked)}
           style={
             item.isChecked
               ? { borderColor: accentColor, background: accentColor }
-              : { borderColor: "#d6d8e0", background: "#fff" }
+              : { borderColor: "var(--color-ink-150)", background: "#fff" }
           }
           type="button"
         >
@@ -1248,7 +1260,7 @@ function ShoppingItemRow({
             <label className="block">
               <span className="sr-only">Item name</span>
               <input
-                className="min-h-10 w-full rounded-xl border border-black/[0.07] bg-white px-3.5 text-base leading-6 outline-none transition focus:border-[#0a84ff] disabled:cursor-not-allowed disabled:opacity-60"
+                className="min-h-10 w-full rounded-xl border border-black/[0.07] bg-white px-3.5 text-base leading-6 outline-none transition focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={editPending}
                 onChange={(event) => onEditTextChange(event.target.value)}
                 value={editText}
@@ -1269,7 +1281,7 @@ function ShoppingItemRow({
               pending={editPending}
             />
             {editMessage ? (
-              <p className="text-sm text-[#6a6a72]" role="status">
+              <p className="text-sm text-ink-600" role="status">
                 {editMessage}
               </p>
             ) : null}
@@ -1277,7 +1289,7 @@ function ShoppingItemRow({
           <div className="ml-auto flex shrink-0 items-center gap-1.5">
             <button
               aria-label="Save item"
-              className="flex size-10 items-center justify-center rounded-xl bg-gradient-to-br from-[#0a84ff] to-[#3b9dff] text-white shadow-[0_4px_12px_rgba(10,132,255,0.3)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex size-10 items-center justify-center rounded-xl bg-gradient-to-br from-accent to-accent-bright text-white shadow-accent-glow-sm transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={editPending || saveDisabled}
               form={editFormId}
               title="Save"
@@ -1287,7 +1299,7 @@ function ShoppingItemRow({
             </button>
             <button
               aria-label="Cancel edit"
-              className="flex size-10 items-center justify-center rounded-xl bg-[#f4f5f9] text-[#6a6a72] transition hover:bg-[#eceef4] disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex size-10 items-center justify-center rounded-xl bg-ink-50 text-ink-600 transition hover:bg-divider disabled:cursor-not-allowed disabled:opacity-50"
               disabled={editPending}
               onClick={onEditCancel}
               title="Cancel"
@@ -1297,7 +1309,7 @@ function ShoppingItemRow({
             </button>
             <button
               aria-label="Delete item"
-              className="flex size-10 items-center justify-center rounded-xl bg-[#fdeeee] text-[#ff453a] transition hover:bg-[#fbdede] disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex size-10 items-center justify-center rounded-xl bg-danger-50 text-danger transition hover:bg-danger-100 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={pendingDelete || editPending}
               onClick={onDelete}
               title="Delete"
@@ -1316,13 +1328,13 @@ function ShoppingItemRow({
             <div
               className="text-[16.5px] font-semibold tracking-[-0.01em] break-words"
               style={{
-                color: item.isChecked ? "#b0b0b8" : "#1c1c24",
+                color: item.isChecked ? "var(--color-ink-300)" : "var(--color-foreground)",
                 textDecoration: item.isChecked ? "line-through" : "none",
               }}
             >
               {item.rawText}
             </div>
-            <div className="mt-[3px] flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-medium text-[#9a9aa2]">
+            <div className="mt-[3px] flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-medium text-ink-400">
               {needsAttention ? (
                 <AlertTriangle
                   aria-hidden="true"
@@ -1349,7 +1361,7 @@ function ShoppingItemRow({
             {isActiveRow ? (
               <button
                 aria-label="Snooze item"
-                className="flex size-[34px] items-center justify-center rounded-[10px] bg-[#f4f5f9] text-[#8a8a92] transition hover:text-[#0a84ff] disabled:cursor-not-allowed disabled:opacity-50"
+                className="relative flex size-[34px] items-center justify-center rounded-[10px] bg-ink-50 text-ink-500 transition after:absolute after:-inset-y-[5px] after:-inset-x-px hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={pending || pendingEdit || pendingDelete}
                 onClick={() => onSnoozeChange(true)}
                 title="Snooze"
@@ -1362,7 +1374,7 @@ function ShoppingItemRow({
               aria-controls={editFormId}
               aria-expanded={editExpanded}
               aria-label="Edit item"
-              className="flex size-[34px] items-center justify-center rounded-[10px] bg-[#f4f5f9] text-[#8a8a92] transition hover:text-[#0a84ff] disabled:cursor-not-allowed disabled:opacity-50"
+              className="relative flex size-[34px] items-center justify-center rounded-[10px] bg-ink-50 text-ink-500 transition after:absolute after:-inset-y-[5px] after:-inset-x-px hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
               disabled={pendingEdit || pendingDelete}
               onClick={onEditOpen}
               title="Edit"
@@ -1372,7 +1384,7 @@ function ShoppingItemRow({
             </button>
             <button
               aria-label="Delete item"
-              className="flex size-[34px] items-center justify-center rounded-[10px] bg-[#fdeeee] text-[#ff453a] transition hover:bg-[#fbdede] disabled:cursor-not-allowed disabled:opacity-50"
+              className="relative flex size-[34px] items-center justify-center rounded-[10px] bg-danger-50 text-danger transition after:absolute after:-inset-y-[5px] after:-inset-x-px hover:bg-danger-100 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={pendingDelete || pendingEdit}
               onClick={onDelete}
               title="Delete"
@@ -1424,19 +1436,19 @@ function InlineLocationEditor({
   return (
     <div className="space-y-2">
       {loadingOptions ? (
-        <p className="text-sm text-[#9a9aa2]" role="status">
+        <p className="text-sm text-ink-400" role="status">
           Loading location options.
         </p>
       ) : null}
 
       {optionsError ? (
         <div className="flex flex-wrap items-center gap-2">
-          <p className="text-sm text-[#ff453a]" role="alert">
+          <p className="text-sm text-danger" role="alert">
             {optionsError}
           </p>
           <button
             aria-label="Retry loading location options"
-            className="flex size-9 items-center justify-center rounded-[10px] bg-[#f4f5f9] text-[#8a8a92] transition hover:text-[#0a84ff]"
+            className="flex size-9 items-center justify-center rounded-[10px] bg-ink-50 text-ink-500 transition hover:text-accent"
             onClick={onRetryOptions}
             title="Retry"
             type="button"
@@ -1450,9 +1462,9 @@ function InlineLocationEditor({
       <FieldError messages={fieldErrors.rawText} />
 
       {options && aisleSections.length === 0 ? (
-        <p className="text-sm text-[#9a9aa2]">
+        <p className="text-sm text-ink-400">
           <Link
-            className="font-semibold text-[#0a84ff] underline-offset-4 hover:underline"
+            className="font-semibold text-accent underline-offset-4 hover:underline"
             href="/route"
           >
             Build a store route
@@ -1466,7 +1478,7 @@ function InlineLocationEditor({
               Product
             </label>
             <select
-              className="min-h-10 w-full rounded-xl border border-black/[0.07] bg-white px-3.5 text-sm outline-none transition focus:border-[#0a84ff] disabled:cursor-not-allowed disabled:opacity-60"
+              className="min-h-10 w-full rounded-xl border border-black/[0.07] bg-white px-3.5 text-sm outline-none transition focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
               disabled={formDisabled}
               id={productControlId}
               onChange={(event) => {
@@ -1511,7 +1523,7 @@ function InlineLocationEditor({
           <label className="block min-w-0">
             <span className="sr-only">Route section</span>
             <select
-              className="min-h-10 w-full rounded-xl border border-black/[0.07] bg-white px-3.5 text-sm outline-none transition focus:border-[#0a84ff] disabled:cursor-not-allowed disabled:opacity-60"
+              className="min-h-10 w-full rounded-xl border border-black/[0.07] bg-white px-3.5 text-sm outline-none transition focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
               disabled={formDisabled}
               onChange={(event) =>
                 onFormChange({ aisleSectionId: event.target.value })
@@ -1536,7 +1548,7 @@ function InlineLocationEditor({
       )}
 
       {message ? (
-        <p className="text-sm text-[#6a6a72]" role="status">
+        <p className="text-sm text-ink-600" role="status">
           {message}
         </p>
       ) : null}
@@ -1734,7 +1746,7 @@ function FieldError({
     <>
       {allMessages.map((fieldMessage, index) => (
         <span
-          className="mt-1 block text-sm font-normal text-red-700"
+          className="mt-1 block text-sm font-medium text-danger"
           key={`${fieldMessage}-${index}`}
         >
           {fieldMessage}

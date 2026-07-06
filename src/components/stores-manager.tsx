@@ -140,13 +140,13 @@ export function StoresManager({
 
   return (
     <section className="pt-1 pb-12">
-      <p className="text-[13px] font-bold tracking-[0.05em] text-[#8a8a92] uppercase">
+      <p className="text-[13px] font-bold tracking-[0.05em] text-ink-500 uppercase">
         Stores
       </p>
       <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
         Manage your stores.
       </h1>
-      <p className="mt-3 max-w-2xl text-sm leading-6 text-[#9a9aa2]">
+      <p className="mt-3 max-w-2xl text-sm leading-6 text-ink-400">
         Each store has its own route, learned products, and shopping lists.
         Switch between stores with the picker in the header.
       </p>
@@ -155,14 +155,14 @@ export function StoresManager({
         <label className="min-w-0 flex-1">
           <span className="sr-only">New store name</span>
           <input
-            className="h-[52px] w-full rounded-[15px] border border-black/[0.07] bg-white px-4 text-base shadow-[0_2px_14px_rgba(20,23,40,0.05)] transition outline-none focus:border-[#0a84ff]"
+            className="h-[52px] w-full rounded-[15px] border border-black/[0.07] bg-white px-4 text-base shadow-card-sm transition outline-none focus:border-accent"
             onChange={(event) => setNewName(event.target.value)}
             placeholder="New store name"
             value={newName}
           />
         </label>
         <button
-          className="inline-flex h-[52px] shrink-0 items-center justify-center gap-1.5 rounded-[15px] bg-gradient-to-br from-[#0a84ff] to-[#3b9dff] px-5 text-base font-semibold text-white shadow-[0_6px_16px_rgba(10,132,255,0.32)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-[52px] shrink-0 items-center justify-center gap-1.5 rounded-[15px] bg-gradient-to-br from-accent to-accent-bright px-5 text-base font-semibold text-white shadow-accent-glow transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
           disabled={isCreating}
           type="submit"
         >
@@ -171,18 +171,18 @@ export function StoresManager({
         </button>
       </form>
       {createError ? (
-        <p className="mt-2 text-sm text-[#ff453a]" role="alert">
+        <p className="mt-2 text-sm text-danger" role="alert">
           {createError}
         </p>
       ) : null}
 
       {stores.length === 0 ? (
-        <p className="mt-7 rounded-[20px] bg-white p-6 text-sm text-[#9a9aa2] shadow-[0_2px_20px_rgba(20,23,40,0.06)]">
+        <p className="mt-7 card p-6 text-sm text-ink-400">
           No stores yet. Add your first store, then build its route on the Store
           route page.
         </p>
       ) : (
-        <ul className="mt-7 divide-y divide-[#f0f1f5] overflow-hidden rounded-[20px] bg-white shadow-[0_2px_20px_rgba(20,23,40,0.06)]">
+        <ul className="mt-7 divide-y divide-divider-soft overflow-hidden card">
           {stores.map((store) => {
             const isEditing = editingStoreId === store.id;
             const isPending = pendingStoreId === store.id;
@@ -197,19 +197,19 @@ export function StoresManager({
                       <span className="sr-only">Store name</span>
                       <input
                         autoFocus
-                        className="min-h-10 w-full rounded-xl border border-black/[0.07] bg-white px-3.5 text-base outline-none transition focus:border-[#0a84ff]"
+                        className="min-h-10 w-full rounded-xl border border-black/[0.07] bg-white px-3.5 text-base outline-none transition focus:border-accent"
                         onChange={(event) => setEditingName(event.target.value)}
                         value={editingName}
                       />
                     </label>
                   ) : (
                     <div className="min-w-0">
-                      <p className="truncate font-semibold text-[#1c1c24]">
+                      <p className="truncate font-semibold text-foreground">
                         {store.name}
                       </p>
                       {isCurrent ? (
                         <p className="mt-1">
-                          <span className="rounded-full bg-[#e5f1ff] px-2.5 py-0.5 text-xs font-semibold text-[#0a84ff]">
+                          <span className="rounded-full bg-accent-50 px-2.5 py-0.5 text-xs font-semibold text-accent">
                             Current store
                           </span>
                         </p>
@@ -221,7 +221,7 @@ export function StoresManager({
                     {isEditing ? (
                       <button
                         aria-label={`Save name for ${store.name}`}
-                        className="flex size-[34px] items-center justify-center rounded-[10px] bg-[#e5f1ff] text-[#0a84ff] transition hover:bg-[#d8e9fc] disabled:cursor-not-allowed disabled:opacity-50"
+                        className="flex size-[34px] items-center justify-center rounded-[10px] bg-accent-50 text-accent transition hover:bg-accent-100 disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={isPending}
                         onClick={() => void saveRename(store)}
                         title="Save"
@@ -236,7 +236,7 @@ export function StoresManager({
                           ? `Stop renaming ${store.name}`
                           : `Rename ${store.name}`
                       }
-                      className="flex size-[34px] items-center justify-center rounded-[10px] bg-[#f4f5f9] text-[#8a8a92] transition hover:text-[#0a84ff] disabled:cursor-not-allowed disabled:opacity-50"
+                      className="flex size-[34px] items-center justify-center rounded-[10px] bg-ink-50 text-ink-500 transition hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
                       disabled={isPending}
                       onClick={() =>
                         isEditing
@@ -254,7 +254,7 @@ export function StoresManager({
                     </button>
                     {isConfirmingDelete ? (
                       <button
-                        className="inline-flex min-h-[34px] items-center rounded-[10px] bg-[#ff453a] px-3 text-sm font-semibold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex min-h-[34px] items-center rounded-[10px] bg-danger px-3 text-sm font-semibold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={isPending}
                         onClick={() => void deleteStore(store)}
                         type="button"
@@ -264,7 +264,7 @@ export function StoresManager({
                     ) : (
                       <button
                         aria-label={`Delete ${store.name}`}
-                        className="flex size-[34px] items-center justify-center rounded-[10px] bg-[#fdeeee] text-[#ff453a] transition hover:bg-[#fbdede] disabled:cursor-not-allowed disabled:opacity-50"
+                        className="flex size-[34px] items-center justify-center rounded-[10px] bg-danger-50 text-danger transition hover:bg-danger-100 disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={isPending}
                         onClick={() => {
                           setConfirmingDeleteId(store.id);
@@ -281,14 +281,14 @@ export function StoresManager({
                 </div>
 
                 {isConfirmingDelete ? (
-                  <p className="mt-3 text-sm text-[#ff453a]">
+                  <p className="mt-3 text-sm text-danger">
                     Deleting {store.name} permanently removes its route, learned
                     products, and shopping lists for everyone.
                   </p>
                 ) : null}
 
                 {rowError?.storeId === store.id ? (
-                  <p className="mt-3 text-sm text-[#ff453a]" role="alert">
+                  <p className="mt-3 text-sm text-danger" role="alert">
                     {rowError.message}
                   </p>
                 ) : null}

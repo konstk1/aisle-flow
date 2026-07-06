@@ -1,6 +1,6 @@
 export const AISLE_ACCENT_COLORS = [
   "#34c759",
-  "#0a84ff",
+  "var(--color-accent)",
   "#ff9f0a",
   "#af52de",
   "#5e5ce6",

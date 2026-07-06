@@ -1,22 +1,21 @@
 "use client";
 
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 
 type ShellProgress = {
   checkedCount: number;
   totalCount: number;
 };
 
-const ShellProgressContext = createContext<{
-  progress: ShellProgress | null;
-  setProgress: (progress: ShellProgress | null) => void;
-} | null>(null);
+type SetShellProgress = (progress: ShellProgress | null) => void;
+
+// Split contexts so publishers subscribe only to the stable setter: a page
+// reporting progress does not re-render when the value it just published
+// changes — only ShellProgressBar consumes the value.
+const ShellProgressValueContext = createContext<ShellProgress | null>(null);
+const ShellProgressSetterContext = createContext<SetShellProgress | null>(
+  null,
+);
 
 export function ShellProgressProvider({
   children,
@@ -24,43 +23,50 @@ export function ShellProgressProvider({
   children: React.ReactNode;
 }) {
   const [progress, setProgress] = useState<ShellProgress | null>(null);
-  const value = useMemo(() => ({ progress, setProgress }), [progress]);
 
   return (
-    <ShellProgressContext.Provider value={value}>
-      {children}
-    </ShellProgressContext.Provider>
+    <ShellProgressSetterContext.Provider value={setProgress}>
+      <ShellProgressValueContext.Provider value={progress}>
+        {children}
+      </ShellProgressValueContext.Provider>
+    </ShellProgressSetterContext.Provider>
   );
 }
 
 export function useShellProgress(progress: ShellProgress | null) {
-  const context = useContext(ShellProgressContext);
-  const setProgress = context?.setProgress;
+  const setProgress = useContext(ShellProgressSetterContext);
   const checkedCount = progress?.checkedCount ?? null;
   const totalCount = progress?.totalCount ?? null;
 
   useEffect(() => {
-    if (!setProgress || checkedCount === null || totalCount === null) {
+    if (!setProgress) {
       return;
     }
 
-    setProgress({ checkedCount, totalCount });
+    setProgress(
+      checkedCount === null || totalCount === null || totalCount === 0
+        ? null
+        : { checkedCount, totalCount },
+    );
+  }, [setProgress, checkedCount, totalCount]);
+
+  useEffect(() => {
+    if (!setProgress) {
+      return;
+    }
 
     return () => setProgress(null);
-  }, [setProgress, checkedCount, totalCount]);
+  }, [setProgress]);
 }
 
 export function ShellProgressBar() {
-  const context = useContext(ShellProgressContext);
-  const progress = context?.progress ?? null;
+  const progress = useContext(ShellProgressValueContext);
 
   if (!progress) {
     return null;
   }
 
-  const pct = progress.totalCount
-    ? Math.round((progress.checkedCount / progress.totalCount) * 100)
-    : 0;
+  const pct = Math.round((progress.checkedCount / progress.totalCount) * 100);
 
   return (
     <div
@@ -68,11 +74,11 @@ export function ShellProgressBar() {
       aria-valuemax={progress.totalCount}
       aria-valuemin={0}
       aria-valuenow={progress.checkedCount}
-      className="absolute inset-x-0 bottom-0 h-[3px] bg-[#eceef4]"
+      className="absolute inset-x-0 bottom-0 h-[3px] bg-divider"
       role="progressbar"
     >
       <div
-        className="h-full rounded-r-full bg-gradient-to-r from-[#0a84ff] to-[#3b9dff] transition-[width] duration-300"
+        className="h-full rounded-r-full bg-gradient-to-r from-accent to-accent-bright transition-[width] duration-300"
         style={{ width: `${pct}%` }}
       />
     </div>

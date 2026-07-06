@@ -13,6 +13,8 @@ import {
   type SQL,
 } from "drizzle-orm";
 
+import { checkedItemRetentionCutoff } from "@/domain/active-shopping-list";
+
 import type { Database } from "../create-client";
 import {
   aisles,
@@ -162,7 +164,12 @@ export function buildRouteOrderedShoppingItemsQuery(
     .where(
       and(
         eq(shoppingItems.shoppingListId, shoppingListId),
-        eq(shoppingItems.isChecked, false),
+        // Recently checked items stay visible (struck through) so the trip's
+        // progress keeps tallying them; checkedAt is NULL while unchecked.
+        or(
+          eq(shoppingItems.isChecked, false),
+          gt(shoppingItems.checkedAt, checkedItemRetentionCutoff(now)),
+        ),
         or(
           isNull(shoppingItems.snoozedUntil),
           lte(shoppingItems.snoozedUntil, now),
@@ -186,12 +193,16 @@ export function buildCompletedShoppingItemsQuery(
   db: Database,
   storeId: string | null,
   shoppingListId: string,
+  now: Date,
 ) {
   return buildShoppingItemRouteRowsQuery(db, storeId)
     .where(
       and(
         eq(shoppingItems.shoppingListId, shoppingListId),
         eq(shoppingItems.isChecked, true),
+        // Items checked within the retention window still live on the active
+        // list; they only move here once the window lapses.
+        lte(shoppingItems.checkedAt, checkedItemRetentionCutoff(now)),
       ),
     )
     .orderBy(
