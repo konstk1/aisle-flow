@@ -139,48 +139,50 @@ export function StoresManager({
   }
 
   return (
-    <section className="py-8">
-      <p className="text-sm font-medium text-zinc-500">Stores</p>
-      <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">
+    <section className="pt-1 pb-12">
+      <p className="text-[13px] font-bold tracking-[0.05em] text-ink-500 uppercase">
+        Stores
+      </p>
+      <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
         Manage your stores.
       </h1>
-      <p className="mt-3 max-w-2xl text-base leading-7 text-zinc-600">
+      <p className="mt-3 max-w-2xl text-sm leading-6 text-ink-400">
         Each store has its own route, learned products, and shopping lists.
         Switch between stores with the picker in the header.
       </p>
 
-      <form className="mt-8 flex gap-2" onSubmit={createNewStore}>
+      <form className="mt-7 flex flex-col gap-2.5 sm:flex-row" onSubmit={createNewStore}>
         <label className="min-w-0 flex-1">
           <span className="sr-only">New store name</span>
           <input
-            className="min-h-11 w-full border bg-white px-3 text-base transition outline-none focus:border-zinc-950"
+            className="h-[52px] w-full rounded-[15px] border border-black/[0.07] bg-white px-4 text-base shadow-card-sm transition outline-none focus:border-accent"
             onChange={(event) => setNewName(event.target.value)}
             placeholder="New store name"
             value={newName}
           />
         </label>
         <button
-          className="inline-flex min-h-11 shrink-0 items-center gap-2 border border-zinc-950 bg-zinc-950 px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-[52px] shrink-0 items-center justify-center gap-1.5 rounded-[15px] bg-gradient-to-br from-accent to-accent-bright px-5 text-base font-semibold text-white shadow-accent-glow transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
           disabled={isCreating}
           type="submit"
         >
-          <Plus aria-hidden="true" className="size-4" />
+          <Plus aria-hidden="true" className="size-[18px]" />
           {isCreating ? "Adding…" : "Add store"}
         </button>
       </form>
       {createError ? (
-        <p className="mt-2 text-sm text-red-700" role="alert">
+        <p className="mt-2 text-sm text-danger" role="alert">
           {createError}
         </p>
       ) : null}
 
       {stores.length === 0 ? (
-        <p className="mt-8 text-base text-zinc-600">
+        <p className="mt-7 card p-6 text-sm text-ink-400">
           No stores yet. Add your first store, then build its route on the Store
           route page.
         </p>
       ) : (
-        <ul className="mt-8 divide-y border">
+        <ul className="mt-7 divide-y divide-divider-soft overflow-hidden card">
           {stores.map((store) => {
             const isEditing = editingStoreId === store.id;
             const isPending = pendingStoreId === store.id;
@@ -188,36 +190,38 @@ export function StoresManager({
             const isCurrent = store.id === currentStoreId;
 
             return (
-              <li className="p-4" key={store.id}>
+              <li className="p-4 sm:px-5" key={store.id}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   {isEditing ? (
                     <label className="min-w-0 flex-1">
                       <span className="sr-only">Store name</span>
                       <input
                         autoFocus
-                        className="min-h-10 w-full border bg-white px-3 text-base outline-none focus:border-zinc-950"
+                        className="min-h-10 w-full rounded-xl border border-black/[0.07] bg-white px-3.5 text-base outline-none transition focus:border-accent"
                         onChange={(event) => setEditingName(event.target.value)}
                         value={editingName}
                       />
                     </label>
                   ) : (
                     <div className="min-w-0">
-                      <p className="truncate font-semibold text-zinc-950">
+                      <p className="truncate font-semibold text-foreground">
                         {store.name}
                       </p>
                       {isCurrent ? (
-                        <p className="mt-0.5 text-xs font-medium text-zinc-500">
-                          Current store
+                        <p className="mt-1">
+                          <span className="rounded-full bg-accent-50 px-2.5 py-0.5 text-xs font-semibold text-accent">
+                            Current store
+                          </span>
                         </p>
                       ) : null}
                     </div>
                   )}
 
-                  <div className="flex shrink-0 items-center gap-2">
+                  <div className="flex shrink-0 items-center gap-1.5">
                     {isEditing ? (
                       <button
                         aria-label={`Save name for ${store.name}`}
-                        className="inline-flex size-9 items-center justify-center border text-zinc-700 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="flex size-[34px] items-center justify-center rounded-[10px] bg-accent-50 text-accent transition hover:bg-accent-100 disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={isPending}
                         onClick={() => void saveRename(store)}
                         title="Save"
@@ -232,7 +236,7 @@ export function StoresManager({
                           ? `Stop renaming ${store.name}`
                           : `Rename ${store.name}`
                       }
-                      className="inline-flex size-9 items-center justify-center border text-zinc-700 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+                      className="flex size-[34px] items-center justify-center rounded-[10px] bg-ink-50 text-ink-500 transition hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
                       disabled={isPending}
                       onClick={() =>
                         isEditing
@@ -250,7 +254,7 @@ export function StoresManager({
                     </button>
                     {isConfirmingDelete ? (
                       <button
-                        className="inline-flex min-h-9 items-center border border-red-700 bg-red-700 px-3 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+                        className="inline-flex min-h-[34px] items-center rounded-[10px] bg-danger px-3 text-sm font-semibold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={isPending}
                         onClick={() => void deleteStore(store)}
                         type="button"
@@ -260,7 +264,7 @@ export function StoresManager({
                     ) : (
                       <button
                         aria-label={`Delete ${store.name}`}
-                        className="inline-flex size-9 items-center justify-center border text-zinc-700 hover:border-red-700 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="flex size-[34px] items-center justify-center rounded-[10px] bg-danger-50 text-danger transition hover:bg-danger-100 disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={isPending}
                         onClick={() => {
                           setConfirmingDeleteId(store.id);
@@ -277,14 +281,14 @@ export function StoresManager({
                 </div>
 
                 {isConfirmingDelete ? (
-                  <p className="mt-3 text-sm text-red-700">
+                  <p className="mt-3 text-sm text-danger">
                     Deleting {store.name} permanently removes its route, learned
                     products, and shopping lists for everyone.
                   </p>
                 ) : null}
 
                 {rowError?.storeId === store.id ? (
-                  <p className="mt-3 text-sm text-red-700" role="alert">
+                  <p className="mt-3 text-sm text-danger" role="alert">
                     {rowError.message}
                   </p>
                 ) : null}

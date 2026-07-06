@@ -118,7 +118,7 @@ export function NewProductDialog({
         <label className="mt-5 block text-sm font-medium text-zinc-800">
           Product name
           <input
-            className="mt-2 min-h-10 w-full border bg-white px-3 text-sm text-zinc-950 outline-none focus:border-zinc-950"
+            className="mt-2 min-h-10 w-full border bg-white px-3 text-sm text-zinc-950 transition outline-none focus:border-accent"
             onChange={(event) => setCanonicalName(event.target.value)}
             placeholder="New product"
             ref={nameRef}
@@ -134,7 +134,7 @@ export function NewProductDialog({
         <label className="mt-4 block text-sm font-medium text-zinc-800">
           Route section
           <select
-            className="mt-2 min-h-10 w-full border bg-white px-3 text-sm text-zinc-950 outline-none focus:border-zinc-950"
+            className="mt-2 min-h-10 w-full border bg-white px-3 text-sm text-zinc-950 transition outline-none focus:border-accent"
             onChange={(event) => setAisleSectionId(event.target.value)}
             value={aisleSectionId}
           >

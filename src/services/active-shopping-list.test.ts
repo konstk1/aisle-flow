@@ -288,6 +288,7 @@ describe("getCompletedShoppingList", () => {
       mocks.db,
       storeId,
       listId,
+      expect.any(Date),
     );
     expect(mocks.buildRouteOrderedShoppingItemsQuery).not.toHaveBeenCalled();
     expect(result).not.toBeNull();
@@ -525,6 +526,7 @@ describe("setActiveShoppingItemChecked", () => {
       mocks.db,
       storeId,
       listId,
+      expect.any(Date),
     );
   });
 

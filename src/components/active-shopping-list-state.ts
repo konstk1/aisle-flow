@@ -233,25 +233,41 @@ export function buildProductCorrectionRequest({
   };
 }
 
+// A snapshot fetched while a check/uncheck PATCH is still in flight reflects
+// the item's old checked state; keep the optimistic version of those items so
+// they don't flash back mid-mutation.
 export function mergeVisibleListSnapshotAfterCheck({
   completedCheckItemId,
+  currentList,
   nextList,
   pendingCheckItemIds,
 }: {
-  completedCheckItemId: string;
+  completedCheckItemId: string | null;
+  currentList: ActiveShoppingListPayload | null;
   nextList: ActiveShoppingListPayload;
   pendingCheckItemIds: ReadonlySet<string>;
 }): ActiveShoppingListPayload {
-  const hiddenPendingItemIds = new Set(pendingCheckItemIds);
-  hiddenPendingItemIds.delete(completedCheckItemId);
+  const heldItemIds = new Set(pendingCheckItemIds);
 
-  if (hiddenPendingItemIds.size === 0) {
+  if (completedCheckItemId !== null) {
+    heldItemIds.delete(completedCheckItemId);
+  }
+
+  if (heldItemIds.size === 0 || !currentList) {
     return nextList;
   }
 
+  const currentItemsById = new Map(
+    currentList.items.map((item) => [item.id, item]),
+  );
+
   return {
     ...nextList,
-    items: nextList.items.filter((item) => !hiddenPendingItemIds.has(item.id)),
+    items: nextList.items.map((item) =>
+      heldItemIds.has(item.id)
+        ? (currentItemsById.get(item.id) ?? item)
+        : item,
+    ),
   };
 }
 

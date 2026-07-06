@@ -200,7 +200,7 @@ export function FeedbackButton() {
             <label className="mt-5 block text-sm font-medium text-zinc-800">
               What would you like to share?
               <textarea
-                className="mt-2 min-h-32 w-full resize-y rounded-md border bg-white px-3 py-2 text-base text-zinc-950 shadow-sm transition outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200"
+                className="mt-2 min-h-32 w-full resize-y rounded-md border bg-white px-3 py-2 text-base text-zinc-950 shadow-sm transition outline-none focus:border-accent focus:ring-2 focus:ring-accent/15"
                 disabled={isSubmitting}
                 maxLength={FEEDBACK_TEXT_MAX_LENGTH}
                 onChange={(event) => setText(event.target.value)}

@@ -10,6 +10,7 @@ import {
   Pencil,
   Plus,
   RotateCw,
+  Search,
   Trash2,
   Upload,
   X,
@@ -23,6 +24,9 @@ import type {
   FieldErrors,
 } from "@/domain/active-shopping-list";
 import { formatAisleLabel, formatSectionLabel } from "@/domain/store-layout";
+
+import { colorForKey } from "@/components/aisle-accents";
+import { useShellProgress } from "@/components/shell-progress";
 
 import { LocationChangeDialog } from "./location-change-dialog";
 import { NewProductDialog } from "./new-product-dialog";
@@ -160,6 +164,10 @@ const MODE_CONFIG: Record<ShoppingListMode, ShoppingListModeConfig> = {
   },
 };
 
+function itemAccentColor(item: ActiveShoppingItemPayload) {
+  return colorForKey(shoppingItemAisleGroup(item).id);
+}
+
 export function ActiveShoppingList({
   hasStoreRoute,
   initialActiveList,
@@ -262,6 +270,15 @@ function ShoppingListView({
   const modeConfig = MODE_CONFIG[mode];
   const listEndpoint = modeConfig.listEndpoint;
   const items = activeList?.items ?? EMPTY_ITEMS;
+  const checkedCount = useMemo(
+    () => items.reduce((count, item) => count + (item.isChecked ? 1 : 0), 0),
+    [items],
+  );
+
+  useShellProgress(
+    isActiveMode ? { checkedCount, totalCount: items.length } : null,
+  );
+
   const itemGroups = useMemo(() => groupShoppingItemsByAisle(items), [items]);
   const editItem = items.find((item) => item.id === editItemId) ?? null;
   const editHasChanges = editItem
@@ -298,7 +315,17 @@ function ShoppingListView({
       return false;
     }
 
-    setActiveList(listResult.list);
+    const nextList = listResult.list;
+    setActiveList((current) =>
+      nextList
+        ? mergeVisibleListSnapshotAfterCheck({
+            completedCheckItemId: null,
+            currentList: current,
+            nextList,
+            pendingCheckItemIds: pendingRemovalItemIdsRef.current,
+          })
+        : nextList,
+    );
     setFieldErrors({});
     setFieldErrorScope(null);
     setMessage(null);
@@ -319,11 +346,13 @@ function ShoppingListView({
       return false;
     }
 
-    setActiveList(
-      listResult.list
+    const nextList = listResult.list;
+    setActiveList((current) =>
+      nextList
         ? mergeVisibleListSnapshotAfterCheck({
             completedCheckItemId: completedItemId,
-            nextList: listResult.list,
+            currentList: current,
+            nextList,
             pendingCheckItemIds: pendingRemovalItemIdsRef.current,
           })
         : null,
@@ -453,11 +482,14 @@ function ShoppingListView({
   }
 
   function setChecked(itemId: string, isChecked: boolean) {
+    if (isActiveMode) {
+      return toggleActiveCheck(itemId, isChecked);
+    }
+
     return mutateItemRemoval({
       itemId,
       body: { isChecked },
-      shouldRemoveFromVisibleList:
-        (isCompletedMode && !isChecked) || (!isCompletedMode && isChecked),
+      shouldRemoveFromVisibleList: isCompletedMode && !isChecked,
       updateVisibleItem: (item) => ({
         ...item,
         isChecked,
@@ -465,6 +497,62 @@ function ShoppingListView({
       }),
       errorMessage: "The item could not be updated. Check your connection.",
     });
+  }
+
+  // In the active view, checking an item keeps it visible with a strikethrough
+  // so the trip's progress keeps tallying it. The server retains checked items
+  // on the active list for CHECKED_ITEM_RETENTION_MS before they move to the
+  // completed view, so refetches keep them too; we only hold the optimistic
+  // state locally while the PATCH is in flight.
+  async function toggleActiveCheck(itemId: string, isChecked: boolean) {
+    const previousItemIndex =
+      activeList?.items.findIndex((item) => item.id === itemId) ?? -1;
+    const previousItem =
+      previousItemIndex >= 0 ? activeList?.items[previousItemIndex] : undefined;
+
+    setMessage(null);
+    setActiveList((current) =>
+      current
+        ? {
+            ...current,
+            items: current.items.map((item) =>
+              item.id === itemId
+                ? {
+                    ...item,
+                    isChecked,
+                    checkedAt: isChecked ? new Date().toISOString() : null,
+                  }
+                : item,
+            ),
+          }
+        : current,
+    );
+    setItemRemovalPending(itemId, true);
+
+    try {
+      const response = await fetch(itemEndpoint(itemId), {
+        body: JSON.stringify({ isChecked }),
+        headers: { "Content-Type": "application/json" },
+        method: "PATCH",
+      });
+
+      if (!response.ok) {
+        const result = (await response.json()) as ShoppingListResponse;
+
+        if (previousItem) {
+          restoreItem(previousItem, previousItemIndex);
+        }
+
+        setMessage(result.error ?? "The item could not be updated.");
+      }
+    } catch {
+      if (previousItem) {
+        restoreItem(previousItem, previousItemIndex);
+      }
+      setMessage("The item could not be updated. Check your connection.");
+    } finally {
+      setItemRemovalPending(itemId, false);
+    }
   }
 
   function setSnoozed(itemId: string, snoozed: boolean) {
@@ -784,48 +872,50 @@ function ShoppingListView({
     setFieldErrorScope(null);
   }
 
-  function renderShoppingItemRow(item: ActiveShoppingItemPayload) {
+  function renderShoppingItemRow(
+    item: ActiveShoppingItemPayload,
+    accentColor: string,
+  ) {
     return (
-      <div key={item.id}>
-        <ShoppingItemRow
-          correctionFieldErrors={correctionFieldErrors}
-          correctionForm={correctionForm}
-          correctionMessage={correctionMessage}
-          correctionOptions={correctionOptions}
-          correctionOptionsError={correctionOptionsError}
-          correctionOptionsLoading={correctionOptionsLoading}
-          editExpanded={editItemId === item.id}
-          editFieldErrors={editFieldErrors}
-          editMessage={editMessage}
-          editText={editText}
-          item={item}
-          mode={mode}
-          onCheckedChange={(isChecked) => setChecked(item.id, isChecked)}
-          onCorrectionFormChange={updateCorrectionForm}
-          onDelete={() => deleteItem(item)}
-          onEditCancel={closeEdit}
-          onEditOpen={() => openEdit(item)}
-          onEditSubmit={saveEdit}
-          onEditTextChange={setEditText}
-          onRetryCorrectionOptions={loadCorrectionOptions}
-          onSnoozeChange={(snoozed) => setSnoozed(item.id, snoozed)}
-          pending={pendingRemovalItemIds.has(item.id)}
-          pendingCorrection={pendingCorrectionItemId === item.id}
-          pendingDelete={pendingDeleteItemIds.has(item.id)}
-          pendingEdit={pendingEditItemId === item.id}
-          saveDisabled={!editHasChanges}
-          showCompletedAt={isCompletedMode}
-        />
-      </div>
+      <ShoppingItemRow
+        accentColor={accentColor}
+        correctionFieldErrors={correctionFieldErrors}
+        correctionForm={correctionForm}
+        correctionMessage={correctionMessage}
+        correctionOptions={correctionOptions}
+        correctionOptionsError={correctionOptionsError}
+        correctionOptionsLoading={correctionOptionsLoading}
+        editExpanded={editItemId === item.id}
+        editFieldErrors={editFieldErrors}
+        editMessage={editMessage}
+        editText={editText}
+        item={item}
+        mode={mode}
+        onCheckedChange={(isChecked) => setChecked(item.id, isChecked)}
+        onCorrectionFormChange={updateCorrectionForm}
+        onDelete={() => deleteItem(item)}
+        onEditCancel={closeEdit}
+        onEditOpen={() => openEdit(item)}
+        onEditSubmit={saveEdit}
+        onEditTextChange={setEditText}
+        onRetryCorrectionOptions={loadCorrectionOptions}
+        onSnoozeChange={(snoozed) => setSnoozed(item.id, snoozed)}
+        pending={pendingRemovalItemIds.has(item.id)}
+        pendingCorrection={pendingCorrectionItemId === item.id}
+        pendingDelete={pendingDeleteItemIds.has(item.id)}
+        pendingEdit={pendingEditItemId === item.id}
+        saveDisabled={!editHasChanges}
+        showCompletedAt={isCompletedMode}
+      />
     );
   }
 
   return (
-    <section className="pt-5 pb-12 sm:pt-7">
+    <section className="pt-1 pb-12">
       {!isActiveMode ? (
-        <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
           <Link
-            className="inline-flex min-h-11 items-center gap-2 border px-4 text-sm font-medium text-zinc-800 hover:border-zinc-950"
+            className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-ink-900 shadow-card-sm transition hover:text-accent"
             href="/"
           >
             <ArrowLeft aria-hidden="true" className="size-4" />
@@ -833,7 +923,7 @@ function ShoppingListView({
           </Link>
           <button
             aria-label={modeConfig.refreshLabel}
-            className="inline-flex size-11 shrink-0 items-center justify-center border text-zinc-700 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl bg-white text-ink-600 shadow-card-sm transition hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
             disabled={pendingAction !== null}
             onClick={refreshList}
             type="button"
@@ -842,56 +932,67 @@ function ShoppingListView({
           </button>
         </div>
       ) : (
-        <form className="flex flex-col gap-2 sm:flex-row" onSubmit={addItem}>
-          <label className="min-w-0 flex-1">
-            <span className="sr-only">Item text</span>
-            <input
-              className="min-h-11 w-full border bg-white px-3 text-base transition outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={pendingAction !== null}
-              onChange={(event) => setItemText(event.target.value)}
-              placeholder="Milk"
-              value={itemText}
-            />
-            <FieldError
-              message={fieldErrorScope === "add" ? fieldErrors.text?.[0] : null}
-            />
-          </label>
-          <div className="flex shrink-0 gap-2">
-            <button
-              className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 border border-zinc-950 bg-zinc-950 px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none"
-              disabled={pendingAction !== null}
-              type="submit"
-            >
-              <Plus aria-hidden="true" className="size-4" />
-              Add
-            </button>
-            <button
-              aria-expanded={importExpanded}
-              className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 border px-4 text-sm font-medium text-zinc-800 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50 sm:flex-none"
-              disabled={pendingAction !== null}
-              onClick={openImport}
-              type="button"
-            >
-              <Upload aria-hidden="true" className="size-4" />
-              Import
-            </button>
-            <button
-              aria-label={modeConfig.refreshLabel}
-              className="inline-flex size-11 shrink-0 items-center justify-center border text-zinc-700 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={pendingAction !== null}
-              onClick={refreshList}
-              type="button"
-            >
-              <RotateCw aria-hidden="true" className="size-4" />
-            </button>
-          </div>
-        </form>
+        <>
+          <form
+            className="flex flex-col gap-2.5 sm:flex-row"
+            onSubmit={addItem}
+          >
+            <label className="relative min-w-0 flex-1">
+              <span className="sr-only">Item text</span>
+              <Search
+                aria-hidden="true"
+                className="pointer-events-none absolute top-1/2 left-4 size-[18px] -translate-y-1/2 text-ink-200"
+              />
+              <input
+                className="h-[52px] w-full rounded-[15px] border border-black/[0.07] bg-white pr-4 pl-11 text-base shadow-card-sm transition outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={pendingAction !== null}
+                onChange={(event) => setItemText(event.target.value)}
+                placeholder="Add an item…"
+                value={itemText}
+              />
+              <FieldError
+                message={fieldErrorScope === "add" ? fieldErrors.text?.[0] : null}
+              />
+            </label>
+            <div className="flex shrink-0 gap-2.5">
+              <button
+                className="inline-flex h-[52px] flex-1 items-center justify-center gap-1.5 rounded-[15px] bg-gradient-to-br from-accent to-accent-bright px-5 text-base font-semibold text-white shadow-accent-glow transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none"
+                disabled={pendingAction !== null}
+                type="submit"
+              >
+                <Plus aria-hidden="true" className="size-[18px]" />
+                Add
+              </button>
+              <button
+                aria-expanded={importExpanded}
+                aria-label="Import a list"
+                className="inline-flex size-[52px] shrink-0 items-center justify-center rounded-[15px] border border-black/[0.07] bg-white text-ink-600 shadow-card-sm transition hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={pendingAction !== null}
+                onClick={openImport}
+                title="Import"
+                type="button"
+              >
+                <Upload aria-hidden="true" className="size-[19px]" />
+              </button>
+              <button
+                aria-label={modeConfig.refreshLabel}
+                className="inline-flex size-[52px] shrink-0 items-center justify-center rounded-[15px] border border-black/[0.07] bg-white text-ink-600 shadow-card-sm transition hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={pendingAction !== null}
+                onClick={refreshList}
+                title="Refresh"
+                type="button"
+              >
+                <RotateCw aria-hidden="true" className="size-[19px]" />
+              </button>
+            </div>
+          </form>
+        </>
       )}
 
       {!hasStoreRoute ? (
-        <p className="mt-4 text-sm text-zinc-600">
+        <p className="mt-4 text-sm text-ink-500">
           <Link
-            className="font-medium text-zinc-950 underline-offset-4 hover:underline"
+            className="font-semibold text-accent underline-offset-4 hover:underline"
             href="/route"
           >
             Build a store route
@@ -901,11 +1002,14 @@ function ShoppingListView({
       ) : null}
 
       {isActiveMode && importExpanded ? (
-        <form className="mt-5 border-y py-4" onSubmit={importItems}>
-          <label className="block text-sm font-medium text-zinc-800">
+        <form
+          className="mt-5 card p-5"
+          onSubmit={importItems}
+        >
+          <label className="block text-sm font-semibold text-ink-900">
             Paste list
             <textarea
-              className="mt-2 min-h-28 w-full resize-y border bg-white px-3 py-2 text-base transition outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-2 min-h-28 w-full resize-y rounded-[14px] border border-black/[0.07] bg-white px-3.5 py-2.5 text-base transition outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
               disabled={pendingAction !== null}
               onChange={(event) => setImportText(event.target.value)}
               placeholder={"Rice\nBroccoli"}
@@ -918,9 +1022,9 @@ function ShoppingListView({
               }
             />
           </label>
-          <div className="mt-2 flex flex-wrap gap-2">
+          <div className="mt-3 flex flex-wrap gap-2.5">
             <button
-              className="inline-flex min-h-11 items-center gap-2 border border-zinc-950 bg-zinc-950 px-4 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex min-h-11 items-center gap-2 rounded-[14px] bg-gradient-to-br from-accent to-accent-bright px-5 text-sm font-semibold text-white shadow-accent-glow transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
               disabled={pendingAction !== null}
               type="submit"
             >
@@ -928,7 +1032,7 @@ function ShoppingListView({
               Import
             </button>
             <button
-              className="inline-flex min-h-11 items-center gap-2 border px-4 text-sm font-medium text-zinc-800 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex min-h-11 items-center gap-2 rounded-[14px] bg-ink-50 px-5 text-sm font-semibold text-ink-600 transition hover:bg-divider disabled:cursor-not-allowed disabled:opacity-50"
               disabled={pendingAction !== null}
               onClick={closeImport}
               type="button"
@@ -940,48 +1044,80 @@ function ShoppingListView({
         </form>
       ) : null}
 
-      <div className="mt-8 space-y-7">
+      <div className="mt-7 space-y-6">
         {items.length === 0 ? (
-          <p className="border-y py-6 text-sm text-zinc-600">
+          <div className="card p-6 text-sm text-ink-400">
             {modeConfig.emptyText}
-          </p>
+          </div>
         ) : !isActiveMode ? (
-          <div>{items.map(renderShoppingItemRow)}</div>
+          <div className="overflow-hidden card">
+            {items.map((item, index) => (
+              <div
+                className={index > 0 ? "border-t border-divider-soft" : ""}
+                key={item.id}
+              >
+                {renderShoppingItemRow(item, itemAccentColor(item))}
+              </div>
+            ))}
+          </div>
         ) : (
-          itemGroups.map((group) => (
-            <section key={group.id}>
-              <h2 className="mb-2 text-base font-semibold text-zinc-700">
-                {group.label}
-              </h2>
-              <div>{group.items.map(renderShoppingItemRow)}</div>
-            </section>
-          ))
+          itemGroups.map((group) => {
+            const accentColor = colorForKey(group.id);
+
+            return (
+              <section key={group.id}>
+                <div className="mb-3 flex items-center gap-2.5 pl-0.5">
+                  <span
+                    aria-hidden="true"
+                    className="size-2.5 shrink-0 rounded-[4px]"
+                    style={{ background: accentColor }}
+                  />
+                  <h2 className="text-[13px] font-bold tracking-[0.05em] text-ink-500 uppercase">
+                    {group.label}
+                  </h2>
+                  <span className="rounded-full bg-divider px-2.5 py-0.5 text-xs font-semibold text-ink-250">
+                    {group.items.length}
+                  </span>
+                </div>
+                <div className="overflow-hidden card">
+                  {group.items.map((item, index) => (
+                    <div
+                      className={index > 0 ? "border-t border-divider-soft" : ""}
+                      key={item.id}
+                    >
+                      {renderShoppingItemRow(item, accentColor)}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            );
+          })
         )}
       </div>
 
       {message ? (
-        <p className="mt-5 text-sm text-zinc-700" role="status">
+        <p className="mt-5 text-sm text-ink-600" role="status">
           {message}
         </p>
       ) : null}
 
       {isActiveMode ? (
-        <div className="mt-8 flex flex-wrap gap-2 border-t pt-4">
+        <div className="mt-8 flex flex-wrap gap-2.5">
           <Link
-            className="inline-flex min-h-11 items-center gap-2 border px-4 text-sm font-medium text-zinc-800 hover:border-zinc-950"
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-ink-900 shadow-card-sm transition hover:text-accent"
             href="/snoozed"
           >
-            <Clock aria-hidden="true" className="size-4" />
+            <Clock aria-hidden="true" className="size-4 text-ink-350" />
             Snoozed
-            <ArrowRight aria-hidden="true" className="size-4" />
+            <ArrowRight aria-hidden="true" className="size-4 text-ink-200" />
           </Link>
           <Link
-            className="inline-flex min-h-11 items-center gap-2 border px-4 text-sm font-medium text-zinc-800 hover:border-zinc-950"
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-ink-900 shadow-card-sm transition hover:text-accent"
             href="/completed"
           >
-            <Check aria-hidden="true" className="size-4" />
+            <Check aria-hidden="true" className="size-4 text-ink-350" />
             Completed
-            <ArrowRight aria-hidden="true" className="size-4" />
+            <ArrowRight aria-hidden="true" className="size-4 text-ink-200" />
           </Link>
         </div>
       ) : null}
@@ -1004,6 +1140,7 @@ function ShoppingListView({
 }
 
 function ShoppingItemRow({
+  accentColor,
   correctionFieldErrors,
   correctionForm,
   correctionMessage,
@@ -1032,6 +1169,7 @@ function ShoppingItemRow({
   saveDisabled,
   showCompletedAt,
 }: {
+  accentColor: string;
   correctionFieldErrors: FieldErrors;
   correctionForm: ProductCorrectionFormState;
   correctionMessage: string | null;
@@ -1071,33 +1209,43 @@ function ShoppingItemRow({
   );
 
   return (
-    <div className="flex min-h-16 items-center gap-3 py-3">
+    <div
+      className={`flex gap-4 px-[18px] py-[15px] ${
+        editExpanded ? "items-start" : "items-center"
+      }`}
+    >
       {isSnoozedRow ? (
         <button
           aria-label="Restore item to list"
-          className="inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-zinc-400 text-zinc-600 transition hover:border-zinc-950 hover:text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+          className="relative flex size-[26px] shrink-0 items-center justify-center rounded-full border-2 border-ink-150 bg-white text-ink-500 transition after:absolute after:-inset-[9px] hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
           disabled={pending}
           onClick={() => onSnoozeChange(false)}
           title="Restore to list"
           type="button"
         >
-          <Clock aria-hidden="true" className="size-4" />
+          <Clock aria-hidden="true" className="size-3.5" />
         </button>
       ) : (
         <button
           aria-label={
             item.isChecked ? "Mark item unchecked" : "Mark item checked"
           }
-          className={`inline-flex size-8 shrink-0 items-center justify-center rounded-full border transition ${
-            item.isChecked
-              ? "border-zinc-950 bg-zinc-950 text-white"
-              : "border-zinc-400 bg-transparent text-transparent hover:border-zinc-950"
-          }`}
+          className="relative flex size-[26px] shrink-0 items-center justify-center rounded-full border-2 transition after:absolute after:-inset-[9px] disabled:cursor-not-allowed disabled:opacity-50"
           disabled={pending}
           onClick={() => onCheckedChange(!item.isChecked)}
+          style={
+            item.isChecked
+              ? { borderColor: accentColor, background: accentColor }
+              : { borderColor: "var(--color-ink-150)", background: "#fff" }
+          }
           type="button"
         >
-          <Check aria-hidden="true" className="size-4" />
+          <Check
+            aria-hidden="true"
+            className="size-3.5 text-white"
+            strokeWidth={3.2}
+            style={{ opacity: item.isChecked ? 1 : 0 }}
+          />
         </button>
       )}
 
@@ -1112,7 +1260,7 @@ function ShoppingItemRow({
             <label className="block">
               <span className="sr-only">Item name</span>
               <input
-                className="min-h-10 w-full border bg-white px-3 text-base leading-6 outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
+                className="min-h-10 w-full rounded-xl border border-black/[0.07] bg-white px-3.5 text-base leading-6 outline-none transition focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={editPending}
                 onChange={(event) => onEditTextChange(event.target.value)}
                 value={editText}
@@ -1133,15 +1281,15 @@ function ShoppingItemRow({
               pending={editPending}
             />
             {editMessage ? (
-              <p className="text-sm text-zinc-700" role="status">
+              <p className="text-sm text-ink-600" role="status">
                 {editMessage}
               </p>
             ) : null}
           </form>
-          <div className="ml-auto flex shrink-0 items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-1.5">
             <button
               aria-label="Save item"
-              className="inline-flex size-10 items-center justify-center border border-zinc-950 bg-zinc-950 text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex size-10 items-center justify-center rounded-xl bg-gradient-to-br from-accent to-accent-bright text-white shadow-accent-glow-sm transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={editPending || saveDisabled}
               form={editFormId}
               title="Save"
@@ -1151,7 +1299,7 @@ function ShoppingItemRow({
             </button>
             <button
               aria-label="Cancel edit"
-              className="inline-flex size-10 items-center justify-center border text-zinc-700 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex size-10 items-center justify-center rounded-xl bg-ink-50 text-ink-600 transition hover:bg-divider disabled:cursor-not-allowed disabled:opacity-50"
               disabled={editPending}
               onClick={onEditCancel}
               title="Cancel"
@@ -1161,7 +1309,7 @@ function ShoppingItemRow({
             </button>
             <button
               aria-label="Delete item"
-              className="inline-flex size-10 items-center justify-center border text-red-700 hover:border-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex size-10 items-center justify-center rounded-xl bg-danger-50 text-danger transition hover:bg-danger-100 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={pendingDelete || editPending}
               onClick={onDelete}
               title="Delete"
@@ -1177,21 +1325,28 @@ function ShoppingItemRow({
             className={`min-w-0 flex-1 ${isActiveRow ? "touch-manipulation select-none" : ""}`}
             {...longPressHandlers}
           >
-            <p
-              className={`text-base leading-6 break-words ${
-                item.isChecked ? "text-zinc-400 line-through" : "text-zinc-950"
-              }`}
+            <div
+              className="text-[16.5px] font-semibold tracking-[-0.01em] break-words"
+              style={{
+                color: item.isChecked ? "var(--color-ink-300)" : "var(--color-foreground)",
+                textDecoration: item.isChecked ? "line-through" : "none",
+              }}
             >
               {item.rawText}
-            </p>
-            <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm leading-5 text-zinc-500">
+            </div>
+            <div className="mt-[3px] flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-medium text-ink-400">
               {needsAttention ? (
                 <AlertTriangle
                   aria-hidden="true"
-                  className="size-4 shrink-0 text-amber-600"
+                  className="size-3 shrink-0 text-amber-500"
                 />
               ) : (
-                <MapPin aria-hidden="true" className="size-4 shrink-0" />
+                <MapPin
+                  aria-hidden="true"
+                  className="size-3 shrink-0"
+                  strokeWidth={2.2}
+                  style={{ color: accentColor }}
+                />
               )}
               <span>{locationLabel(item)}</span>
               {showCompletedAt && item.checkedAt ? (
@@ -1200,13 +1355,13 @@ function ShoppingItemRow({
               {isSnoozedRow && item.snoozedUntil ? (
                 <span>{formatSnoozedUntil(item.snoozedUntil)}</span>
               ) : null}
-            </p>
+            </div>
           </div>
-          <div className="ml-auto flex shrink-0 items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-1.5">
             {isActiveRow ? (
               <button
                 aria-label="Snooze item"
-                className="inline-flex size-10 items-center justify-center border text-zinc-700 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+                className="relative flex size-[34px] items-center justify-center rounded-[10px] bg-ink-50 text-ink-500 transition after:absolute after:-inset-y-[5px] after:-inset-x-px hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={pending || pendingEdit || pendingDelete}
                 onClick={() => onSnoozeChange(true)}
                 title="Snooze"
@@ -1219,23 +1374,23 @@ function ShoppingItemRow({
               aria-controls={editFormId}
               aria-expanded={editExpanded}
               aria-label="Edit item"
-              className="inline-flex size-10 items-center justify-center border text-zinc-700 hover:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+              className="relative flex size-[34px] items-center justify-center rounded-[10px] bg-ink-50 text-ink-500 transition after:absolute after:-inset-y-[5px] after:-inset-x-px hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
               disabled={pendingEdit || pendingDelete}
               onClick={onEditOpen}
               title="Edit"
               type="button"
             >
-              <Pencil aria-hidden="true" className="size-4" />
+              <Pencil aria-hidden="true" className="size-[15px]" />
             </button>
             <button
               aria-label="Delete item"
-              className="inline-flex size-10 items-center justify-center border text-red-700 hover:border-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="relative flex size-[34px] items-center justify-center rounded-[10px] bg-danger-50 text-danger transition after:absolute after:-inset-y-[5px] after:-inset-x-px hover:bg-danger-100 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={pendingDelete || pendingEdit}
               onClick={onDelete}
               title="Delete"
               type="button"
             >
-              <Trash2 aria-hidden="true" className="size-4" />
+              <Trash2 aria-hidden="true" className="size-[15px]" />
             </button>
           </div>
         </>
@@ -1281,19 +1436,19 @@ function InlineLocationEditor({
   return (
     <div className="space-y-2">
       {loadingOptions ? (
-        <p className="text-sm text-zinc-600" role="status">
+        <p className="text-sm text-ink-400" role="status">
           Loading location options.
         </p>
       ) : null}
 
       {optionsError ? (
         <div className="flex flex-wrap items-center gap-2">
-          <p className="text-sm text-red-700" role="alert">
+          <p className="text-sm text-danger" role="alert">
             {optionsError}
           </p>
           <button
             aria-label="Retry loading location options"
-            className="inline-flex size-9 items-center justify-center border text-zinc-700 hover:border-zinc-950"
+            className="flex size-9 items-center justify-center rounded-[10px] bg-ink-50 text-ink-500 transition hover:text-accent"
             onClick={onRetryOptions}
             title="Retry"
             type="button"
@@ -1307,9 +1462,9 @@ function InlineLocationEditor({
       <FieldError messages={fieldErrors.rawText} />
 
       {options && aisleSections.length === 0 ? (
-        <p className="text-sm text-zinc-600">
+        <p className="text-sm text-ink-400">
           <Link
-            className="font-medium text-zinc-950 underline-offset-4 hover:underline"
+            className="font-semibold text-accent underline-offset-4 hover:underline"
             href="/route"
           >
             Build a store route
@@ -1323,7 +1478,7 @@ function InlineLocationEditor({
               Product
             </label>
             <select
-              className="min-h-10 w-full border bg-white px-3 text-sm outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
+              className="min-h-10 w-full rounded-xl border border-black/[0.07] bg-white px-3.5 text-sm outline-none transition focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
               disabled={formDisabled}
               id={productControlId}
               onChange={(event) => {
@@ -1368,7 +1523,7 @@ function InlineLocationEditor({
           <label className="block min-w-0">
             <span className="sr-only">Route section</span>
             <select
-              className="min-h-10 w-full border bg-white px-3 text-sm outline-none focus:border-zinc-950 disabled:cursor-not-allowed disabled:opacity-60"
+              className="min-h-10 w-full rounded-xl border border-black/[0.07] bg-white px-3.5 text-sm outline-none transition focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
               disabled={formDisabled}
               onChange={(event) =>
                 onFormChange({ aisleSectionId: event.target.value })
@@ -1393,7 +1548,7 @@ function InlineLocationEditor({
       )}
 
       {message ? (
-        <p className="text-sm text-zinc-700" role="status">
+        <p className="text-sm text-ink-600" role="status">
           {message}
         </p>
       ) : null}
@@ -1591,7 +1746,7 @@ function FieldError({
     <>
       {allMessages.map((fieldMessage, index) => (
         <span
-          className="mt-1 block text-sm font-normal text-red-700"
+          className="mt-1 block text-sm font-medium text-danger"
           key={`${fieldMessage}-${index}`}
         >
           {fieldMessage}

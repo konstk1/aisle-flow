@@ -57,9 +57,11 @@ describe("shopping-list queries", () => {
     expect(query).toContain(
       '"aisle_sections"."store_id" = "aisles"."store_id"',
     );
-    expect(query).toContain('"shopping_items"."is_checked" = $3');
     expect(query).toContain(
-      '("shopping_items"."snoozed_until" is null or "shopping_items"."snoozed_until" <= $4)',
+      '("shopping_items"."is_checked" = $3 or "shopping_items"."checked_at" > $4)',
+    );
+    expect(query).toContain(
+      '("shopping_items"."snoozed_until" is null or "shopping_items"."snoozed_until" <= $5)',
     );
     expect(query).toMatch(
       /order by case when "aisle_sections"\."path_order" is null then 1 else 0 end asc, "aisle_sections"\."path_order" asc, coalesce\("product_locations"\."position_within_section", 2147483647\) asc, "shopping_items"\."order_key" asc/,
@@ -68,6 +70,7 @@ describe("shopping-list queries", () => {
       "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
       "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
       false,
+      "2025-12-31T20:00:00.000Z",
       "2026-01-01T00:00:00.000Z",
     ]);
   });
@@ -84,6 +87,7 @@ describe("shopping-list queries", () => {
     expect(params).toEqual([
       "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
       false,
+      "2025-12-31T20:00:00.000Z",
       "2026-01-01T00:00:00.000Z",
     ]);
   });
@@ -115,10 +119,12 @@ describe("shopping-list queries", () => {
       database,
       "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
       "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
+      new Date("2026-01-01T00:00:00Z"),
     ).toSQL();
 
     expect(query).toContain('left join "product_locations"');
     expect(query).toContain('"shopping_items"."is_checked" = $3');
+    expect(query).toContain('"shopping_items"."checked_at" <= $4');
     expect(query).toMatch(
       /order by "shopping_items"\."checked_at" desc, "shopping_items"\."updated_at" desc, "shopping_items"\."created_at" desc/,
     );
@@ -126,6 +132,7 @@ describe("shopping-list queries", () => {
       "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
       "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
       true,
+      "2025-12-31T20:00:00.000Z",
     ]);
   });
 

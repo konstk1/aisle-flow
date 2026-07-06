@@ -58,15 +58,19 @@ export function AppNav() {
       <button
         aria-expanded={isOpen}
         aria-haspopup="menu"
-        className="inline-flex min-h-11 items-center gap-2.5 pr-2 font-semibold tracking-tight text-zinc-950"
+        className="inline-flex min-h-11 items-center gap-3 pr-1 text-zinc-950"
         onClick={() => setIsOpen((current) => !current)}
         type="button"
       >
-        <ActiveIcon aria-hidden="true" className="size-5" />
-        <span>{activeItem.label}</span>
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-[11px] bg-gradient-to-br from-accent to-accent-bright text-white shadow-accent-glow">
+          <ActiveIcon aria-hidden="true" className="size-5" />
+        </span>
+        <span className="truncate text-lg font-bold tracking-tight sm:text-xl">
+          {activeItem.label}
+        </span>
         <ChevronDown
           aria-hidden="true"
-          className={`size-4 text-zinc-500 transition ${
+          className={`size-4 shrink-0 text-ink-300 transition ${
             isOpen ? "rotate-180" : ""
           }`}
         />
@@ -75,7 +79,7 @@ export function AppNav() {
       {isOpen ? (
         <nav
           aria-label="App sections"
-          className="absolute top-full left-0 z-10 mt-2 w-56 border bg-white py-1 shadow-lg"
+          className="absolute top-full left-0 z-10 mt-2 w-60 rounded-2xl border-0 bg-white p-1.5 shadow-popover"
         >
           {navItems.map((item) => {
             const Icon = item.icon;
@@ -84,15 +88,20 @@ export function AppNav() {
             return (
               <Link
                 aria-current={isActive ? "page" : undefined}
-                className="flex min-h-11 items-center gap-3 px-3 text-sm font-medium text-zinc-800 hover:bg-zinc-50"
+                className={`flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold transition hover:bg-ink-50 ${
+                  isActive ? "text-zinc-950" : "text-ink-700"
+                }`}
                 href={item.href}
                 key={item.href}
                 onClick={() => setIsOpen(false)}
               >
-                <Icon aria-hidden="true" className="size-4 text-zinc-500" />
+                <Icon
+                  aria-hidden="true"
+                  className={`size-4 ${isActive ? "text-accent" : "text-ink-350"}`}
+                />
                 <span className="min-w-0 flex-1">{item.label}</span>
                 {isActive ? (
-                  <Check aria-hidden="true" className="size-4 text-zinc-950" />
+                  <Check aria-hidden="true" className="size-4 text-accent" />
                 ) : null}
               </Link>
             );
