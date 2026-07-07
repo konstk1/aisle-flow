@@ -2,14 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import { createDatabase } from "../create-client";
 import {
+  buildLearnedAliasByIdQuery,
   buildLearnedAliasDeleteQuery,
   buildLearnedAliasListQuery,
   buildManualProductAliasCorrectionQuery,
   buildManualProductLocationCorrectionQuery,
   buildProductConceptCreateQuery,
   buildProductConceptListQuery,
-  buildProductLearningEventInsertQuery,
-  buildProductLearningEventListQuery,
   productConceptIdByNormalizedName,
 } from "./product-corrections";
 
@@ -218,48 +217,24 @@ describe("product correction queries", () => {
     ]);
   });
 
-  it("inserts learning events with actor and display snapshots", () => {
-    const { sql: query, params } = buildProductLearningEventInsertQuery(
+  it("scopes the by-id alias lookup to the owning user", () => {
+    const { sql: query, params } = buildLearnedAliasByIdQuery(
       database,
-      {
-        storeId,
-        normalizedText: "wild rice",
-        action: "updated",
-        productConceptId,
-        productConceptName: "Rice",
-        aisleSectionId,
-        aisleSectionLabel: "Aisle 2 · Dry goods",
-        createdByUserId: "user-a",
-        now,
-      },
+      userId,
+      "44444444-4444-4444-8444-444444444444",
     ).toSQL();
 
-    expect(query).toContain('insert into "product_learning_events"');
-    expect(query).toContain("returning");
+    expect(query).toContain('from "product_aliases"');
+    expect(query).toContain('"product_aliases"."id" = $');
+    expect(query).toContain('"product_aliases"."user_id" = $');
+    expect(query).toContain('"product_aliases"."source" = $');
+    expect(query).toContain('"product_aliases"."is_correction" = $');
     expect(params).toEqual([
-      storeId,
-      "wild rice",
-      "updated",
-      productConceptId,
-      "Rice",
-      aisleSectionId,
-      "Aisle 2 · Dry goods",
-      "user-a",
-      "2026-01-01T00:00:00.000Z",
+      "44444444-4444-4444-8444-444444444444",
+      userId,
+      "learned",
+      true,
+      1,
     ]);
-  });
-
-  it("lists learning events for the store newest-first with the actor name", () => {
-    const { sql: query, params } = buildProductLearningEventListQuery(
-      database,
-      storeId,
-    ).toSQL();
-
-    expect(query).toContain('from "product_learning_events"');
-    expect(query).toContain('left join "user"');
-    expect(query).toContain(
-      'order by "product_learning_events"."created_at" desc',
-    );
-    expect(params).toEqual([storeId]);
   });
 });

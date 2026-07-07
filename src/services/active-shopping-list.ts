@@ -129,7 +129,9 @@ interface RouteOrderedShoppingItemRow {
 // The current store is only needed for the final payload read, so callers may
 // pass a pending lookup and let it resolve alongside the list queries.
 export type CurrentStoreInput =
-  StoreSummary | null | Promise<StoreSummary | null>;
+  | StoreSummary
+  | null
+  | Promise<StoreSummary | null>;
 
 export function getActiveShoppingList(
   userId: string,

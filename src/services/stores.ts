@@ -9,7 +9,6 @@ import { getDb } from "@/db/client";
 import {
   aisles,
   aisleSections,
-  productLearningEvents,
   productLocations,
   stores,
   user,
@@ -187,11 +186,8 @@ export async function deleteStore(
   // resolve locations at read time, so only the store-scoped layout and
   // location data go. Learned aliases are per-user vocabulary and are not
   // touched. Remove the dependents leaf-first in one transaction.
-  const [, , , , deleted] = await db.batch([
+  const [, , , deleted] = await db.batch([
     db.delete(productLocations).where(eq(productLocations.storeId, storeId)),
-    db
-      .delete(productLearningEvents)
-      .where(eq(productLearningEvents.storeId, storeId)),
     db.delete(aisleSections).where(eq(aisleSections.storeId, storeId)),
     db.delete(aisles).where(eq(aisles.storeId, storeId)),
     db

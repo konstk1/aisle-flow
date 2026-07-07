@@ -34,6 +34,15 @@ const shoppingItemRouteSelection = {
   aisle: aisles,
 };
 
+// A product_locations join predicate that matches the given store, or matches
+// no rows when there is no current store. Combine with the concept-id equality
+// inside the join's `and(...)`.
+export function productLocationStoreFilter(storeId: string | null): SQL {
+  return (
+    storeId === null ? sql`false` : eq(productLocations.storeId, storeId)
+  ) as SQL;
+}
+
 // Locations are resolved at read time against the viewer's current store, so
 // the same list routes differently per store. No store means no locations.
 function buildShoppingItemRouteRowsQuery(db: Database, storeId: string | null) {
@@ -46,12 +55,10 @@ function buildShoppingItemRouteRowsQuery(db: Database, storeId: string | null) {
     )
     .leftJoin(
       productLocations,
-      storeId
-        ? and(
-            eq(productLocations.productConceptId, shoppingItems.productConceptId),
-            eq(productLocations.storeId, storeId),
-          )
-        : sql`false`,
+      and(
+        eq(productLocations.productConceptId, shoppingItems.productConceptId),
+        productLocationStoreFilter(storeId),
+      ),
     )
     .leftJoin(
       aisleSections,
@@ -125,10 +132,7 @@ export function buildActiveShoppingListQuery(db: Database, userId: string) {
     .select()
     .from(shoppingLists)
     .where(
-      and(
-        eq(shoppingLists.userId, userId),
-        eq(shoppingLists.state, "active"),
-      ),
+      and(eq(shoppingLists.userId, userId), eq(shoppingLists.state, "active")),
     )
     .limit(1);
 }

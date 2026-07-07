@@ -242,7 +242,6 @@ describe("getActiveShoppingList", () => {
       },
     });
   });
-
 });
 
 describe("getCompletedShoppingList", () => {

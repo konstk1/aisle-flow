@@ -41,11 +41,6 @@ export const productLocationSource = pgEnum("product_location_source", [
   "imported",
 ]);
 
-export const productLearningEventAction = pgEnum(
-  "product_learning_event_action",
-  ["created", "updated", "deleted"],
-);
-
 export const shoppingListState = pgEnum("shopping_list_state", [
   "active",
   "inactive",
@@ -401,50 +396,6 @@ export const productLocations = pgTable(
   ],
 );
 
-export const productLearningEvents = pgTable(
-  "product_learning_events",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    storeId: uuid("store_id")
-      .notNull()
-      .references(() => stores.id, { onDelete: "cascade" }),
-    normalizedText: text("normalized_text").notNull(),
-    action: productLearningEventAction("action").notNull(),
-    productConceptId: uuid("product_concept_id").references(
-      () => productConcepts.id,
-      { onDelete: "set null" },
-    ),
-    // Display snapshots survive deletion of the referenced rows.
-    productConceptName: text("product_concept_name").notNull(),
-    aisleSectionId: uuid("aisle_section_id").references(
-      () => aisleSections.id,
-      { onDelete: "set null" },
-    ),
-    aisleSectionLabel: text("aisle_section_label"),
-    createdByUserId: text("created_by_user_id").references(() => user.id, {
-      onDelete: "set null",
-    }),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .defaultNow()
-      .notNull(),
-  },
-  (table) => [
-    index("product_learning_events_store_text_index").on(
-      table.storeId,
-      table.normalizedText,
-      table.createdAt,
-    ),
-    check(
-      "product_learning_events_normalized_text_not_blank",
-      sql`length(btrim(${table.normalizedText})) > 0`,
-    ),
-    check(
-      "product_learning_events_concept_name_not_blank",
-      sql`length(btrim(${table.productConceptName})) > 0`,
-    ),
-  ],
-);
-
 export const shoppingLists = pgTable(
   "shopping_lists",
   {
@@ -546,8 +497,6 @@ export type ProductAlias = typeof productAliases.$inferSelect;
 export type NewProductAlias = typeof productAliases.$inferInsert;
 export type ProductLocation = typeof productLocations.$inferSelect;
 export type NewProductLocation = typeof productLocations.$inferInsert;
-export type ProductLearningEvent = typeof productLearningEvents.$inferSelect;
-export type NewProductLearningEvent = typeof productLearningEvents.$inferInsert;
 export type ShoppingList = typeof shoppingLists.$inferSelect;
 export type NewShoppingList = typeof shoppingLists.$inferInsert;
 export type ShoppingItem = typeof shoppingItems.$inferSelect;

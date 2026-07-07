@@ -2,10 +2,7 @@ import "server-only";
 
 import { z } from "zod";
 
-import type {
-  LearnedProductEventPayload,
-  LearnedProductsPayload,
-} from "@/domain/learned-products";
+import type { LearnedProductsPayload } from "@/domain/learned-products";
 import { normalizeProductText } from "@/domain/product-matching";
 import {
   formatAisleLabel,
@@ -19,7 +16,6 @@ import type { Database } from "@/db/create-client";
 import { isForeignKeyError } from "@/db/errors";
 import {
   buildLearnedAliasByIdQuery,
-  buildLearnedAliasByTextQuery,
   buildLearnedAliasDeleteQuery,
   buildLearnedAliasListQuery,
   buildManualProductAliasCorrectionQuery,
@@ -27,8 +23,6 @@ import {
   buildProductConceptByIdQuery,
   buildProductConceptCreateQuery,
   buildProductConceptListQuery,
-  buildProductLearningEventInsertQuery,
-  buildProductLearningEventListQuery,
   productConceptIdByNormalizedName,
 } from "@/db/repositories/product-corrections";
 import {
@@ -120,8 +114,7 @@ export interface ProductCorrectionProductConcept {
   normalizedName: string;
 }
 
-export interface ProductCorrectionProductConceptOption
-  extends ProductCorrectionProductConcept {
+export interface ProductCorrectionProductConceptOption extends ProductCorrectionProductConcept {
   aisleSectionId: string | null;
 }
 
@@ -227,12 +220,7 @@ export async function applyProductCorrection(
   const db = getDb();
   const normalizedText = normalizeProductText(input.rawText);
   const now = new Date();
-  const [[activeList], [existingAlias]] = await Promise.all([
-    buildActiveShoppingListQuery(db, userId),
-    buildLearnedAliasByTextQuery(db, userId, normalizedText),
-  ]);
-  const learningAction = existingAlias ? "updated" : "created";
-  const aisleSectionLabel = formatCorrectionSectionLabel(aisleSection);
+  const [activeList] = await buildActiveShoppingListQuery(db, userId);
 
   let productConcept: ProductConcept | undefined;
   let alias: ProductAlias | undefined;
@@ -257,23 +245,11 @@ export async function applyProductCorrection(
         positionWithinSection: null,
         now,
       });
-      const eventQuery = buildProductLearningEventInsertQuery(db, {
-        storeId: layout.id,
-        normalizedText,
-        action: learningAction,
-        productConceptId: productConcept.id,
-        productConceptName: productConcept.canonicalName,
-        aisleSectionId: aisleSection.id,
-        aisleSectionLabel,
-        createdByUserId: userId,
-        now,
-      });
 
       const [aliasRows, locationRows] = activeList
         ? await db.batch([
             aliasQuery,
             locationQuery,
-            eventQuery,
             buildShoppingItemProductResolutionQuery(db, {
               shoppingListId: activeList.id,
               normalizedText,
@@ -281,7 +257,7 @@ export async function applyProductCorrection(
               now,
             }),
           ])
-        : await db.batch([aliasQuery, locationQuery, eventQuery]);
+        : await db.batch([aliasQuery, locationQuery]);
 
       alias = aliasRows[0];
       location = locationRows[0];
@@ -311,24 +287,12 @@ export async function applyProductCorrection(
         positionWithinSection: null,
         now,
       });
-      const eventQuery = buildProductLearningEventInsertQuery(db, {
-        storeId: layout.id,
-        normalizedText,
-        action: learningAction,
-        productConceptId,
-        productConceptName: canonicalName,
-        aisleSectionId: aisleSection.id,
-        aisleSectionLabel,
-        createdByUserId: userId,
-        now,
-      });
 
       const [productConceptRows, aliasRows, locationRows] = activeList
         ? await db.batch([
             conceptQuery,
             aliasQuery,
             locationQuery,
-            eventQuery,
             buildShoppingItemProductResolutionQuery(db, {
               shoppingListId: activeList.id,
               normalizedText,
@@ -336,7 +300,7 @@ export async function applyProductCorrection(
               now,
             }),
           ])
-        : await db.batch([conceptQuery, aliasQuery, locationQuery, eventQuery]);
+        : await db.batch([conceptQuery, aliasQuery, locationQuery]);
 
       productConcept = productConceptRows[0];
       alias = aliasRows[0];
@@ -397,28 +361,13 @@ export async function getLearnedProducts(
   const layout = await getCurrentStoreLayout(userId);
 
   const db = getDb();
-  // Aliases are the user's vocabulary and outlive any store; the location and
-  // history columns are store-specific, so they empty out without a layout.
-  const [aliasRows, eventRows] = await Promise.all([
-    buildLearnedAliasListQuery(db, userId, layout?.id ?? null),
-    layout ? buildProductLearningEventListQuery(db, layout.id) : [],
-  ]);
-
-  const eventsByText = new Map<string, LearnedProductEventPayload[]>();
-
-  for (const { event, createdByName } of eventRows) {
-    const events = eventsByText.get(event.normalizedText) ?? [];
-
-    events.push({
-      id: event.id,
-      action: event.action,
-      productConceptName: event.productConceptName,
-      aisleSectionLabel: event.aisleSectionLabel,
-      createdByName,
-      createdAt: event.createdAt.toISOString(),
-    });
-    eventsByText.set(event.normalizedText, events);
-  }
+  // Aliases are the user's vocabulary and outlive any store; only the location
+  // columns are store-specific, so they empty out without a layout.
+  const aliasRows = await buildLearnedAliasListQuery(
+    db,
+    userId,
+    layout?.id ?? null,
+  );
 
   return {
     store: layout ? { id: layout.id, name: layout.name } : null,
@@ -432,7 +381,6 @@ export async function getLearnedProducts(
         row.aisle && row.aisleSection
           ? `${formatAisleLabel(row.aisle)} · ${formatSectionLabel(row.aisleSection)}`
           : null,
-      events: eventsByText.get(row.alias.normalizedText) ?? [],
     })),
   };
 }
@@ -443,11 +391,11 @@ export async function updateLearnedProduct(
   input: LearnedProductUpdateRequest,
 ): Promise<LearnedProductsPayload> {
   const db = getDb();
-  const [alias] = await buildLearnedAliasByIdQuery(db, aliasId);
+  // Scoped to the user, so another user's alias id reads as missing (404)
+  // rather than leaking across accounts.
+  const [alias] = await buildLearnedAliasByIdQuery(db, userId, aliasId);
 
-  // Another user's alias reads as missing rather than forbidden so alias ids
-  // don't leak across accounts.
-  if (!alias || alias.userId !== userId) {
+  if (!alias) {
     throw missingLearnedProductError();
   }
 
@@ -466,38 +414,13 @@ export async function deleteLearnedProduct(
   aliasId: string,
 ): Promise<LearnedProductsPayload> {
   const db = getDb();
-  const [alias] = await buildLearnedAliasByIdQuery(db, aliasId);
+  const [alias] = await buildLearnedAliasByIdQuery(db, userId, aliasId);
 
-  if (!alias || alias.userId !== userId) {
+  if (!alias) {
     throw missingLearnedProductError();
   }
 
-  const [[productConcept], layout] = await Promise.all([
-    buildProductConceptByIdQuery(db, alias.productConceptId),
-    getCurrentStoreLayout(userId),
-  ]);
-  const deleteQuery = buildLearnedAliasDeleteQuery(db, alias.id);
-
-  // Learning history is store-scoped; log the removal to the user's current
-  // store when they have one, otherwise just drop the alias.
-  if (layout) {
-    await db.batch([
-      deleteQuery,
-      buildProductLearningEventInsertQuery(db, {
-        storeId: layout.id,
-        normalizedText: alias.normalizedText,
-        action: "deleted",
-        productConceptId: alias.productConceptId,
-        productConceptName:
-          productConcept?.canonicalName ?? alias.normalizedText,
-        aisleSectionId: null,
-        aisleSectionLabel: null,
-        createdByUserId: userId,
-      }),
-    ]);
-  } else {
-    await deleteQuery;
-  }
+  await buildLearnedAliasDeleteQuery(db, alias.id);
 
   return getLearnedProducts(userId);
 }
@@ -518,10 +441,9 @@ async function getExistingProductConcept(
   );
 
   if (!productConcept) {
-    throw new ProductCorrectionRequestError(
-      "Choose an existing product.",
-      { productConceptId: ["Choose an existing product."] },
-    );
+    throw new ProductCorrectionRequestError("Choose an existing product.", {
+      productConceptId: ["Choose an existing product."],
+    });
   }
 
   return productConcept;
@@ -543,13 +465,6 @@ function listAisleSections(
       })),
     )
     .sort((first, second) => first.pathOrder - second.pathOrder);
-}
-
-function formatCorrectionSectionLabel(section: ProductCorrectionAisleSection) {
-  return `${formatAisleLabel({
-    displayName: section.aisleDisplayName,
-    identifier: section.aisleIdentifier,
-  })} · ${formatSectionLabel(section)}`;
 }
 
 function toProductConceptPayload(

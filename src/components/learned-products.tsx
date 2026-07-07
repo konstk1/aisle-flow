@@ -1,6 +1,6 @@
 "use client";
 
-import { History, Pencil, RotateCw, Trash2, X } from "lucide-react";
+import { Pencil, RotateCw, Trash2, X } from "lucide-react";
 import { useState } from "react";
 
 import type { FieldErrors } from "@/domain/active-shopping-list";
@@ -58,19 +58,9 @@ type LearnedProductsResponse = {
   fieldErrors?: FieldErrors;
 };
 
-const eventDateFormatter = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "medium",
-  timeStyle: "short",
-});
 const updatedDateFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
 });
-
-const EVENT_ACTION_LABELS = {
-  created: "Learned",
-  updated: "Changed",
-  deleted: "Removed",
-} as const;
 
 export function LearnedProducts({
   initialLearnedProducts,
@@ -78,9 +68,6 @@ export function LearnedProducts({
   initialLearnedProducts: LearnedProductsPayload;
 }) {
   const [payload, setPayload] = useState(initialLearnedProducts);
-  const [expandedHistoryIds, setExpandedHistoryIds] = useState<Set<string>>(
-    new Set(),
-  );
   const [editingAliasId, setEditingAliasId] = useState<string | null>(null);
   const [confirmingDeleteAliasId, setConfirmingDeleteAliasId] = useState<
     string | null
@@ -94,9 +81,7 @@ export function LearnedProducts({
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [message, setMessage] = useState<string | null>(null);
   const [pendingAliasId, setPendingAliasId] = useState<string | null>(null);
-  const [options, setOptions] = useState<ProductCorrectionOptions | null>(
-    null,
-  );
+  const [options, setOptions] = useState<ProductCorrectionOptions | null>(null);
   const [optionsLoading, setOptionsLoading] = useState(false);
   const [optionsError, setOptionsError] = useState<string | null>(null);
   const [locationChangeConfirm, setLocationChangeConfirm] = useState<{
@@ -127,20 +112,6 @@ export function LearnedProducts({
     } finally {
       setOptionsLoading(false);
     }
-  }
-
-  function toggleHistory(aliasId: string) {
-    setExpandedHistoryIds((current) => {
-      const next = new Set(current);
-
-      if (next.has(aliasId)) {
-        next.delete(aliasId);
-      } else {
-        next.add(aliasId);
-      }
-
-      return next;
-    });
   }
 
   function startEditing(learning: LearnedProductPayload) {
@@ -294,54 +265,53 @@ export function LearnedProducts({
 
   return (
     <section className="pt-1 pb-12">
-      <p className="text-[13px] font-bold tracking-[0.05em] text-ink-500 uppercase">
+      <p className="text-ink-500 text-[13px] font-bold tracking-[0.05em] uppercase">
         Learned products
       </p>
       <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
         Your learned corrections.
       </h1>
-      <p className="mt-3 max-w-2xl text-sm leading-6 text-ink-400">
-        Item phrases the app has learned from your corrections, with the
-        product each one resolves to. Corrections follow you across stores;
+      <p className="text-ink-400 mt-3 max-w-2xl text-sm leading-6">
+        Item phrases the app has learned from your corrections, with the product
+        each one resolves to. Corrections follow you across stores;
         {payload.store
           ? ` the aisle sections shown are for ${payload.store.name}.`
           : " aisle sections appear once you have a store layout."}
       </p>
 
       {message && !editingAliasId ? (
-        <p className="mt-4 text-sm text-danger" role="alert">
+        <p className="text-danger mt-4 text-sm" role="alert">
           {message}
         </p>
       ) : null}
 
       {payload.learnedProducts.length === 0 ? (
-        <p className="mt-7 card p-6 text-sm text-ink-400">
+        <p className="card text-ink-400 mt-7 p-6 text-sm">
           No learned products yet. Correct an unresolved item on the shopping
           list to teach the app where it belongs.
         </p>
       ) : (
-        <ul className="mt-7 divide-y divide-divider-soft overflow-hidden card">
+        <ul className="divide-divider-soft card mt-7 divide-y overflow-hidden">
           {payload.learnedProducts.map((learning) => {
             const isEditing = editingAliasId === learning.aliasId;
             const isPending = pendingAliasId === learning.aliasId;
             const isConfirmingDelete =
               confirmingDeleteAliasId === learning.aliasId;
-            const historyExpanded = expandedHistoryIds.has(learning.aliasId);
 
             return (
               <li className="p-4 sm:px-5" key={learning.aliasId}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="font-semibold text-foreground">
+                    <p className="text-foreground font-semibold">
                       {learning.normalizedText}
                     </p>
-                    <p className="mt-1 text-sm text-ink-600">
+                    <p className="text-ink-600 mt-1 text-sm">
                       {learning.productConcept.canonicalName}
                       {learning.locationLabel
                         ? ` · ${learning.locationLabel}`
                         : " · no saved location"}
                     </p>
-                    <p className="mt-1 text-xs text-ink-400">
+                    <p className="text-ink-400 mt-1 text-xs">
                       Last updated{" "}
                       {updatedDateFormatter.format(
                         new Date(learning.updatedAt),
@@ -351,22 +321,8 @@ export function LearnedProducts({
 
                   <div className="flex shrink-0 items-center gap-1.5">
                     <button
-                      aria-expanded={historyExpanded}
-                      aria-label={`Show history for ${learning.normalizedText}`}
-                      className={`flex size-[34px] items-center justify-center rounded-[10px] transition ${
-                        historyExpanded
-                          ? "bg-accent-50 text-accent"
-                          : "bg-ink-50 text-ink-500 hover:text-accent"
-                      }`}
-                      onClick={() => toggleHistory(learning.aliasId)}
-                      title="History"
-                      type="button"
-                    >
-                      <History aria-hidden="true" className="size-4" />
-                    </button>
-                    <button
                       aria-label={`Edit ${learning.normalizedText}`}
-                      className="flex size-[34px] items-center justify-center rounded-[10px] bg-ink-50 text-ink-500 transition hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+                      className="bg-ink-50 text-ink-500 hover:text-accent flex size-[34px] items-center justify-center rounded-[10px] transition disabled:cursor-not-allowed disabled:opacity-50"
                       disabled={isPending}
                       onClick={() =>
                         isEditing ? stopEditing() : startEditing(learning)
@@ -382,7 +338,7 @@ export function LearnedProducts({
                     </button>
                     {isConfirmingDelete ? (
                       <button
-                        className="inline-flex min-h-[34px] items-center rounded-[10px] bg-danger px-3 text-sm font-semibold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="bg-danger inline-flex min-h-[34px] items-center rounded-[10px] px-3 text-sm font-semibold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={isPending}
                         onClick={() => void deleteLearning(learning)}
                         type="button"
@@ -392,7 +348,7 @@ export function LearnedProducts({
                     ) : (
                       <button
                         aria-label={`Delete ${learning.normalizedText}`}
-                        className="flex size-[34px] items-center justify-center rounded-[10px] bg-danger-50 text-danger transition hover:bg-danger-100 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="bg-danger-50 text-danger hover:bg-danger-100 flex size-[34px] items-center justify-center rounded-[10px] transition disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={isPending}
                         onClick={() =>
                           setConfirmingDeleteAliasId(learning.aliasId)
@@ -407,7 +363,7 @@ export function LearnedProducts({
                 </div>
 
                 {isEditing ? (
-                  <div className="mt-4 space-y-2 rounded-[14px] bg-ink-50 p-3">
+                  <div className="bg-ink-50 mt-4 space-y-2 rounded-[14px] p-3">
                     <LearnedProductEditor
                       fieldErrors={fieldErrors}
                       form={form}
@@ -422,13 +378,13 @@ export function LearnedProducts({
                       pending={isPending}
                     />
                     {message ? (
-                      <p className="text-sm text-danger" role="alert">
+                      <p className="text-danger text-sm" role="alert">
                         {message}
                       </p>
                     ) : null}
                     <div className="flex gap-2">
                       <button
-                        className="inline-flex min-h-10 items-center rounded-[14px] bg-gradient-to-br from-accent to-accent-bright px-4 text-sm font-semibold text-white shadow-accent-glow transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="from-accent to-accent-bright shadow-accent-glow inline-flex min-h-10 items-center rounded-[14px] bg-gradient-to-br px-4 text-sm font-semibold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={isPending || optionsLoading || !options}
                         onClick={() => void saveLearning(learning)}
                         type="button"
@@ -436,7 +392,7 @@ export function LearnedProducts({
                         {isPending ? "Saving…" : "Save"}
                       </button>
                       <button
-                        className="inline-flex min-h-10 items-center rounded-[14px] bg-white px-4 text-sm font-semibold text-ink-600 shadow-card-sm transition hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+                        className="text-ink-600 shadow-card-sm hover:text-accent inline-flex min-h-10 items-center rounded-[14px] bg-white px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={isPending}
                         onClick={stopEditing}
                         type="button"
@@ -444,41 +400,6 @@ export function LearnedProducts({
                         Cancel
                       </button>
                     </div>
-                  </div>
-                ) : null}
-
-                {historyExpanded ? (
-                  <div className="mt-4 rounded-[14px] bg-ink-50 p-3">
-                    {learning.events.length === 0 ? (
-                      <p className="text-sm text-ink-400">
-                        No history recorded for this learning. Changes made
-                        from now on will show up here.
-                      </p>
-                    ) : (
-                      <ol className="space-y-2">
-                        {learning.events.map((event) => (
-                          <li
-                            className="text-sm text-ink-600"
-                            key={event.id}
-                          >
-                            <span className="font-semibold text-ink-900">
-                              {EVENT_ACTION_LABELS[event.action]}
-                            </span>{" "}
-                            {event.action === "deleted"
-                              ? `“${event.productConceptName}”`
-                              : `as “${event.productConceptName}”${
-                                  event.aisleSectionLabel
-                                    ? ` in ${event.aisleSectionLabel}`
-                                    : ""
-                                }`}{" "}
-                            by {event.createdByName ?? "an unknown user"} on{" "}
-                            {eventDateFormatter.format(
-                              new Date(event.createdAt),
-                            )}
-                          </li>
-                        ))}
-                      </ol>
-                    )}
                   </div>
                 ) : null}
               </li>
@@ -536,19 +457,19 @@ function LearnedProductEditor({
   return (
     <div className="space-y-2">
       {loadingOptions ? (
-        <p className="text-sm text-ink-400" role="status">
+        <p className="text-ink-400 text-sm" role="status">
           Loading location options.
         </p>
       ) : null}
 
       {optionsError ? (
         <div className="flex flex-wrap items-center gap-2">
-          <p className="text-sm text-danger" role="alert">
+          <p className="text-danger text-sm" role="alert">
             {optionsError}
           </p>
           <button
             aria-label="Retry loading location options"
-            className="flex size-9 items-center justify-center rounded-[10px] bg-white text-ink-500 shadow-card-sm transition hover:text-accent"
+            className="text-ink-500 shadow-card-sm hover:text-accent flex size-9 items-center justify-center rounded-[10px] bg-white transition"
             onClick={onRetryOptions}
             title="Retry"
             type="button"
@@ -566,7 +487,7 @@ function LearnedProductEditor({
             Product
           </label>
           <select
-            className="min-h-10 w-full rounded-xl border border-black/[0.07] bg-white px-3 text-sm outline-none transition focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
+            className="focus:border-accent min-h-10 w-full rounded-xl border border-black/[0.07] bg-white px-3 text-sm transition outline-none disabled:cursor-not-allowed disabled:opacity-60"
             disabled={formDisabled}
             id={productControlId}
             onChange={(event) => {
@@ -576,10 +497,7 @@ function LearnedProductEditor({
               }
 
               onFormChange(
-                buildProductSelectionPatch(
-                  event.target.value,
-                  productConcepts,
-                ),
+                buildProductSelectionPatch(event.target.value, productConcepts),
               );
             }}
             value={selectValue}
@@ -600,9 +518,7 @@ function LearnedProductEditor({
                 {concept.canonicalName}
               </option>
             ))}
-            <option value={NEW_PRODUCT_DIALOG_OPTION_VALUE}>
-              Add product
-            </option>
+            <option value={NEW_PRODUCT_DIALOG_OPTION_VALUE}>Add product</option>
           </select>
           <FieldError messages={fieldErrors.productConceptId} />
           <FieldError messages={fieldErrors.canonicalName} />
@@ -611,7 +527,7 @@ function LearnedProductEditor({
         <label className="block min-w-0">
           <span className="sr-only">Route section</span>
           <select
-            className="min-h-10 w-full rounded-xl border border-black/[0.07] bg-white px-3 text-sm outline-none transition focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
+            className="focus:border-accent min-h-10 w-full rounded-xl border border-black/[0.07] bg-white px-3 text-sm transition outline-none disabled:cursor-not-allowed disabled:opacity-60"
             disabled={formDisabled}
             onChange={(event) =>
               onFormChange({ aisleSectionId: event.target.value })
@@ -629,9 +545,9 @@ function LearnedProductEditor({
         </label>
       </div>
 
-      <p className="text-xs leading-5 text-ink-400">
-        Products are shared across all stores; the route section
-        applies only to {options?.store?.name ?? "this store"}.
+      <p className="text-ink-400 text-xs leading-5">
+        Products are shared across all stores; the route section applies only to{" "}
+        {options?.store?.name ?? "this store"}.
       </p>
 
       {isNewProductDialogOpen ? (
@@ -663,7 +579,8 @@ function LearnedProductEditor({
 function sectionOptionLabel(section: ProductCorrectionAisleSection) {
   const aisleLabel =
     section.aisleDisplayName?.trim() || `Aisle ${section.aisleIdentifier}`;
-  const sectionLabel = section.label?.trim() || `Section ${section.pathOrder + 1}`;
+  const sectionLabel =
+    section.label?.trim() || `Section ${section.pathOrder + 1}`;
 
   return `${aisleLabel} · ${sectionLabel}`;
 }
@@ -679,7 +596,7 @@ function FieldError({ messages }: { messages?: string[] | null }) {
     <>
       {allMessages.map((fieldMessage, index) => (
         <span
-          className="mt-1 block text-sm font-medium text-danger"
+          className="text-danger mt-1 block text-sm font-medium"
           key={`${fieldMessage}-${index}`}
         >
           {fieldMessage}

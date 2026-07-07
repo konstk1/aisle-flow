@@ -83,7 +83,9 @@ describe("shopping-list queries", () => {
       new Date("2026-01-01T00:00:00Z"),
     ).toSQL();
 
-    expect(query).toContain('left join "product_locations" on false');
+    expect(query).toContain(
+      'left join "product_locations" on ("product_locations"."product_concept_id" = "shopping_items"."product_concept_id" and false)',
+    );
     expect(params).toEqual([
       "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
       false,
