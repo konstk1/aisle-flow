@@ -15,7 +15,7 @@ import type { Database } from "@/db/create-client";
 import {
   findExactProductAlias,
   findProductLocation,
-  productAliasStoreScopeFilter,
+  productAliasUserScopeFilter,
 } from "@/db/repositories/shopping-lists";
 import { productAliases, productConcepts } from "@/db/schema";
 
@@ -39,41 +39,23 @@ export type StoreProductMatcher = (
   text: string,
 ) => Promise<StoreProductMatchResult>;
 
-export async function resolveProductMatchForStore({
-  storeId,
-  text,
-}: {
-  storeId: string | null;
-  text: string;
-}): Promise<StoreProductMatchResult> {
-  const db = getDb();
-  const [catalog, learnedAlias] = await Promise.all([
-    loadProductMatchingCatalog(db, storeId),
-    findExactProductAlias(db, storeId, normalizeProductText(text)),
-  ]);
-
-  return resolveProductMatchWithCatalog({
-    catalog,
-    db,
-    learnedAlias,
-    storeId,
-    text,
-  });
-}
-
+// Learned aliases are the user's vocabulary; the store only determines which
+// locations resolved matches route to.
 export async function createStoreProductMatcher({
   db = getDb(),
+  userId,
   storeId,
 }: {
   db?: Database;
+  userId: string;
   storeId: string | null;
 }): Promise<StoreProductMatcher> {
-  const catalog = await loadProductMatchingCatalog(db, storeId);
+  const catalog = await loadProductMatchingCatalog(db, userId);
 
   return async (text) => {
     const learnedAlias = await findExactProductAlias(
       db,
-      storeId,
+      userId,
       normalizeProductText(text),
     );
 
@@ -136,7 +118,7 @@ async function resolveProductMatchWithCatalog({
 
 async function loadProductMatchingCatalog(
   db: Database,
-  storeId: string | null,
+  userId: string,
 ): Promise<PreparedProductMatchingCatalog> {
   const [concepts, curatedAliases] = await Promise.all([
     db.select().from(productConcepts),
@@ -146,10 +128,10 @@ async function loadProductMatchingCatalog(
       .where(
         and(
           // Learned and imported aliases are exact-only in the MVP. Imported
-          // source vocabulary may be store- or provider-specific, and learned
+          // source vocabulary may be user- or provider-specific, and learned
           // corrections are persisted as exact aliases for manual precedence.
           eq(productAliases.source, "curated"),
-          productAliasStoreScopeFilter(storeId),
+          productAliasUserScopeFilter(userId),
         ),
       ),
   ]);

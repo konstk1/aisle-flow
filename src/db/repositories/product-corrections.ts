@@ -17,7 +17,7 @@ export interface ProductConceptCreateInput {
 }
 
 export interface ManualProductAliasCorrectionInput {
-  storeId: string;
+  userId: string;
   productConceptId: string | SQL;
   normalizedText: string;
   confidence?: number;
@@ -99,18 +99,18 @@ export function buildManualProductAliasCorrectionQuery(
   return db
     .insert(productAliases)
     .values({
-      storeId: input.storeId,
+      userId: input.userId,
       productConceptId: input.productConceptId,
       normalizedText: input.normalizedText,
-      scope: "store",
+      scope: "user",
       confidence: input.confidence ?? 1,
       source: "learned",
       isCorrection: true,
       updatedAt: now,
     })
     .onConflictDoUpdate({
-      target: [productAliases.storeId, productAliases.normalizedText],
-      targetWhere: sql`${productAliases.scope} = 'store'`,
+      target: [productAliases.userId, productAliases.normalizedText],
+      targetWhere: sql`${productAliases.scope} = 'user'`,
       // Re-correcting an exact phrase is intentionally last-writer-wins for the
       // MVP; product_aliases has no version column yet.
       set: {
@@ -136,7 +136,14 @@ export interface ProductLearningEventInsertInput {
   now?: Date;
 }
 
-export function buildLearnedAliasListQuery(db: Database, storeId: string) {
+// Aliases are the user's vocabulary across stores; the location column is
+// resolved against the given store, so it can be absent per row (or entirely
+// when the user has no store).
+export function buildLearnedAliasListQuery(
+  db: Database,
+  userId: string,
+  storeId: string | null,
+) {
   return db
     .select({
       alias: productAliases,
@@ -153,7 +160,7 @@ export function buildLearnedAliasListQuery(db: Database, storeId: string) {
     .leftJoin(
       productLocations,
       and(
-        eq(productLocations.storeId, storeId),
+        storeId === null ? sql`false` : eq(productLocations.storeId, storeId),
         eq(productLocations.productConceptId, productConcepts.id),
       ),
     )
@@ -161,7 +168,7 @@ export function buildLearnedAliasListQuery(db: Database, storeId: string) {
     .leftJoin(aisles, eq(aisleSections.aisleId, aisles.id))
     .where(
       and(
-        eq(productAliases.storeId, storeId),
+        eq(productAliases.userId, userId),
         eq(productAliases.source, "learned"),
         eq(productAliases.isCorrection, true),
       ),
@@ -185,7 +192,7 @@ export function buildLearnedAliasByIdQuery(db: Database, aliasId: string) {
 
 export function buildLearnedAliasByTextQuery(
   db: Database,
-  storeId: string,
+  userId: string,
   normalizedText: string,
 ) {
   return db
@@ -193,8 +200,8 @@ export function buildLearnedAliasByTextQuery(
     .from(productAliases)
     .where(
       and(
-        eq(productAliases.storeId, storeId),
-        eq(productAliases.scope, "store"),
+        eq(productAliases.userId, userId),
+        eq(productAliases.scope, "user"),
         eq(productAliases.normalizedText, normalizedText),
       ),
     )

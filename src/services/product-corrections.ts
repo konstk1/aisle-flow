@@ -147,7 +147,7 @@ export interface ProductCorrectionResult {
   alias: {
     id: string;
     normalizedText: string;
-    scope: "store";
+    scope: "user";
     confidence: number;
     source: "learned";
     isCorrection: true;
@@ -229,7 +229,7 @@ export async function applyProductCorrection(
   const now = new Date();
   const [[activeList], [existingAlias]] = await Promise.all([
     buildActiveShoppingListQuery(db, userId),
-    buildLearnedAliasByTextQuery(db, layout.id, normalizedText),
+    buildLearnedAliasByTextQuery(db, userId, normalizedText),
   ]);
   const learningAction = existingAlias ? "updated" : "created";
   const aisleSectionLabel = formatCorrectionSectionLabel(aisleSection);
@@ -245,7 +245,7 @@ export async function applyProductCorrection(
         input.productConceptId,
       );
       const aliasQuery = buildManualProductAliasCorrectionQuery(db, {
-        storeId: layout.id,
+        userId,
         productConceptId: productConcept.id,
         normalizedText,
         now,
@@ -299,7 +299,7 @@ export async function applyProductCorrection(
         normalizedName,
       });
       const aliasQuery = buildManualProductAliasCorrectionQuery(db, {
-        storeId: layout.id,
+        userId,
         productConceptId,
         normalizedText,
         now,
@@ -368,7 +368,7 @@ export async function applyProductCorrection(
     alias: {
       id: alias.id,
       normalizedText: alias.normalizedText,
-      scope: "store",
+      scope: "user",
       confidence: alias.confidence,
       source: "learned",
       isCorrection: true,
@@ -396,14 +396,12 @@ export async function getLearnedProducts(
 ): Promise<LearnedProductsPayload> {
   const layout = await getCurrentStoreLayout(userId);
 
-  if (!layout) {
-    return { store: null, learnedProducts: [] };
-  }
-
   const db = getDb();
+  // Aliases are the user's vocabulary and outlive any store; the location and
+  // history columns are store-specific, so they empty out without a layout.
   const [aliasRows, eventRows] = await Promise.all([
-    buildLearnedAliasListQuery(db, layout.id),
-    buildProductLearningEventListQuery(db, layout.id),
+    buildLearnedAliasListQuery(db, userId, layout?.id ?? null),
+    layout ? buildProductLearningEventListQuery(db, layout.id) : [],
   ]);
 
   const eventsByText = new Map<string, LearnedProductEventPayload[]>();
@@ -423,7 +421,7 @@ export async function getLearnedProducts(
   }
 
   return {
-    store: { id: layout.id, name: layout.name },
+    store: layout ? { id: layout.id, name: layout.name } : null,
     learnedProducts: aliasRows.map((row) => ({
       aliasId: row.alias.id,
       normalizedText: row.alias.normalizedText,
@@ -447,18 +445,10 @@ export async function updateLearnedProduct(
   const db = getDb();
   const [alias] = await buildLearnedAliasByIdQuery(db, aliasId);
 
-  if (!alias) {
+  // Another user's alias reads as missing rather than forbidden so alias ids
+  // don't leak across accounts.
+  if (!alias || alias.userId !== userId) {
     throw missingLearnedProductError();
-  }
-
-  const layout = await getCurrentStoreLayout(userId);
-
-  if (!layout || alias.storeId !== layout.id) {
-    throw new ProductCorrectionRequestError(
-      "This learned product belongs to a different store layout.",
-      { form: ["This learned product belongs to a different store layout."] },
-      409,
-    );
   }
 
   await applyProductCorrection(userId, {
@@ -478,29 +468,36 @@ export async function deleteLearnedProduct(
   const db = getDb();
   const [alias] = await buildLearnedAliasByIdQuery(db, aliasId);
 
-  if (!alias || !alias.storeId) {
+  if (!alias || alias.userId !== userId) {
     throw missingLearnedProductError();
   }
 
-  const [productConcept] = await buildProductConceptByIdQuery(
-    db,
-    alias.productConceptId,
-  );
-
-  await db.batch([
-    buildLearnedAliasDeleteQuery(db, alias.id),
-    buildProductLearningEventInsertQuery(db, {
-      storeId: alias.storeId,
-      normalizedText: alias.normalizedText,
-      action: "deleted",
-      productConceptId: alias.productConceptId,
-      productConceptName:
-        productConcept?.canonicalName ?? alias.normalizedText,
-      aisleSectionId: null,
-      aisleSectionLabel: null,
-      createdByUserId: userId,
-    }),
+  const [[productConcept], layout] = await Promise.all([
+    buildProductConceptByIdQuery(db, alias.productConceptId),
+    getCurrentStoreLayout(userId),
   ]);
+  const deleteQuery = buildLearnedAliasDeleteQuery(db, alias.id);
+
+  // Learning history is store-scoped; log the removal to the user's current
+  // store when they have one, otherwise just drop the alias.
+  if (layout) {
+    await db.batch([
+      deleteQuery,
+      buildProductLearningEventInsertQuery(db, {
+        storeId: layout.id,
+        normalizedText: alias.normalizedText,
+        action: "deleted",
+        productConceptId: alias.productConceptId,
+        productConceptName:
+          productConcept?.canonicalName ?? alias.normalizedText,
+        aisleSectionId: null,
+        aisleSectionLabel: null,
+        createdByUserId: userId,
+      }),
+    ]);
+  } else {
+    await deleteQuery;
+  }
 
   return getLearnedProducts(userId);
 }

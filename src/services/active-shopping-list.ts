@@ -48,7 +48,7 @@ import { resolveCurrentStore } from "./stores";
 const mutationIdSchema = z.uuid("Provide a valid mutation id.");
 const duplicateShoppingItemMessage = "This item is already on the list.";
 
-export const SNOOZE_DURATION_MS = 60 * 60 * 1000;
+export const SNOOZE_DURATION_MS = 4 * 60 * 60 * 1000; // 4 hours
 
 export type ShoppingListView = "active" | "completed" | "snoozed";
 
@@ -220,6 +220,7 @@ export async function addActiveShoppingListItem(
   });
   const resolveProductMatch = await createStoreProductMatcher({
     db,
+    userId,
     storeId,
   });
 
@@ -266,6 +267,7 @@ export async function importActiveShoppingListItems(
   });
   const resolveProductMatch = await createStoreProductMatcher({
     db,
+    userId,
     storeId,
   });
 
@@ -389,6 +391,7 @@ export async function updateActiveShoppingItemText({
   });
   const resolveProductMatch = await createStoreProductMatcher({
     db,
+    userId,
     storeId,
   });
   const match = await resolveProductMatch(text);

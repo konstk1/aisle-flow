@@ -396,27 +396,18 @@ export function buildShoppingItemsByNormalizedTextQuery(
     );
 }
 
-// Which aliases are visible for a (possibly absent) store: global aliases
-// always, plus the store's own when one is selected.
-export function productAliasStoreScopeFilter(storeId: string | null): SQL {
-  const globalScope = eq(productAliases.scope, "global");
-
-  if (!storeId) {
-    return globalScope;
-  }
-
+// Which aliases are visible to a viewer: global aliases always, plus the
+// viewer's own learned vocabulary.
+export function productAliasUserScopeFilter(userId: string): SQL {
   return or(
-    globalScope,
-    and(
-      eq(productAliases.scope, "store"),
-      eq(productAliases.storeId, storeId),
-    ),
+    eq(productAliases.scope, "global"),
+    and(eq(productAliases.scope, "user"), eq(productAliases.userId, userId)),
   ) as SQL;
 }
 
 export function buildExactProductAliasLookupQuery(
   db: Database,
-  storeId: string | null,
+  userId: string,
   normalizedText: string,
 ) {
   return db
@@ -436,13 +427,13 @@ export function buildExactProductAliasLookupQuery(
           eq(productAliases.source, "learned"),
           eq(productAliases.source, "imported"),
         ),
-        productAliasStoreScopeFilter(storeId),
+        productAliasUserScopeFilter(userId),
       ),
     )
     .orderBy(
       desc(productAliases.isCorrection),
       desc(
-        sql<number>`case when ${productAliases.scope} = 'store' then 1 else 0 end`,
+        sql<number>`case when ${productAliases.scope} = 'user' then 1 else 0 end`,
       ),
       desc(productAliases.confidence),
     )
@@ -451,12 +442,12 @@ export function buildExactProductAliasLookupQuery(
 
 export async function findExactProductAlias(
   db: Database,
-  storeId: string | null,
+  userId: string,
   normalizedText: string,
 ) {
   const [match] = await buildExactProductAliasLookupQuery(
     db,
-    storeId,
+    userId,
     normalizedText,
   );
 

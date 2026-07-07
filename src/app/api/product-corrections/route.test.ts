@@ -119,7 +119,7 @@ describe("product correction route", () => {
       alias: {
         id: "alias-1",
         normalizedText: "wild rice",
-        scope: "store",
+        scope: "user",
         confidence: 1,
         source: "learned",
         isCorrection: true,

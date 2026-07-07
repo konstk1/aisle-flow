@@ -298,13 +298,14 @@ export function LearnedProducts({
         Learned products
       </p>
       <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
-        {payload.store
-          ? `Corrections learned for ${payload.store.name}.`
-          : "No store layout yet."}
+        Your learned corrections.
       </h1>
       <p className="mt-3 max-w-2xl text-sm leading-6 text-ink-400">
         Item phrases the app has learned from your corrections, with the
-        product and aisle section each one resolves to.
+        product each one resolves to. Corrections follow you across stores;
+        {payload.store
+          ? ` the aisle sections shown are for ${payload.store.name}.`
+          : " aisle sections appear once you have a store layout."}
       </p>
 
       {message && !editingAliasId ? (

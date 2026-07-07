@@ -92,6 +92,13 @@
       "when": 1783384122235,
       "tag": "0012_solid_robbie_robertson",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1783388256545,
+      "tag": "0013_daffy_white_tiger",
+      "breakpoints": true
     }
   ]
 }

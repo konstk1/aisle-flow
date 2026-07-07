@@ -25,7 +25,7 @@ export const aisleSectionSide = pgEnum("aisle_section_side", [
 
 export const productAliasScope = pgEnum("product_alias_scope", [
   "global",
-  "store",
+  "user",
 ]);
 
 export const productAliasSource = pgEnum("product_alias_source", [
@@ -309,7 +309,9 @@ export const productAliases = pgTable(
     productConceptId: uuid("product_concept_id")
       .notNull()
       .references(() => productConcepts.id, { onDelete: "restrict" }),
-    storeId: uuid("store_id").references(() => stores.id, {
+    // An alias is personal vocabulary, so learned entries follow the user
+    // across stores; only locations stay store-scoped.
+    userId: text("user_id").references(() => user.id, {
       onDelete: "cascade",
     }),
     normalizedText: text("normalized_text").notNull(),
@@ -328,16 +330,16 @@ export const productAliases = pgTable(
     uniqueIndex("product_aliases_global_normalized_text_unique")
       .on(table.normalizedText)
       .where(sql`${table.scope} = 'global'`),
-    uniqueIndex("product_aliases_store_normalized_text_unique")
-      .on(table.storeId, table.normalizedText)
-      .where(sql`${table.scope} = 'store'`),
+    uniqueIndex("product_aliases_user_normalized_text_unique")
+      .on(table.userId, table.normalizedText)
+      .where(sql`${table.scope} = 'user'`),
     index("product_aliases_lookup_index").on(
       table.normalizedText,
-      table.storeId,
+      table.userId,
     ),
     check(
-      "product_aliases_scope_store_consistency",
-      sql`(${table.scope} = 'global' AND ${table.storeId} IS NULL) OR (${table.scope} = 'store' AND ${table.storeId} IS NOT NULL)`,
+      "product_aliases_scope_user_consistency",
+      sql`(${table.scope} = 'global' AND ${table.userId} IS NULL) OR (${table.scope} = 'user' AND ${table.userId} IS NOT NULL)`,
     ),
     check(
       "product_aliases_normalized_text_not_blank",

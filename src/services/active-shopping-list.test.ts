@@ -314,6 +314,7 @@ describe("addActiveShoppingListItem", () => {
 
     expect(mocks.createStoreProductMatcher).toHaveBeenCalledWith({
       db: mocks.db,
+      userId,
       storeId,
     });
     expect(mocks.resolveProductMatch).toHaveBeenCalledWith("Rice");
@@ -679,6 +680,7 @@ describe("updateActiveShoppingItemText", () => {
     );
     expect(mocks.createStoreProductMatcher).toHaveBeenCalledWith({
       db: mocks.db,
+      userId,
       storeId,
     });
     expect(mocks.resolveProductMatch).toHaveBeenCalledWith("Rice");
