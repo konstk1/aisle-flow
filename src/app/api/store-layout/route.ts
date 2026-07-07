@@ -1,10 +1,11 @@
-import { hasValidSession, requireSessionUserId } from "@/auth/access";
+import { requireSessionUserId } from "@/auth/access";
 import { isForeignKeyError } from "@/db/errors";
 import {
   getCurrentStoreLayout,
   replaceStoreLayout,
   storeLayoutSchema,
 } from "@/services/store-layout";
+import { StoreRequestError } from "@/services/stores";
 
 import {
   unauthorizedResponse,
@@ -22,7 +23,9 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
-  if (!(await hasValidSession())) {
+  const userId = await requireSessionUserId();
+
+  if (!userId) {
     return unauthorizedResponse();
   }
 
@@ -47,9 +50,16 @@ export async function PUT(request: Request) {
   }
 
   try {
-    const layout = await replaceStoreLayout(parsed.data);
+    const layout = await replaceStoreLayout(parsed.data, userId);
     return Response.json({ layout });
   } catch (error) {
+    if (error instanceof StoreRequestError) {
+      return Response.json(
+        { error: error.message, fieldErrors: error.fieldErrors },
+        { status: error.status },
+      );
+    }
+
     if (isForeignKeyError(error)) {
       return Response.json(
         {

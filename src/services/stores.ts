@@ -63,7 +63,7 @@ function canManageStore(createdBy: string | null, userId: string): boolean {
   return createdBy === null || createdBy === userId;
 }
 
-async function requireManageableStore(
+export async function requireManageableStore(
   storeId: string,
   userId: string,
 ): Promise<void> {

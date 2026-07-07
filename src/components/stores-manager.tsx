@@ -188,6 +188,9 @@ export function StoresManager({
           {stores.map((store) => {
             const isEditing = editingStoreId === store.id;
             const isPending = pendingStoreId === store.id;
+            // A single pendingStoreId backs every row, so all row actions
+            // lock while any request is in flight.
+            const isLocked = pendingStoreId !== null;
             const isConfirmingDelete = confirmingDeleteId === store.id;
             const isCurrent = store.id === currentStoreId;
             const nameConfirmed = deleteConfirmName.trim() === store.name;
@@ -226,7 +229,7 @@ export function StoresManager({
                         <button
                           aria-label={`Save name for ${store.name}`}
                           className="flex size-[34px] items-center justify-center rounded-[10px] bg-accent-50 text-accent transition hover:bg-accent-100 disabled:cursor-not-allowed disabled:opacity-50"
-                          disabled={isPending}
+                          disabled={isLocked}
                           onClick={() => void saveRename(store)}
                           title="Save"
                           type="button"
@@ -241,7 +244,7 @@ export function StoresManager({
                             : `Rename ${store.name}`
                         }
                         className="flex size-[34px] items-center justify-center rounded-[10px] bg-ink-50 text-ink-500 transition hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={isPending}
+                        disabled={isLocked}
                         onClick={() =>
                           isEditing
                             ? setEditingStoreId(null)
@@ -260,7 +263,7 @@ export function StoresManager({
                         <button
                           aria-label={`Stop deleting ${store.name}`}
                           className="flex size-[34px] items-center justify-center rounded-[10px] bg-ink-50 text-ink-500 transition hover:text-danger disabled:cursor-not-allowed disabled:opacity-50"
-                          disabled={isPending}
+                          disabled={isLocked}
                           onClick={() => setConfirmingDeleteId(null)}
                           title="Cancel delete"
                           type="button"
@@ -271,7 +274,7 @@ export function StoresManager({
                         <button
                           aria-label={`Delete ${store.name}`}
                           className="flex size-[34px] items-center justify-center rounded-[10px] bg-danger-50 text-danger transition hover:bg-danger-100 disabled:cursor-not-allowed disabled:opacity-50"
-                          disabled={isPending}
+                          disabled={isLocked}
                           onClick={() => {
                             setConfirmingDeleteId(store.id);
                             setDeleteConfirmName("");
@@ -316,7 +319,7 @@ export function StoresManager({
                       </label>
                       <button
                         className="inline-flex min-h-10 shrink-0 items-center rounded-[10px] bg-danger px-3 text-sm font-semibold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={isPending || !nameConfirmed}
+                        disabled={isLocked || !nameConfirmed}
                         onClick={() => void deleteStore(store)}
                         type="button"
                       >

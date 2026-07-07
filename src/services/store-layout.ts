@@ -7,7 +7,10 @@ import type { StoreLayout } from "@/domain/store-layout";
 
 import { getDb } from "@/db/client";
 import { aisles, aisleSections, stores } from "@/db/schema";
-import { resolveCurrentStore } from "@/services/stores";
+import {
+  requireManageableStore,
+  resolveCurrentStore,
+} from "@/services/stores";
 
 const MAX_ORDER = 9_999;
 const ORDER_OFFSET = 100_000;
@@ -190,13 +193,18 @@ export async function getStoreLayout(
   return { id: store.id, name: store.name, aisles: [...layoutAisles.values()] };
 }
 
-export async function replaceStoreLayout(layout: StoreLayoutInput) {
+export async function replaceStoreLayout(
+  layout: StoreLayoutInput,
+  userId: string,
+) {
   const existing = await getStoreLayout(layout.id);
   const db = getDb();
 
   if (!existing) {
     await db.batch([
-      db.insert(stores).values({ id: layout.id, name: layout.name }),
+      db
+        .insert(stores)
+        .values({ id: layout.id, name: layout.name, createdBy: userId }),
       db.insert(aisles).values(
         layout.aisles.map((aisle) => ({
           id: aisle.id,
@@ -222,6 +230,10 @@ export async function replaceStoreLayout(layout: StoreLayoutInput) {
 
     return getStoreLayout(layout.id);
   }
+
+  // Replacing a layout renames the store and rewrites its aisles, so it is
+  // owner-gated like rename/delete.
+  await requireManageableStore(layout.id, userId);
 
   const existingAisleIds = new Set(existing.aisles.map((aisle) => aisle.id));
   const existingSectionIds = new Set(

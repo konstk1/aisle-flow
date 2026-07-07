@@ -8,6 +8,6 @@ export interface StoreListItem extends StoreSummary {
 }
 
 export interface StoresPayload {
-  stores: StoreSummary[];
+  stores: StoreListItem[];
   currentStoreId: string | null;
 }
