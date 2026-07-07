@@ -57,7 +57,11 @@ export async function PATCH(
   }
 
   try {
-    const store = await renameStore(parsedStoreId.data, parsed.data.name);
+    const store = await renameStore(
+      parsedStoreId.data,
+      parsed.data.name,
+      userId,
+    );
 
     return Response.json({ store });
   } catch (error) {
@@ -83,7 +87,7 @@ export async function DELETE(
   }
 
   try {
-    await deleteStore(parsedStoreId.data);
+    await deleteStore(parsedStoreId.data, userId);
 
     return Response.json({ deleted: true });
   } catch (error) {

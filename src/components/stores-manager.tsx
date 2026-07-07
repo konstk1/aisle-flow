@@ -4,7 +4,7 @@ import { Check, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import type { StoreSummary } from "@/domain/stores";
+import type { StoreListItem, StoreSummary } from "@/domain/stores";
 
 type StoreMutationResponse = {
   store?: StoreSummary;
@@ -17,7 +17,7 @@ export function StoresManager({
   stores,
   currentStoreId,
 }: {
-  stores: StoreSummary[];
+  stores: StoreListItem[];
   currentStoreId: string | null;
 }) {
   const router = useRouter();
@@ -29,6 +29,7 @@ export function StoresManager({
   const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(
     null,
   );
+  const [deleteConfirmName, setDeleteConfirmName] = useState("");
   const [pendingStoreId, setPendingStoreId] = useState<string | null>(null);
   const [rowError, setRowError] = useState<{
     storeId: string;
@@ -108,7 +109,7 @@ export function StoresManager({
     }
   }
 
-  async function deleteStore(store: StoreSummary) {
+  async function deleteStore(store: StoreListItem) {
     setPendingStoreId(store.id);
     setRowError(null);
 
@@ -127,6 +128,7 @@ export function StoresManager({
       }
 
       setConfirmingDeleteId(null);
+      setDeleteConfirmName("");
       router.refresh();
     } catch {
       setRowError({
@@ -188,6 +190,7 @@ export function StoresManager({
             const isPending = pendingStoreId === store.id;
             const isConfirmingDelete = confirmingDeleteId === store.id;
             const isCurrent = store.id === currentStoreId;
+            const nameConfirmed = deleteConfirmName.trim() === store.name;
 
             return (
               <li className="p-4 sm:px-5" key={store.id}>
@@ -217,74 +220,110 @@ export function StoresManager({
                     </div>
                   )}
 
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    {isEditing ? (
-                      <button
-                        aria-label={`Save name for ${store.name}`}
-                        className="flex size-[34px] items-center justify-center rounded-[10px] bg-accent-50 text-accent transition hover:bg-accent-100 disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={isPending}
-                        onClick={() => void saveRename(store)}
-                        title="Save"
-                        type="button"
-                      >
-                        <Check aria-hidden="true" className="size-4" />
-                      </button>
-                    ) : null}
-                    <button
-                      aria-label={
-                        isEditing
-                          ? `Stop renaming ${store.name}`
-                          : `Rename ${store.name}`
-                      }
-                      className="flex size-[34px] items-center justify-center rounded-[10px] bg-ink-50 text-ink-500 transition hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-                      disabled={isPending}
-                      onClick={() =>
-                        isEditing
-                          ? setEditingStoreId(null)
-                          : startRenaming(store)
-                      }
-                      title={isEditing ? "Cancel" : "Rename"}
-                      type="button"
-                    >
+                  {store.isOwner ? (
+                    <div className="flex shrink-0 items-center gap-1.5">
                       {isEditing ? (
-                        <X aria-hidden="true" className="size-4" />
+                        <button
+                          aria-label={`Save name for ${store.name}`}
+                          className="flex size-[34px] items-center justify-center rounded-[10px] bg-accent-50 text-accent transition hover:bg-accent-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={isPending}
+                          onClick={() => void saveRename(store)}
+                          title="Save"
+                          type="button"
+                        >
+                          <Check aria-hidden="true" className="size-4" />
+                        </button>
+                      ) : null}
+                      <button
+                        aria-label={
+                          isEditing
+                            ? `Stop renaming ${store.name}`
+                            : `Rename ${store.name}`
+                        }
+                        className="flex size-[34px] items-center justify-center rounded-[10px] bg-ink-50 text-ink-500 transition hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={isPending}
+                        onClick={() =>
+                          isEditing
+                            ? setEditingStoreId(null)
+                            : startRenaming(store)
+                        }
+                        title={isEditing ? "Cancel" : "Rename"}
+                        type="button"
+                      >
+                        {isEditing ? (
+                          <X aria-hidden="true" className="size-4" />
+                        ) : (
+                          <Pencil aria-hidden="true" className="size-4" />
+                        )}
+                      </button>
+                      {isConfirmingDelete ? (
+                        <button
+                          aria-label={`Stop deleting ${store.name}`}
+                          className="flex size-[34px] items-center justify-center rounded-[10px] bg-ink-50 text-ink-500 transition hover:text-danger disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={isPending}
+                          onClick={() => setConfirmingDeleteId(null)}
+                          title="Cancel delete"
+                          type="button"
+                        >
+                          <X aria-hidden="true" className="size-4" />
+                        </button>
                       ) : (
-                        <Pencil aria-hidden="true" className="size-4" />
+                        <button
+                          aria-label={`Delete ${store.name}`}
+                          className="flex size-[34px] items-center justify-center rounded-[10px] bg-danger-50 text-danger transition hover:bg-danger-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled={isPending}
+                          onClick={() => {
+                            setConfirmingDeleteId(store.id);
+                            setDeleteConfirmName("");
+                            setEditingStoreId(null);
+                            setRowError(null);
+                          }}
+                          title="Delete"
+                          type="button"
+                        >
+                          <Trash2 aria-hidden="true" className="size-4" />
+                        </button>
                       )}
-                    </button>
-                    {isConfirmingDelete ? (
-                      <button
-                        className="inline-flex min-h-[34px] items-center rounded-[10px] bg-danger px-3 text-sm font-semibold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={isPending}
-                        onClick={() => void deleteStore(store)}
-                        type="button"
-                      >
-                        {isPending ? "Deleting…" : "Confirm delete"}
-                      </button>
-                    ) : (
-                      <button
-                        aria-label={`Delete ${store.name}`}
-                        className="flex size-[34px] items-center justify-center rounded-[10px] bg-danger-50 text-danger transition hover:bg-danger-100 disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled={isPending}
-                        onClick={() => {
-                          setConfirmingDeleteId(store.id);
-                          setEditingStoreId(null);
-                          setRowError(null);
-                        }}
-                        title="Delete"
-                        type="button"
-                      >
-                        <Trash2 aria-hidden="true" className="size-4" />
-                      </button>
-                    )}
-                  </div>
+                    </div>
+                  ) : (
+                    <p className="shrink-0 text-xs text-ink-400">
+                      Only its creator can change this store.
+                    </p>
+                  )}
                 </div>
 
                 {isConfirmingDelete ? (
-                  <p className="mt-3 text-sm text-danger">
-                    Deleting {store.name} permanently removes its route, learned
-                    products, and shopping lists for everyone.
-                  </p>
+                  <div className="mt-3">
+                    <p className="text-sm text-danger">
+                      Deleting {store.name} permanently removes its route and
+                      learned products for everyone who uses it. Shopping lists
+                      are kept. Type the store name to confirm.
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <label className="min-w-0 flex-1">
+                        <span className="sr-only">
+                          Type {store.name} to confirm deletion
+                        </span>
+                        <input
+                          autoFocus
+                          className="min-h-10 w-full rounded-xl border border-black/[0.07] bg-white px-3.5 text-base outline-none transition focus:border-danger"
+                          onChange={(event) =>
+                            setDeleteConfirmName(event.target.value)
+                          }
+                          placeholder={store.name}
+                          value={deleteConfirmName}
+                        />
+                      </label>
+                      <button
+                        className="inline-flex min-h-10 shrink-0 items-center rounded-[10px] bg-danger px-3 text-sm font-semibold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+                        disabled={isPending || !nameConfirmed}
+                        onClick={() => void deleteStore(store)}
+                        type="button"
+                      >
+                        {isPending ? "Deleting…" : "Delete store"}
+                      </button>
+                    </div>
+                  </div>
                 ) : null}
 
                 {rowError?.storeId === store.id ? (

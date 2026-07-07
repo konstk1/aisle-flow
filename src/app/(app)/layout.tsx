@@ -9,7 +9,7 @@ export default async function AuthenticatedLayout({
 }) {
   const userId = await requirePageSession();
   const [stores, currentStore] = await Promise.all([
-    listStores(),
+    listStores(userId),
     resolveCurrentStore(userId),
   ]);
 

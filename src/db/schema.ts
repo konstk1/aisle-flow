@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   boolean,
   check,
   foreignKey,
@@ -173,6 +174,12 @@ export const stores = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     name: text("name").notNull(),
+    // Null for stores created before ownership existed; those stay
+    // manageable by everyone. The AnyPgColumn annotation breaks the
+    // user <-> stores type-inference cycle.
+    createdBy: text("created_by").references((): AnyPgColumn => user.id, {
+      onDelete: "set null",
+    }),
     version: integer("version").default(1).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
