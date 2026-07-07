@@ -3,7 +3,7 @@ import "server-only";
 import { asc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
-import type { StoreSummary } from "@/domain/stores";
+import type { StoreListItem, StoreSummary } from "@/domain/stores";
 
 import { getDb } from "@/db/client";
 import {
@@ -44,13 +44,44 @@ export class StoreRequestError extends Error {
 
 const storeSummaryColumns = { id: stores.id, name: stores.name };
 
-export async function listStores(): Promise<StoreSummary[]> {
+export async function listStores(userId: string): Promise<StoreListItem[]> {
   const db = getDb();
-
-  return db
-    .select(storeSummaryColumns)
+  const rows = await db
+    .select({ ...storeSummaryColumns, createdBy: stores.createdBy })
     .from(stores)
     .orderBy(asc(stores.createdAt));
+
+  return rows.map(({ createdBy, ...store }) => ({
+    ...store,
+    isOwner: canManageStore(createdBy, userId),
+  }));
+}
+
+// Stores created before ownership existed have no creator; everyone can
+// manage those.
+function canManageStore(createdBy: string | null, userId: string): boolean {
+  return createdBy === null || createdBy === userId;
+}
+
+export async function requireManageableStore(
+  storeId: string,
+  userId: string,
+): Promise<void> {
+  const db = getDb();
+  const [store] = await db
+    .select({ createdBy: stores.createdBy })
+    .from(stores)
+    .where(eq(stores.id, storeId));
+
+  if (!store) {
+    throw missingStoreError();
+  }
+
+  if (!canManageStore(store.createdBy, userId)) {
+    const message = "Only the user who created this store can change it.";
+
+    throw new StoreRequestError(message, { storeId: [message] }, 403);
+  }
 }
 
 export async function resolveCurrentStore(
@@ -104,11 +135,14 @@ export async function setCurrentStore(
   return store;
 }
 
-export async function createStore(name: string): Promise<StoreSummary> {
+export async function createStore(
+  name: string,
+  userId: string,
+): Promise<StoreSummary> {
   const db = getDb();
   const [created] = await db
     .insert(stores)
-    .values({ name })
+    .values({ name, createdBy: userId })
     .returning(storeSummaryColumns);
 
   if (!created) {
@@ -121,7 +155,10 @@ export async function createStore(name: string): Promise<StoreSummary> {
 export async function renameStore(
   storeId: string,
   name: string,
+  userId: string,
 ): Promise<StoreSummary> {
+  await requireManageableStore(storeId, userId);
+
   const db = getDb();
   const [renamed] = await db
     .update(stores)
@@ -140,7 +177,12 @@ export async function renameStore(
   return renamed;
 }
 
-export async function deleteStore(storeId: string): Promise<void> {
+export async function deleteStore(
+  storeId: string,
+  userId: string,
+): Promise<void> {
+  await requireManageableStore(storeId, userId);
+
   const db = getDb();
   // Shopping lists are per-user and survive store deletion; their items
   // resolve locations at read time, so only the store-scoped layout and

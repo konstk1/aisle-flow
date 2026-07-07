@@ -3,7 +3,11 @@ export interface StoreSummary {
   name: string;
 }
 
+export interface StoreListItem extends StoreSummary {
+  isOwner: boolean;
+}
+
 export interface StoresPayload {
-  stores: StoreSummary[];
+  stores: StoreListItem[];
   currentStoreId: string | null;
 }

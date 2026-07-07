@@ -21,7 +21,7 @@ export async function GET() {
 
   try {
     const [stores, currentStore] = await Promise.all([
-      listStores(),
+      listStores(userId),
       resolveCurrentStore(userId),
     ]);
 
@@ -59,7 +59,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const store = await createStore(parsed.data.name);
+    const store = await createStore(parsed.data.name, userId);
     // A new store is almost always created to be set up next, so make it
     // the creator's current store right away.
     await setCurrentStore(userId, store.id);

@@ -5,7 +5,7 @@ import { listStores, resolveCurrentStore } from "@/services/stores";
 export default async function StoresPage() {
   const userId = await requirePageSession();
   const [stores, currentStore] = await Promise.all([
-    listStores(),
+    listStores(userId),
     resolveCurrentStore(userId),
   ]);
 
