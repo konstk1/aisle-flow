@@ -1,8 +1,9 @@
-import { AppMark } from "@/components/app-mark";
+import { redirect } from "next/navigation";
+
 import { getSafeRedirectPath } from "@/auth/redirect";
 import { getServerSession } from "@/auth/access";
+import { AppMark } from "@/components/app-mark";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
-import { redirect } from "next/navigation";
 
 type LoginPageProps = {
   searchParams: Promise<{
@@ -26,30 +27,36 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const nextPath = getSafeRedirectPath(next);
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-md flex-col px-5 py-6 sm:px-8 sm:py-10">
-      <header className="border-b pb-5">
+    <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-5 py-10 sm:px-8">
+      <div className="card p-7 sm:p-9">
         <AppMark />
-      </header>
 
-      <section className="flex flex-1 flex-col justify-center py-16">
-        <p className="text-sm font-medium text-zinc-500">Private workspace</p>
-        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-zinc-950">
-          Sign in to Aisle Flow
-        </h1>
-        <p className="mt-3 text-base leading-7 text-zinc-600">
-          Use your allowlisted Google account to continue.
-        </p>
+        <div className="mt-8">
+          <p className="text-[13px] font-bold tracking-[0.05em] text-ink-500 uppercase">
+            Private workspace
+          </p>
+          <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">
+            Sign in to Aisle Flow
+          </h1>
+          <p className="mt-2 text-sm leading-6 text-ink-400">
+            Use your allowlisted Google account to continue.
+          </p>
+        </div>
 
-        <div className="mt-8 space-y-5">
+        <div className="mt-7 space-y-4">
           {message ? (
-            <p aria-live="polite" className="text-sm text-red-700" role="alert">
+            <p
+              aria-live="polite"
+              className="rounded-xl bg-danger-50 px-4 py-3 text-sm font-medium text-danger"
+              role="alert"
+            >
               {message}
             </p>
           ) : null}
 
           <GoogleSignInButton nextPath={nextPath} />
         </div>
-      </section>
+      </div>
     </main>
   );
 }
