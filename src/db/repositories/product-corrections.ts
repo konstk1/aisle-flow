@@ -189,12 +189,19 @@ export function buildLearnedAliasByIdQuery(
     .limit(1);
 }
 
-export function buildLearnedAliasDeleteQuery(db: Database, aliasId: string) {
+// Scoped to the owning user so ownership is enforced in the query, not just by
+// the caller fetching via buildLearnedAliasByIdQuery first.
+export function buildLearnedAliasDeleteQuery(
+  db: Database,
+  userId: string,
+  aliasId: string,
+) {
   return db
     .delete(productAliases)
     .where(
       and(
         eq(productAliases.id, aliasId),
+        eq(productAliases.userId, userId),
         eq(productAliases.source, "learned"),
         eq(productAliases.isCorrection, true),
       ),

@@ -543,6 +543,7 @@ describe("deleteLearnedProduct", () => {
 
     expect(mocks.buildLearnedAliasDeleteQuery).toHaveBeenCalledWith(
       mocks.db,
+      userId,
       "alias-1",
     );
     expect(payload).toEqual({

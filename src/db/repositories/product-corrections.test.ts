@@ -200,18 +200,21 @@ describe("product correction queries", () => {
     expect(params).not.toContain(storeId);
   });
 
-  it("deletes an alias only when it is a learned correction", () => {
+  it("deletes an alias only when it is the user's own learned correction", () => {
     const { sql: query, params } = buildLearnedAliasDeleteQuery(
       database,
+      userId,
       "44444444-4444-4444-8444-444444444444",
     ).toSQL();
 
     expect(query).toContain('delete from "product_aliases"');
+    expect(query).toContain('"product_aliases"."user_id" = $');
     expect(query).toContain('"product_aliases"."source" = $');
     expect(query).toContain('"product_aliases"."is_correction" = $');
     expect(query).toContain("returning");
     expect(params).toEqual([
       "44444444-4444-4444-8444-444444444444",
+      userId,
       "learned",
       true,
     ]);

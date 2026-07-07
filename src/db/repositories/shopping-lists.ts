@@ -38,9 +38,7 @@ const shoppingItemRouteSelection = {
 // no rows when there is no current store. Combine with the concept-id equality
 // inside the join's `and(...)`.
 export function productLocationStoreFilter(storeId: string | null): SQL {
-  return (
-    storeId === null ? sql`false` : eq(productLocations.storeId, storeId)
-  ) as SQL;
+  return storeId === null ? sql`false` : eq(productLocations.storeId, storeId);
 }
 
 // Locations are resolved at read time against the viewer's current store, so
