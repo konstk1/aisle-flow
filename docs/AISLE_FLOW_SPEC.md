@@ -59,7 +59,7 @@ Matching must prefer longer or more specific phrases and support exclusions so a
 
 When an item cannot be matched confidently, the app creates or selects a canonical shelf category and asks the user to assign its aisle section. The correction is persisted as an exact learned alias. For example, assigning `wild rice` to `rice` records `wild rice` -> `rice` for future lists.
 
-Manual corrections always take precedence and become learned aliases or store-specific category locations. Semantic embeddings and vector search are deferred from the MVP.
+Manual corrections always take precedence. A correction writes two records with different owners: the learned alias belongs to the correcting user (personal vocabulary that follows the user across stores), while the category location belongs to the store. Matching prefers the user's own alias over global catalog aliases. Semantic embeddings and vector search are deferred from the MVP.
 
 ## Technical Architecture
 
@@ -84,7 +84,7 @@ Initial network resilience should include:
 
 ### `stores`
 
-Store identity, name, and active route.
+Store identity, name, active route, and creator. Only the creating user can rename, delete, or edit the layout of a store; stores created before ownership existed have no creator and stay manageable by everyone. Any user can shop against any store.
 
 ### `aisles`
 
@@ -100,7 +100,7 @@ Canonical shelf-category name and matching metadata.
 
 ### `product_aliases`
 
-Normalized phrase, canonical product reference, scope, confidence, and correction metadata.
+Normalized phrase, canonical product reference, scope, confidence, and correction metadata. Scope is `global` (seeded catalog vocabulary, no owner) or `user` (learned corrections owned by the user who made them). Aliases are store-independent: they follow the user across stores and survive store deletion; only `product_locations` are store-scoped.
 
 ### `product_locations`
 
@@ -157,6 +157,8 @@ The app uses Google sign-in with an explicit email allowlist.
 - Signed Better Auth session cookie
 - Page and API route session checks for protected data
 - Shopping-list ownership scoped by authenticated user id
+- Store management (rename, delete, layout edits) restricted to the store's creator
+- Learned aliases owned by the correcting user; other users' aliases are not readable or editable
 - No public signup, roles, or email/password flow
 
 Provider webhook endpoints must use provider signatures or dedicated secrets rather than the browser session.
@@ -186,7 +188,7 @@ Use a fine-grained GitHub token restricted to the repository with only `Issues: 
 ## MVP Scope
 
 - Google sign-in restricted to allowlisted email addresses
-- One store
+- Multiple stores with creator-only management and a per-user current store
 - Text-based aisle and section editor
 - Multiple ordered sections per aisle
 - One absolute section path order for route sorting
