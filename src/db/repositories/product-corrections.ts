@@ -6,10 +6,9 @@ import {
   aisleSections,
   productAliases,
   productConcepts,
-  productLearningEvents,
   productLocations,
-  user,
 } from "../schema";
+import { productLocationStoreFilter } from "./shopping-lists";
 
 export interface ProductConceptCreateInput {
   canonicalName: string;
@@ -17,7 +16,7 @@ export interface ProductConceptCreateInput {
 }
 
 export interface ManualProductAliasCorrectionInput {
-  storeId: string;
+  userId: string;
   productConceptId: string | SQL;
   normalizedText: string;
   confidence?: number;
@@ -47,7 +46,7 @@ export function buildProductConceptListQuery(
       productLocations,
       and(
         eq(productLocations.productConceptId, productConcepts.id),
-        storeId === null ? sql`false` : eq(productLocations.storeId, storeId),
+        productLocationStoreFilter(storeId),
       ),
     )
     .orderBy(asc(productConcepts.normalizedName));
@@ -99,18 +98,18 @@ export function buildManualProductAliasCorrectionQuery(
   return db
     .insert(productAliases)
     .values({
-      storeId: input.storeId,
+      userId: input.userId,
       productConceptId: input.productConceptId,
       normalizedText: input.normalizedText,
-      scope: "store",
+      scope: "user",
       confidence: input.confidence ?? 1,
       source: "learned",
       isCorrection: true,
       updatedAt: now,
     })
     .onConflictDoUpdate({
-      target: [productAliases.storeId, productAliases.normalizedText],
-      targetWhere: sql`${productAliases.scope} = 'store'`,
+      target: [productAliases.userId, productAliases.normalizedText],
+      targetWhere: sql`${productAliases.scope} = 'user'`,
       // Re-correcting an exact phrase is intentionally last-writer-wins for the
       // MVP; product_aliases has no version column yet.
       set: {
@@ -124,19 +123,14 @@ export function buildManualProductAliasCorrectionQuery(
     .returning();
 }
 
-export interface ProductLearningEventInsertInput {
-  storeId: string;
-  normalizedText: string;
-  action: "created" | "updated" | "deleted";
-  productConceptId: string | SQL | null;
-  productConceptName: string;
-  aisleSectionId: string | null;
-  aisleSectionLabel: string | null;
-  createdByUserId: string;
-  now?: Date;
-}
-
-export function buildLearnedAliasListQuery(db: Database, storeId: string) {
+// Aliases are the user's vocabulary across stores; the location column is
+// resolved against the given store, so it can be absent per row (or entirely
+// when the user has no store).
+export function buildLearnedAliasListQuery(
+  db: Database,
+  userId: string,
+  storeId: string | null,
+) {
   return db
     .select({
       alias: productAliases,
@@ -153,100 +147,66 @@ export function buildLearnedAliasListQuery(db: Database, storeId: string) {
     .leftJoin(
       productLocations,
       and(
-        eq(productLocations.storeId, storeId),
+        productLocationStoreFilter(storeId),
         eq(productLocations.productConceptId, productConcepts.id),
       ),
     )
-    .leftJoin(aisleSections, eq(productLocations.aisleSectionId, aisleSections.id))
+    .leftJoin(
+      aisleSections,
+      eq(productLocations.aisleSectionId, aisleSections.id),
+    )
     .leftJoin(aisles, eq(aisleSections.aisleId, aisles.id))
     .where(
       and(
-        eq(productAliases.storeId, storeId),
+        eq(productAliases.userId, userId),
         eq(productAliases.source, "learned"),
         eq(productAliases.isCorrection, true),
       ),
     )
-    .orderBy(desc(productAliases.updatedAt), asc(productAliases.normalizedText));
+    .orderBy(
+      desc(productAliases.updatedAt),
+      asc(productAliases.normalizedText),
+    );
 }
 
-export function buildLearnedAliasByIdQuery(db: Database, aliasId: string) {
-  return db
-    .select()
-    .from(productAliases)
-    .where(
-      and(
-        eq(productAliases.id, aliasId),
-        eq(productAliases.source, "learned"),
-        eq(productAliases.isCorrection, true),
-      ),
-    )
-    .limit(1);
-}
-
-export function buildLearnedAliasByTextQuery(
+// Scoped to the owning user so callers cannot read another user's alias by id.
+export function buildLearnedAliasByIdQuery(
   db: Database,
-  storeId: string,
-  normalizedText: string,
+  userId: string,
+  aliasId: string,
 ) {
   return db
     .select()
     .from(productAliases)
     .where(
       and(
-        eq(productAliases.storeId, storeId),
-        eq(productAliases.scope, "store"),
-        eq(productAliases.normalizedText, normalizedText),
+        eq(productAliases.id, aliasId),
+        eq(productAliases.userId, userId),
+        eq(productAliases.source, "learned"),
+        eq(productAliases.isCorrection, true),
       ),
     )
     .limit(1);
 }
 
-export function buildLearnedAliasDeleteQuery(db: Database, aliasId: string) {
+// Scoped to the owning user so ownership is enforced in the query, not just by
+// the caller fetching via buildLearnedAliasByIdQuery first.
+export function buildLearnedAliasDeleteQuery(
+  db: Database,
+  userId: string,
+  aliasId: string,
+) {
   return db
     .delete(productAliases)
     .where(
       and(
         eq(productAliases.id, aliasId),
+        eq(productAliases.userId, userId),
         eq(productAliases.source, "learned"),
         eq(productAliases.isCorrection, true),
       ),
     )
     .returning();
-}
-
-export function buildProductLearningEventInsertQuery(
-  db: Database,
-  input: ProductLearningEventInsertInput,
-) {
-  return db
-    .insert(productLearningEvents)
-    .values({
-      storeId: input.storeId,
-      normalizedText: input.normalizedText,
-      action: input.action,
-      productConceptId: input.productConceptId,
-      productConceptName: input.productConceptName,
-      aisleSectionId: input.aisleSectionId,
-      aisleSectionLabel: input.aisleSectionLabel,
-      createdByUserId: input.createdByUserId,
-      ...(input.now ? { createdAt: input.now } : {}),
-    })
-    .returning();
-}
-
-export function buildProductLearningEventListQuery(
-  db: Database,
-  storeId: string,
-) {
-  return db
-    .select({
-      event: productLearningEvents,
-      createdByName: user.name,
-    })
-    .from(productLearningEvents)
-    .leftJoin(user, eq(productLearningEvents.createdByUserId, user.id))
-    .where(eq(productLearningEvents.storeId, storeId))
-    .orderBy(desc(productLearningEvents.createdAt));
 }
 
 export function buildManualProductLocationCorrectionQuery(

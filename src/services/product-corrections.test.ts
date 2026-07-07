@@ -5,7 +5,6 @@ const mocks = vi.hoisted(() => {
 
   return {
     buildLearnedAliasByIdQuery: vi.fn(),
-    buildLearnedAliasByTextQuery: vi.fn(),
     buildLearnedAliasDeleteQuery: vi.fn(),
     buildLearnedAliasListQuery: vi.fn(),
     buildManualProductAliasCorrectionQuery: vi.fn(),
@@ -14,8 +13,6 @@ const mocks = vi.hoisted(() => {
     buildProductConceptByIdQuery: vi.fn(),
     buildProductConceptCreateQuery: vi.fn(),
     buildProductConceptListQuery: vi.fn(),
-    buildProductLearningEventInsertQuery: vi.fn(),
-    buildProductLearningEventListQuery: vi.fn(),
     buildShoppingItemProductResolutionQuery: vi.fn(),
     db,
     getDb: vi.fn(() => db),
@@ -27,7 +24,6 @@ const mocks = vi.hoisted(() => {
 vi.mock("@/db/client", () => ({ getDb: mocks.getDb }));
 vi.mock("@/db/repositories/product-corrections", () => ({
   buildLearnedAliasByIdQuery: mocks.buildLearnedAliasByIdQuery,
-  buildLearnedAliasByTextQuery: mocks.buildLearnedAliasByTextQuery,
   buildLearnedAliasDeleteQuery: mocks.buildLearnedAliasDeleteQuery,
   buildLearnedAliasListQuery: mocks.buildLearnedAliasListQuery,
   buildManualProductAliasCorrectionQuery:
@@ -37,9 +33,6 @@ vi.mock("@/db/repositories/product-corrections", () => ({
   buildProductConceptByIdQuery: mocks.buildProductConceptByIdQuery,
   buildProductConceptCreateQuery: mocks.buildProductConceptCreateQuery,
   buildProductConceptListQuery: mocks.buildProductConceptListQuery,
-  buildProductLearningEventInsertQuery:
-    mocks.buildProductLearningEventInsertQuery,
-  buildProductLearningEventListQuery: mocks.buildProductLearningEventListQuery,
   productConceptIdByNormalizedName: mocks.productConceptIdByNormalizedName,
 }));
 vi.mock("@/db/repositories/shopping-lists", () => ({
@@ -102,9 +95,9 @@ const productConcept = {
 const alias = {
   id: "alias-1",
   productConceptId: validConceptId,
-  storeId,
+  userId,
   normalizedText: "dried mango",
-  scope: "store" as const,
+  scope: "user" as const,
   confidence: 1,
   source: "learned" as const,
   isCorrection: true,
@@ -127,7 +120,6 @@ const location = {
 
 beforeEach(() => {
   mocks.buildLearnedAliasByIdQuery.mockReset();
-  mocks.buildLearnedAliasByTextQuery.mockReset();
   mocks.buildLearnedAliasDeleteQuery.mockReset();
   mocks.buildLearnedAliasListQuery.mockReset();
   mocks.buildManualProductAliasCorrectionQuery.mockReset();
@@ -136,15 +128,12 @@ beforeEach(() => {
   mocks.buildProductConceptByIdQuery.mockReset();
   mocks.buildProductConceptCreateQuery.mockReset();
   mocks.buildProductConceptListQuery.mockReset();
-  mocks.buildProductLearningEventInsertQuery.mockReset();
-  mocks.buildProductLearningEventListQuery.mockReset();
   mocks.buildShoppingItemProductResolutionQuery.mockReset();
   mocks.db.batch.mockReset();
   mocks.getDb.mockClear();
   mocks.getStoreLayout.mockReset();
   mocks.productConceptIdByNormalizedName.mockReset();
 
-  mocks.buildLearnedAliasByTextQuery.mockResolvedValue([]);
   mocks.buildLearnedAliasListQuery.mockResolvedValue([]);
   mocks.buildManualProductAliasCorrectionQuery.mockReturnValue("alias-query");
   mocks.buildManualProductLocationCorrectionQuery.mockReturnValue(
@@ -152,8 +141,6 @@ beforeEach(() => {
   );
   mocks.buildProductConceptCreateQuery.mockReturnValue("concept-query");
   mocks.buildActiveShoppingListQuery.mockResolvedValue([{ id: activeListId }]);
-  mocks.buildProductLearningEventInsertQuery.mockReturnValue("event-query");
-  mocks.buildProductLearningEventListQuery.mockResolvedValue([]);
   mocks.buildShoppingItemProductResolutionQuery.mockReturnValue("relink-query");
   mocks.getStoreLayout.mockResolvedValue(layout);
   mocks.productConceptIdByNormalizedName.mockReturnValue("concept-id-subquery");
@@ -277,7 +264,6 @@ describe("applyProductCorrection", () => {
       [productConcept],
       [alias],
       [location],
-      [{ id: "event-1" }],
       [{ id: "shopping-item-1" }],
     ]);
 
@@ -295,25 +281,12 @@ describe("applyProductCorrection", () => {
       "concept-query",
       "alias-query",
       "location-query",
-      "event-query",
       "relink-query",
     ]);
-    expect(mocks.buildProductLearningEventInsertQuery).toHaveBeenCalledWith(
-      mocks.db,
-      expect.objectContaining({
-        storeId,
-        normalizedText: "dried mango",
-        action: "created",
-        productConceptName: "Dried fruit",
-        aisleSectionId: validSectionId,
-        aisleSectionLabel: "Aisle 2 · Dry goods",
-        createdByUserId: userId,
-      }),
-    );
     expect(mocks.buildManualProductAliasCorrectionQuery).toHaveBeenCalledWith(
       mocks.db,
       expect.objectContaining({
-        storeId,
+        userId,
         productConceptId: "concept-id-subquery",
         normalizedText: "dried mango",
       }),
@@ -398,18 +371,15 @@ describe("applyProductCorrection", () => {
       "concept-query",
       "alias-query",
       "location-query",
-      "event-query",
       "relink-query",
     ]);
   });
 
-  it("records an updated learning event when the alias already exists", async () => {
-    mocks.buildLearnedAliasByTextQuery.mockResolvedValue([alias]);
+  it("batches the alias and location for an existing product concept", async () => {
     mocks.buildProductConceptByIdQuery.mockResolvedValue([productConcept]);
     mocks.db.batch.mockResolvedValue([
       [alias],
       [location],
-      [{ id: "event-1" }],
       [{ id: "shopping-item-1" }],
     ]);
 
@@ -422,16 +392,14 @@ describe("applyProductCorrection", () => {
     expect(mocks.db.batch).toHaveBeenCalledWith([
       "alias-query",
       "location-query",
-      "event-query",
       "relink-query",
     ]);
-    expect(mocks.buildProductLearningEventInsertQuery).toHaveBeenCalledWith(
+    expect(mocks.buildManualProductAliasCorrectionQuery).toHaveBeenCalledWith(
       mocks.db,
       expect.objectContaining({
-        action: "updated",
+        userId,
         productConceptId: validConceptId,
-        productConceptName: "Dried fruit",
-        createdByUserId: userId,
+        normalizedText: "dried mango",
       }),
     );
   });
@@ -453,17 +421,21 @@ describe("learnedProductUpdateRequestSchema", () => {
 });
 
 describe("getLearnedProducts", () => {
-  it("returns an empty payload when no store layout exists", async () => {
+  it("lists the user's aliases without locations when no store layout exists", async () => {
     mocks.getStoreLayout.mockResolvedValue(null);
 
     await expect(getLearnedProducts(userId)).resolves.toEqual({
       store: null,
       learnedProducts: [],
     });
-    expect(mocks.buildLearnedAliasListQuery).not.toHaveBeenCalled();
+    expect(mocks.buildLearnedAliasListQuery).toHaveBeenCalledWith(
+      mocks.db,
+      userId,
+      null,
+    );
   });
 
-  it("joins learned aliases with locations and per-phrase event history", async () => {
+  it("joins learned aliases with their store location", async () => {
     mocks.buildLearnedAliasListQuery.mockResolvedValue([
       {
         alias,
@@ -477,33 +449,14 @@ describe("getLearnedProducts", () => {
         aisle: { identifier: "2", displayName: null },
       },
     ]);
-    mocks.buildProductLearningEventListQuery.mockResolvedValue([
-      {
-        event: {
-          id: "event-1",
-          normalizedText: "dried mango",
-          action: "created",
-          productConceptName: "Dried fruit",
-          aisleSectionLabel: "Aisle 2 · Dry goods",
-          createdAt: now,
-        },
-        createdByName: "Kon",
-      },
-      {
-        event: {
-          id: "event-2",
-          normalizedText: "other item",
-          action: "deleted",
-          productConceptName: "Snacks",
-          aisleSectionLabel: null,
-          createdAt: now,
-        },
-        createdByName: null,
-      },
-    ]);
 
     const payload = await getLearnedProducts(userId);
 
+    expect(mocks.buildLearnedAliasListQuery).toHaveBeenCalledWith(
+      mocks.db,
+      userId,
+      storeId,
+    );
     expect(payload.store).toEqual({ id: storeId, name: "Example Market" });
     expect(payload.learnedProducts).toEqual([
       {
@@ -517,23 +470,15 @@ describe("getLearnedProducts", () => {
         },
         aisleSectionId: validSectionId,
         locationLabel: "Aisle 2 · Dry goods",
-        events: [
-          {
-            id: "event-1",
-            action: "created",
-            productConceptName: "Dried fruit",
-            aisleSectionLabel: "Aisle 2 · Dry goods",
-            createdByName: "Kon",
-            createdAt: now.toISOString(),
-          },
-        ],
       },
     ]);
   });
 });
 
 describe("updateLearnedProduct", () => {
-  it("rejects updates for aliases that no longer exist", async () => {
+  it("rejects updates for aliases the user does not own", async () => {
+    // The by-id lookup is user-scoped, so another user's alias (or a deleted
+    // one) returns no row.
     mocks.buildLearnedAliasByIdQuery.mockResolvedValue([]);
 
     await expect(
@@ -542,17 +487,20 @@ describe("updateLearnedProduct", () => {
         aisleSectionId: validSectionId,
       }),
     ).rejects.toMatchObject({ status: 404 });
+    expect(mocks.buildLearnedAliasByIdQuery).toHaveBeenCalledWith(
+      mocks.db,
+      userId,
+      "alias-1",
+    );
     expect(mocks.db.batch).not.toHaveBeenCalled();
   });
 
   it("re-applies the correction for the learned phrase and returns the refreshed payload", async () => {
     mocks.buildLearnedAliasByIdQuery.mockResolvedValue([alias]);
-    mocks.buildLearnedAliasByTextQuery.mockResolvedValue([alias]);
     mocks.buildProductConceptByIdQuery.mockResolvedValue([productConcept]);
     mocks.db.batch.mockResolvedValue([
       [alias],
       [location],
-      [{ id: "event-1" }],
       [{ id: "shopping-item-1" }],
     ]);
 
@@ -563,11 +511,7 @@ describe("updateLearnedProduct", () => {
 
     expect(mocks.buildManualProductAliasCorrectionQuery).toHaveBeenCalledWith(
       mocks.db,
-      expect.objectContaining({ normalizedText: "dried mango" }),
-    );
-    expect(mocks.buildProductLearningEventInsertQuery).toHaveBeenCalledWith(
-      mocks.db,
-      expect.objectContaining({ action: "updated", createdByUserId: userId }),
+      expect.objectContaining({ userId, normalizedText: "dried mango" }),
     );
     expect(payload).toEqual({
       store: { id: storeId, name: "Example Market" },
@@ -577,42 +521,30 @@ describe("updateLearnedProduct", () => {
 });
 
 describe("deleteLearnedProduct", () => {
-  it("rejects deletes for aliases that no longer exist", async () => {
+  it("rejects deletes for aliases the user does not own", async () => {
     mocks.buildLearnedAliasByIdQuery.mockResolvedValue([]);
 
     await expect(deleteLearnedProduct(userId, "alias-1")).rejects.toMatchObject(
       { status: 404 },
     );
-    expect(mocks.db.batch).not.toHaveBeenCalled();
+    expect(mocks.buildLearnedAliasByIdQuery).toHaveBeenCalledWith(
+      mocks.db,
+      userId,
+      "alias-1",
+    );
+    expect(mocks.buildLearnedAliasDeleteQuery).not.toHaveBeenCalled();
   });
 
-  it("batches the alias delete with a deleted learning event", async () => {
+  it("deletes the alias and returns the refreshed payload", async () => {
     mocks.buildLearnedAliasByIdQuery.mockResolvedValue([alias]);
     mocks.buildLearnedAliasDeleteQuery.mockReturnValue("delete-query");
-    mocks.buildProductConceptByIdQuery.mockResolvedValue([productConcept]);
-    mocks.db.batch.mockResolvedValue([[alias], [{ id: "event-1" }]]);
 
     const payload = await deleteLearnedProduct(userId, "alias-1");
 
     expect(mocks.buildLearnedAliasDeleteQuery).toHaveBeenCalledWith(
       mocks.db,
+      userId,
       "alias-1",
-    );
-    expect(mocks.db.batch).toHaveBeenCalledWith([
-      "delete-query",
-      "event-query",
-    ]);
-    expect(mocks.buildProductLearningEventInsertQuery).toHaveBeenCalledWith(
-      mocks.db,
-      expect.objectContaining({
-        storeId,
-        normalizedText: "dried mango",
-        action: "deleted",
-        productConceptName: "Dried fruit",
-        aisleSectionId: null,
-        aisleSectionLabel: null,
-        createdByUserId: userId,
-      }),
     );
     expect(payload).toEqual({
       store: { id: storeId, name: "Example Market" },

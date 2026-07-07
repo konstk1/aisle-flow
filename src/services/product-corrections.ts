@@ -1,11 +1,9 @@
 import "server-only";
 
+import type { SQL } from "drizzle-orm";
 import { z } from "zod";
 
-import type {
-  LearnedProductEventPayload,
-  LearnedProductsPayload,
-} from "@/domain/learned-products";
+import type { LearnedProductsPayload } from "@/domain/learned-products";
 import { normalizeProductText } from "@/domain/product-matching";
 import {
   formatAisleLabel,
@@ -19,7 +17,6 @@ import type { Database } from "@/db/create-client";
 import { isForeignKeyError } from "@/db/errors";
 import {
   buildLearnedAliasByIdQuery,
-  buildLearnedAliasByTextQuery,
   buildLearnedAliasDeleteQuery,
   buildLearnedAliasListQuery,
   buildManualProductAliasCorrectionQuery,
@@ -27,8 +24,6 @@ import {
   buildProductConceptByIdQuery,
   buildProductConceptCreateQuery,
   buildProductConceptListQuery,
-  buildProductLearningEventInsertQuery,
-  buildProductLearningEventListQuery,
   productConceptIdByNormalizedName,
 } from "@/db/repositories/product-corrections";
 import {
@@ -120,8 +115,7 @@ export interface ProductCorrectionProductConcept {
   normalizedName: string;
 }
 
-export interface ProductCorrectionProductConceptOption
-  extends ProductCorrectionProductConcept {
+export interface ProductCorrectionProductConceptOption extends ProductCorrectionProductConcept {
   aisleSectionId: string | null;
 }
 
@@ -147,7 +141,7 @@ export interface ProductCorrectionResult {
   alias: {
     id: string;
     normalizedText: string;
-    scope: "store";
+    scope: "user";
     confidence: number;
     source: "learned";
     isCorrection: true;
@@ -227,64 +221,28 @@ export async function applyProductCorrection(
   const db = getDb();
   const normalizedText = normalizeProductText(input.rawText);
   const now = new Date();
-  const [[activeList], [existingAlias]] = await Promise.all([
-    buildActiveShoppingListQuery(db, userId),
-    buildLearnedAliasByTextQuery(db, layout.id, normalizedText),
-  ]);
-  const learningAction = existingAlias ? "updated" : "created";
-  const aisleSectionLabel = formatCorrectionSectionLabel(aisleSection);
+  const [activeList] = await buildActiveShoppingListQuery(db, userId);
 
   let productConcept: ProductConcept | undefined;
   let alias: ProductAlias | undefined;
   let location: ProductLocation | undefined;
 
   try {
+    // Existing product: resolve it now. New product: create it as the first
+    // batched statement and reference it by a normalized-name subquery. Both
+    // paths write the same alias + location (+ optional active-list relink),
+    // so those queries are built once; only the leading concept insert and the
+    // batch permutation differ (Drizzle needs literal tuples to type results).
+    let conceptQuery: ReturnType<typeof buildProductConceptCreateQuery> | null =
+      null;
+    let productConceptId: string | SQL;
+
     if (input.productConceptId) {
       productConcept = await getExistingProductConcept(
         db,
         input.productConceptId,
       );
-      const aliasQuery = buildManualProductAliasCorrectionQuery(db, {
-        storeId: layout.id,
-        productConceptId: productConcept.id,
-        normalizedText,
-        now,
-      });
-      const locationQuery = buildManualProductLocationCorrectionQuery(db, {
-        storeId: layout.id,
-        productConceptId: productConcept.id,
-        aisleSectionId: aisleSection.id,
-        positionWithinSection: null,
-        now,
-      });
-      const eventQuery = buildProductLearningEventInsertQuery(db, {
-        storeId: layout.id,
-        normalizedText,
-        action: learningAction,
-        productConceptId: productConcept.id,
-        productConceptName: productConcept.canonicalName,
-        aisleSectionId: aisleSection.id,
-        aisleSectionLabel,
-        createdByUserId: userId,
-        now,
-      });
-
-      const [aliasRows, locationRows] = activeList
-        ? await db.batch([
-            aliasQuery,
-            locationQuery,
-            eventQuery,
-            buildShoppingItemProductResolutionQuery(db, {
-              shoppingListId: activeList.id,
-              normalizedText,
-              productConceptId: productConcept.id,
-              now,
-            }),
-          ])
-        : await db.batch([aliasQuery, locationQuery, eventQuery]);
-
-      alias = aliasRows[0];
-      location = locationRows[0];
+      productConceptId = productConcept.id;
     } else {
       const canonicalName = input.canonicalName;
 
@@ -293,52 +251,46 @@ export async function applyProductCorrection(
       }
 
       const normalizedName = normalizeProductText(canonicalName);
-      const productConceptId = productConceptIdByNormalizedName(normalizedName);
-      const conceptQuery = buildProductConceptCreateQuery(db, {
+      productConceptId = productConceptIdByNormalizedName(normalizedName);
+      conceptQuery = buildProductConceptCreateQuery(db, {
         canonicalName,
         normalizedName,
       });
-      const aliasQuery = buildManualProductAliasCorrectionQuery(db, {
-        storeId: layout.id,
-        productConceptId,
-        normalizedText,
-        now,
-      });
-      const locationQuery = buildManualProductLocationCorrectionQuery(db, {
-        storeId: layout.id,
-        productConceptId,
-        aisleSectionId: aisleSection.id,
-        positionWithinSection: null,
-        now,
-      });
-      const eventQuery = buildProductLearningEventInsertQuery(db, {
-        storeId: layout.id,
-        normalizedText,
-        action: learningAction,
-        productConceptId,
-        productConceptName: canonicalName,
-        aisleSectionId: aisleSection.id,
-        aisleSectionLabel,
-        createdByUserId: userId,
-        now,
-      });
+    }
 
-      const [productConceptRows, aliasRows, locationRows] = activeList
-        ? await db.batch([
-            conceptQuery,
-            aliasQuery,
-            locationQuery,
-            eventQuery,
-            buildShoppingItemProductResolutionQuery(db, {
-              shoppingListId: activeList.id,
-              normalizedText,
-              productConceptId,
-              now,
-            }),
-          ])
-        : await db.batch([conceptQuery, aliasQuery, locationQuery, eventQuery]);
+    const aliasQuery = buildManualProductAliasCorrectionQuery(db, {
+      userId,
+      productConceptId,
+      normalizedText,
+      now,
+    });
+    const locationQuery = buildManualProductLocationCorrectionQuery(db, {
+      storeId: layout.id,
+      productConceptId,
+      aisleSectionId: aisleSection.id,
+      positionWithinSection: null,
+      now,
+    });
+    const relinkQuery = activeList
+      ? buildShoppingItemProductResolutionQuery(db, {
+          shoppingListId: activeList.id,
+          normalizedText,
+          productConceptId,
+          now,
+        })
+      : null;
 
-      productConcept = productConceptRows[0];
+    if (conceptQuery) {
+      const [conceptRows, aliasRows, locationRows] = relinkQuery
+        ? await db.batch([conceptQuery, aliasQuery, locationQuery, relinkQuery])
+        : await db.batch([conceptQuery, aliasQuery, locationQuery]);
+      productConcept = conceptRows[0];
+      alias = aliasRows[0];
+      location = locationRows[0];
+    } else {
+      const [aliasRows, locationRows] = relinkQuery
+        ? await db.batch([aliasQuery, locationQuery, relinkQuery])
+        : await db.batch([aliasQuery, locationQuery]);
       alias = aliasRows[0];
       location = locationRows[0];
     }
@@ -368,7 +320,7 @@ export async function applyProductCorrection(
     alias: {
       id: alias.id,
       normalizedText: alias.normalizedText,
-      scope: "store",
+      scope: "user",
       confidence: alias.confidence,
       source: "learned",
       isCorrection: true,
@@ -396,34 +348,17 @@ export async function getLearnedProducts(
 ): Promise<LearnedProductsPayload> {
   const layout = await getCurrentStoreLayout(userId);
 
-  if (!layout) {
-    return { store: null, learnedProducts: [] };
-  }
-
   const db = getDb();
-  const [aliasRows, eventRows] = await Promise.all([
-    buildLearnedAliasListQuery(db, layout.id),
-    buildProductLearningEventListQuery(db, layout.id),
-  ]);
-
-  const eventsByText = new Map<string, LearnedProductEventPayload[]>();
-
-  for (const { event, createdByName } of eventRows) {
-    const events = eventsByText.get(event.normalizedText) ?? [];
-
-    events.push({
-      id: event.id,
-      action: event.action,
-      productConceptName: event.productConceptName,
-      aisleSectionLabel: event.aisleSectionLabel,
-      createdByName,
-      createdAt: event.createdAt.toISOString(),
-    });
-    eventsByText.set(event.normalizedText, events);
-  }
+  // Aliases are the user's vocabulary and outlive any store; only the location
+  // columns are store-specific, so they empty out without a layout.
+  const aliasRows = await buildLearnedAliasListQuery(
+    db,
+    userId,
+    layout?.id ?? null,
+  );
 
   return {
-    store: { id: layout.id, name: layout.name },
+    store: layout ? { id: layout.id, name: layout.name } : null,
     learnedProducts: aliasRows.map((row) => ({
       aliasId: row.alias.id,
       normalizedText: row.alias.normalizedText,
@@ -434,7 +369,6 @@ export async function getLearnedProducts(
         row.aisle && row.aisleSection
           ? `${formatAisleLabel(row.aisle)} · ${formatSectionLabel(row.aisleSection)}`
           : null,
-      events: eventsByText.get(row.alias.normalizedText) ?? [],
     })),
   };
 }
@@ -445,20 +379,12 @@ export async function updateLearnedProduct(
   input: LearnedProductUpdateRequest,
 ): Promise<LearnedProductsPayload> {
   const db = getDb();
-  const [alias] = await buildLearnedAliasByIdQuery(db, aliasId);
+  // Scoped to the user, so another user's alias id reads as missing (404)
+  // rather than leaking across accounts.
+  const [alias] = await buildLearnedAliasByIdQuery(db, userId, aliasId);
 
   if (!alias) {
     throw missingLearnedProductError();
-  }
-
-  const layout = await getCurrentStoreLayout(userId);
-
-  if (!layout || alias.storeId !== layout.id) {
-    throw new ProductCorrectionRequestError(
-      "This learned product belongs to a different store layout.",
-      { form: ["This learned product belongs to a different store layout."] },
-      409,
-    );
   }
 
   await applyProductCorrection(userId, {
@@ -476,31 +402,13 @@ export async function deleteLearnedProduct(
   aliasId: string,
 ): Promise<LearnedProductsPayload> {
   const db = getDb();
-  const [alias] = await buildLearnedAliasByIdQuery(db, aliasId);
+  const [alias] = await buildLearnedAliasByIdQuery(db, userId, aliasId);
 
-  if (!alias || !alias.storeId) {
+  if (!alias) {
     throw missingLearnedProductError();
   }
 
-  const [productConcept] = await buildProductConceptByIdQuery(
-    db,
-    alias.productConceptId,
-  );
-
-  await db.batch([
-    buildLearnedAliasDeleteQuery(db, alias.id),
-    buildProductLearningEventInsertQuery(db, {
-      storeId: alias.storeId,
-      normalizedText: alias.normalizedText,
-      action: "deleted",
-      productConceptId: alias.productConceptId,
-      productConceptName:
-        productConcept?.canonicalName ?? alias.normalizedText,
-      aisleSectionId: null,
-      aisleSectionLabel: null,
-      createdByUserId: userId,
-    }),
-  ]);
+  await buildLearnedAliasDeleteQuery(db, userId, alias.id);
 
   return getLearnedProducts(userId);
 }
@@ -521,10 +429,9 @@ async function getExistingProductConcept(
   );
 
   if (!productConcept) {
-    throw new ProductCorrectionRequestError(
-      "Choose an existing product.",
-      { productConceptId: ["Choose an existing product."] },
-    );
+    throw new ProductCorrectionRequestError("Choose an existing product.", {
+      productConceptId: ["Choose an existing product."],
+    });
   }
 
   return productConcept;
@@ -546,13 +453,6 @@ function listAisleSections(
       })),
     )
     .sort((first, second) => first.pathOrder - second.pathOrder);
-}
-
-function formatCorrectionSectionLabel(section: ProductCorrectionAisleSection) {
-  return `${formatAisleLabel({
-    displayName: section.aisleDisplayName,
-    identifier: section.aisleIdentifier,
-  })} · ${formatSectionLabel(section)}`;
 }
 
 function toProductConceptPayload(

@@ -83,7 +83,9 @@ describe("shopping-list queries", () => {
       new Date("2026-01-01T00:00:00Z"),
     ).toSQL();
 
-    expect(query).toContain('left join "product_locations" on false');
+    expect(query).toContain(
+      'left join "product_locations" on ("product_locations"."product_concept_id" = "shopping_items"."product_concept_id" and false)',
+    );
     expect(params).toEqual([
       "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
       false,
@@ -351,12 +353,13 @@ describe("shopping-list queries", () => {
   it("looks up learned and imported aliases before curated matching", () => {
     const { sql: query, params } = buildExactProductAliasLookupQuery(
       database,
-      "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
+      "user-a",
       "wild rice",
     ).toSQL();
 
     expect(query).toContain('"product_aliases"."source" = $2');
     expect(query).toContain('"product_aliases"."source" = $3');
+    expect(query).toContain('"product_aliases"."user_id" = $');
     expect(query).not.toContain('"product_aliases"."is_correction" =');
     expect(query).toContain('"product_aliases"."is_correction" desc');
     expect(params).toEqual([
@@ -364,21 +367,9 @@ describe("shopping-list queries", () => {
       "learned",
       "imported",
       "global",
-      "store",
-      "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
+      "user",
+      "user-a",
       1,
     ]);
-  });
-
-  it("looks up only global aliases without a current store", () => {
-    const { sql: query, params } = buildExactProductAliasLookupQuery(
-      database,
-      null,
-      "wild rice",
-    ).toSQL();
-
-    expect(query).toContain('"product_aliases"."scope" = $4');
-    expect(query).not.toContain('"product_aliases"."scope" = $5');
-    expect(params).toEqual(["wild rice", "learned", "imported", "global", 1]);
   });
 });
