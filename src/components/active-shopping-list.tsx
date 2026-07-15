@@ -12,11 +12,10 @@ import {
   RotateCw,
   Search,
   Trash2,
-  Upload,
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useMemo, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type {
   ActiveShoppingItemPayload,
@@ -37,6 +36,7 @@ import {
   buildProductCorrectionRequest,
   buildProductSelectionPatch,
   createProductCorrectionFormState,
+  formatAlreadyOnListMessage,
   getLocationChangeWarning,
   getProductSelectionState,
   getStableMutationForText,
@@ -75,6 +75,7 @@ type ShoppingListViewProps = {
 
 type ShoppingListResponse = {
   activeList?: ActiveShoppingListPayload;
+  alreadyOnList?: string[];
   completedList?: ActiveShoppingListPayload | null;
   snoozedList?: ActiveShoppingListPayload | null;
   list?: ActiveShoppingListPayload | null;
@@ -124,13 +125,15 @@ type ProductCorrectionAisleSection = {
   side: "left" | "right" | "center" | "endcap";
 };
 
-type FieldErrorScope = "add" | "import";
+type FieldErrorScope = "add";
 
 const EMPTY_ITEMS: ActiveShoppingItemPayload[] = [];
 const completedDateFormatter = new Intl.DateTimeFormat(undefined, {
   dateStyle: "medium",
 });
 const SNOOZE_LONG_PRESS_MS = 500;
+const ADD_ITEMS_TEXTAREA_MIN_HEIGHT = 52;
+const ADD_ITEMS_TEXTAREA_MAX_HEIGHT = 172;
 
 type ShoppingListModeConfig = {
   listEndpoint: string;
@@ -214,8 +217,7 @@ function ShoppingListView({
 }: ShoppingListViewProps) {
   const [activeList, setActiveList] = useState(initialList);
   const [itemText, setItemText] = useState("");
-  const [importText, setImportText] = useState("");
-  const [importExpanded, setImportExpanded] = useState(false);
+  const [addItemsMessage, setAddItemsMessage] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [fieldErrorScope, setFieldErrorScope] =
     useState<FieldErrorScope | null>(null);
@@ -262,7 +264,7 @@ function ShoppingListView({
     () => new Set(),
   );
   const pendingAddMutation = useRef<PendingTextMutation | null>(null);
-  const pendingImportMutation = useRef<PendingTextMutation | null>(null);
+  const addItemsTextareaRef = useRef<HTMLTextAreaElement>(null);
   const pendingRemovalItemIdsRef = useRef<Set<string>>(new Set());
   const isCompletedMode = mode === "completed";
   const isSnoozedMode = mode === "snoozed";
@@ -284,6 +286,23 @@ function ShoppingListView({
   const editHasChanges = editItem
     ? editText !== editItem.rawText || editLocationTouched
     : false;
+
+  useLayoutEffect(() => {
+    const textarea = addItemsTextareaRef.current;
+
+    if (!textarea) {
+      return;
+    }
+
+    textarea.style.height = `${ADD_ITEMS_TEXTAREA_MIN_HEIGHT}px`;
+    const nextHeight = Math.min(
+      Math.max(textarea.scrollHeight, ADD_ITEMS_TEXTAREA_MIN_HEIGHT),
+      ADD_ITEMS_TEXTAREA_MAX_HEIGHT,
+    );
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY =
+      textarea.scrollHeight > ADD_ITEMS_TEXTAREA_MAX_HEIGHT ? "auto" : "hidden";
+  }, [itemText]);
 
   function getListFromResponse(result: ShoppingListResponse) {
     if ("list" in result) {
@@ -312,7 +331,7 @@ function ShoppingListView({
       setFieldErrors(result.fieldErrors ?? {});
       setFieldErrorScope(fieldScope);
       setMessage(result.error ?? "The shopping list could not be updated.");
-      return false;
+      return null;
     }
 
     const nextList = listResult.list;
@@ -329,7 +348,7 @@ function ShoppingListView({
     setFieldErrors({});
     setFieldErrorScope(null);
     setMessage(null);
-    return true;
+    return result;
   }
 
   async function applyRemovalListResponse(
@@ -363,9 +382,10 @@ function ShoppingListView({
     return true;
   }
 
-  async function addItem(event: React.FormEvent<HTMLFormElement>) {
+  async function addItems(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPendingAction("add");
+    setAddItemsMessage(null);
     const mutation = getStableMutationForText(
       pendingAddMutation.current,
       itemText,
@@ -374,7 +394,7 @@ function ShoppingListView({
     pendingAddMutation.current = mutation;
 
     try {
-      const response = await fetch("/api/shopping-list", {
+      const response = await fetch("/api/shopping-list/import", {
         body: JSON.stringify({
           text: itemText,
           mutationId: mutation.mutationId,
@@ -383,44 +403,17 @@ function ShoppingListView({
         method: "POST",
       });
 
-      if (await applyListResponse(response, "add")) {
+      const result = await applyListResponse(response, "add");
+
+      if (result) {
         setItemText("");
         pendingAddMutation.current = null;
+        setAddItemsMessage(
+          formatAlreadyOnListMessage(result.alreadyOnList ?? []),
+        );
       }
     } catch {
-      setMessage("The item could not be added. Check your connection.");
-    } finally {
-      setPendingAction(null);
-    }
-  }
-
-  async function importItems(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setPendingAction("import");
-    const mutation = getStableMutationForText(
-      pendingImportMutation.current,
-      importText,
-      () => crypto.randomUUID(),
-    );
-    pendingImportMutation.current = mutation;
-
-    try {
-      const response = await fetch("/api/shopping-list/import", {
-        body: JSON.stringify({
-          text: importText,
-          mutationId: mutation.mutationId,
-        }),
-        headers: { "Content-Type": "application/json" },
-        method: "POST",
-      });
-
-      if (await applyListResponse(response, "import")) {
-        setImportText("");
-        setImportExpanded(false);
-        pendingImportMutation.current = null;
-      }
-    } catch {
-      setMessage("The items could not be imported. Check your connection.");
+      setMessage("The items could not be added. Check your connection.");
     } finally {
       setPendingAction(null);
     }
@@ -858,20 +851,6 @@ function ShoppingListView({
     }
   }
 
-  function openImport() {
-    setImportExpanded(true);
-    setFieldErrors({});
-    setFieldErrorScope(null);
-    setMessage(null);
-  }
-
-  function closeImport() {
-    setImportExpanded(false);
-    setImportText("");
-    setFieldErrors({});
-    setFieldErrorScope(null);
-  }
-
   function renderShoppingItemRow(
     item: ActiveShoppingItemPayload,
     accentColor: string,
@@ -935,26 +914,42 @@ function ShoppingListView({
         <>
           <form
             className="flex flex-col gap-2.5 sm:flex-row"
-            onSubmit={addItem}
+            onSubmit={addItems}
           >
-            <label className="relative min-w-0 flex-1">
-              <span className="sr-only">Item text</span>
+            <div className="relative min-w-0 flex-1">
+              <label className="sr-only" htmlFor="add-items">
+                Add item(s), one per line
+              </label>
               <Search
                 aria-hidden="true"
-                className="pointer-events-none absolute top-1/2 left-4 size-[18px] -translate-y-1/2 text-ink-200"
+                className="pointer-events-none absolute top-[17px] left-4 size-[18px] text-ink-200"
               />
-              <input
-                className="h-[52px] w-full rounded-[15px] border border-black/[0.07] bg-white pr-4 pl-11 text-base shadow-card-sm transition outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
+              <textarea
+                className="block min-h-[52px] w-full resize-none rounded-[15px] border border-black/[0.07] bg-white py-[13px] pr-4 pl-11 text-base leading-6 shadow-card-sm transition outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={pendingAction !== null}
-                onChange={(event) => setItemText(event.target.value)}
-                placeholder="Add an item…"
+                id="add-items"
+                onChange={(event) => {
+                  setItemText(event.target.value);
+                  setAddItemsMessage(null);
+                }}
+                placeholder="Add item(s), one per line…"
+                ref={addItemsTextareaRef}
+                rows={1}
                 value={itemText}
               />
               <FieldError
-                message={fieldErrorScope === "add" ? fieldErrors.text?.[0] : null}
+                messages={fieldErrorScope === "add" ? fieldErrors.text : null}
               />
-            </label>
-            <div className="flex shrink-0 gap-2.5">
+              {addItemsMessage ? (
+                <span
+                  className="mt-1 ml-11 block text-sm text-ink-600"
+                  role="status"
+                >
+                  {addItemsMessage}
+                </span>
+              ) : null}
+            </div>
+            <div className="flex shrink-0 items-start gap-2.5">
               <button
                 className="inline-flex h-[52px] flex-1 items-center justify-center gap-1.5 rounded-[15px] bg-gradient-to-br from-accent to-accent-bright px-5 text-base font-semibold text-white shadow-accent-glow transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none"
                 disabled={pendingAction !== null}
@@ -962,17 +957,6 @@ function ShoppingListView({
               >
                 <Plus aria-hidden="true" className="size-[18px]" />
                 Add
-              </button>
-              <button
-                aria-expanded={importExpanded}
-                aria-label="Import a list"
-                className="inline-flex size-[52px] shrink-0 items-center justify-center rounded-[15px] border border-black/[0.07] bg-white text-ink-600 shadow-card-sm transition hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={pendingAction !== null}
-                onClick={openImport}
-                title="Import"
-                type="button"
-              >
-                <Upload aria-hidden="true" className="size-[19px]" />
               </button>
               <button
                 aria-label={modeConfig.refreshLabel}
@@ -999,49 +983,6 @@ function ShoppingListView({
           </Link>{" "}
           to see items in aisle order.
         </p>
-      ) : null}
-
-      {isActiveMode && importExpanded ? (
-        <form
-          className="mt-5 card p-5"
-          onSubmit={importItems}
-        >
-          <label className="block text-sm font-semibold text-ink-900">
-            Paste list
-            <textarea
-              className="mt-2 min-h-28 w-full resize-y rounded-[14px] border border-black/[0.07] bg-white px-3.5 py-2.5 text-base transition outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={pendingAction !== null}
-              onChange={(event) => setImportText(event.target.value)}
-              placeholder={"Rice\nBroccoli"}
-              autoFocus
-              value={importText}
-            />
-            <FieldError
-              message={
-                fieldErrorScope === "import" ? fieldErrors.text?.[0] : null
-              }
-            />
-          </label>
-          <div className="mt-3 flex flex-wrap gap-2.5">
-            <button
-              className="inline-flex min-h-11 items-center gap-2 rounded-[14px] bg-gradient-to-br from-accent to-accent-bright px-5 text-sm font-semibold text-white shadow-accent-glow transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={pendingAction !== null}
-              type="submit"
-            >
-              <Upload aria-hidden="true" className="size-4" />
-              Import
-            </button>
-            <button
-              className="inline-flex min-h-11 items-center gap-2 rounded-[14px] bg-ink-50 px-5 text-sm font-semibold text-ink-600 transition hover:bg-divider disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={pendingAction !== null}
-              onClick={closeImport}
-              type="button"
-            >
-              <X aria-hidden="true" className="size-4" />
-              Cancel
-            </button>
-          </div>
-        </form>
       ) : null}
 
       <div className="mt-7 space-y-6">

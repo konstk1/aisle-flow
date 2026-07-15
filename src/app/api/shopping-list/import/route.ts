@@ -38,9 +38,9 @@ export async function POST(request: Request) {
   }
 
   try {
-    return Response.json({
-      activeList: await importActiveShoppingListItems(userId, parsed.data),
-    });
+    return Response.json(
+      await importActiveShoppingListItems(userId, parsed.data),
+    );
   } catch (error) {
     return activeShoppingListErrorResponse(error);
   }

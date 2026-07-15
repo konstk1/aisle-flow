@@ -49,7 +49,6 @@ vi.mock("./stores", () => ({
 }));
 
 import {
-  addActiveShoppingListItem,
   deleteActiveShoppingItem,
   getActiveShoppingList,
   getCompletedShoppingList,
@@ -304,82 +303,6 @@ describe("getCompletedShoppingList", () => {
   });
 });
 
-describe("addActiveShoppingListItem", () => {
-  it("resolves and persists a manual item with raw and normalized text", async () => {
-    await addActiveShoppingListItem(userId, {
-      text: "Rice",
-      mutationId,
-    });
-
-    expect(mocks.createStoreProductMatcher).toHaveBeenCalledWith({
-      db: mocks.db,
-      userId,
-      storeId,
-    });
-    expect(mocks.resolveProductMatch).toHaveBeenCalledWith("Rice");
-    expect(mocks.buildShoppingItemUpsertQuery).toHaveBeenCalledWith(
-      mocks.db,
-      expect.objectContaining({
-        shoppingListId: listId,
-        rawText: "Rice",
-        normalizedText: "rice",
-        productConceptId: "rice",
-        sourceIdentifier: `manual:${mutationId}`,
-        mutationId,
-      }),
-    );
-  });
-
-  it("rejects an item already on the active list regardless of capitalization", async () => {
-    mocks.buildShoppingItemsByNormalizedTextQuery.mockResolvedValue([
-      {
-        id: itemId,
-        rawText: "Oatly",
-        normalizedText: "oatly",
-        sourceIdentifier: "manual:existing",
-      },
-    ]);
-
-    await expect(
-      addActiveShoppingListItem(userId, {
-        text: "oAtLy",
-        mutationId,
-      }),
-    ).rejects.toMatchObject({
-      status: 409,
-      fieldErrors: { text: ["This item is already on the list."] },
-    });
-
-    expect(mocks.createStoreProductMatcher).not.toHaveBeenCalled();
-    expect(mocks.buildShoppingItemUpsertQuery).not.toHaveBeenCalled();
-  });
-
-  it("allows a retry of the same manual mutation to remain idempotent", async () => {
-    mocks.buildShoppingItemsByNormalizedTextQuery.mockResolvedValue([
-      {
-        id: itemId,
-        rawText: "Oatly",
-        normalizedText: "oatly",
-        sourceIdentifier: `manual:${mutationId}`,
-      },
-    ]);
-
-    await addActiveShoppingListItem(userId, {
-      text: "Oatly",
-      mutationId,
-    });
-
-    expect(mocks.buildShoppingItemUpsertQuery).toHaveBeenCalledWith(
-      mocks.db,
-      expect.objectContaining({
-        rawText: "Oatly",
-        normalizedText: "oatly",
-        sourceIdentifier: `manual:${mutationId}`,
-      }),
-    );
-  });
-});
-
 describe("importActiveShoppingListItems", () => {
   it("persists one item per parsed line with deterministic import identifiers", async () => {
     await importActiveShoppingListItems(userId, {
@@ -416,7 +339,7 @@ describe("importActiveShoppingListItems", () => {
     ]);
   });
 
-  it("rejects imported items already on the active list regardless of capitalization", async () => {
+  it("adds new items and reports existing items by name", async () => {
     mocks.buildShoppingItemsByNormalizedTextQuery.mockResolvedValue([
       {
         id: itemId,
@@ -426,38 +349,57 @@ describe("importActiveShoppingListItems", () => {
       },
     ]);
 
-    await expect(
-      importActiveShoppingListItems(userId, {
-        text: "oAtLy\nBroccoli",
-        mutationId,
-      }),
-    ).rejects.toMatchObject({
-      status: 409,
-      fieldErrors: {
-        text: ["Line 1: This item is already on the list."],
-      },
+    const result = await importActiveShoppingListItems(userId, {
+      text: "oAtLy\nBroccoli",
+      mutationId,
     });
 
-    expect(mocks.createStoreProductMatcher).not.toHaveBeenCalled();
-    expect(mocks.db.batch).not.toHaveBeenCalled();
+    expect(result.alreadyOnList).toEqual(["Oatly"]);
+    expect(mocks.resolveProductMatch).toHaveBeenCalledTimes(1);
+    expect(mocks.db.batch).toHaveBeenCalledWith([
+      expect.objectContaining({
+        input: expect.objectContaining({
+          rawText: "Broccoli",
+          sourceIdentifier: `import:${mutationId}:1`,
+        }),
+      }),
+    ]);
   });
 
-  it("rejects duplicate imported lines before writing any rows", async () => {
-    await expect(
-      importActiveShoppingListItems(userId, {
-        text: "Oatly\noAtLy",
-        mutationId,
-      }),
-    ).rejects.toMatchObject({
-      status: 409,
-      fieldErrors: {
-        text: ["Line 2: This item is already on the list."],
-      },
+  it("adds the first occurrence of a repeated import item and reports its name", async () => {
+    const result = await importActiveShoppingListItems(userId, {
+      text: "Oatly\noAtLy",
+      mutationId,
     });
 
-    expect(
-      mocks.buildShoppingItemsByNormalizedTextQuery,
-    ).not.toHaveBeenCalled();
+    expect(result.alreadyOnList).toEqual(["Oatly"]);
+    expect(mocks.resolveProductMatch).toHaveBeenCalledTimes(1);
+    expect(mocks.db.batch).toHaveBeenCalledWith([
+      expect.objectContaining({
+        input: expect.objectContaining({
+          rawText: "Oatly",
+          sourceIdentifier: `import:${mutationId}:0`,
+        }),
+      }),
+    ]);
+  });
+
+  it("does not rewrite an item that was already on the list", async () => {
+    mocks.buildShoppingItemsByNormalizedTextQuery.mockResolvedValue([
+      {
+        id: itemId,
+        rawText: "Oatly",
+        normalizedText: "oatly",
+        sourceIdentifier: "manual:existing",
+      },
+    ]);
+
+    const result = await importActiveShoppingListItems(userId, {
+      text: "oAtLy",
+      mutationId,
+    });
+
+    expect(result.alreadyOnList).toEqual(["Oatly"]);
     expect(mocks.createStoreProductMatcher).not.toHaveBeenCalled();
     expect(mocks.db.batch).not.toHaveBeenCalled();
   });
