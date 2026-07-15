@@ -15,6 +15,14 @@ export const ADD_PRODUCT_OPTION_VALUE = "__add_product__";
 // event, even while a pending new product is the current selection.
 export const NEW_PRODUCT_DIALOG_OPTION_VALUE = "__new_product_dialog__";
 
+export function formatAlreadyOnListMessage(items: readonly string[]) {
+  if (items.length === 0) {
+    return null;
+  }
+
+  return `Already on the list: ${items.join(", ")}.`;
+}
+
 export type ProductCorrectionFormState = {
   productSelection: string;
   canonicalName: string;

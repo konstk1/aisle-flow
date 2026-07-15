@@ -102,6 +102,11 @@ export type ActiveShoppingListImportRequest = z.output<
   typeof activeShoppingListImportRequestSchema
 >;
 
+export type ActiveShoppingListImportResult = {
+  activeList: ActiveShoppingListPayload;
+  alreadyOnList: string[];
+};
+
 export type ActiveShoppingItemUpdateRequest = z.output<
   typeof activeShoppingItemUpdateRequestSchema
 >;
@@ -242,7 +247,7 @@ export async function addActiveShoppingListItem(
 export async function importActiveShoppingListItems(
   userId: string,
   input: ActiveShoppingListImportRequest,
-): Promise<ActiveShoppingListPayload> {
+): Promise<ActiveShoppingListImportResult> {
   const parsed = parseShoppingItemImportLines(input.text);
 
   if (!parsed.success) {
@@ -258,40 +263,51 @@ export async function importActiveShoppingListItems(
   );
   const now = new Date();
   const normalizedItems = parsed.lines.map((line, index) => ({
+    ...line,
+    index,
     lineNumber: line.lineNumber,
     normalizedText: normalizeProductText(line.rawText),
     sourceIdentifier: `import:${input.mutationId}:${index}`,
   }));
-  ensureImportLinesAreUnique(normalizedItems);
-  await ensureShoppingItemsAreNew(db, {
-    list,
+  const existingItems = await buildShoppingItemsByNormalizedTextQuery(db, {
+    shoppingListId: list.id,
+    normalizedTexts: [
+      ...new Set(normalizedItems.map((item) => item.normalizedText)),
+    ],
+  });
+  const { alreadyOnList, itemsToAdd } = partitionImportItems(
     normalizedItems,
-  });
-  const resolveProductMatch = await createStoreProductMatcher({
-    db,
-    userId,
-    storeId,
-  });
-
-  const upsertInputs = await Promise.all(
-    parsed.lines.map((line, index) => {
-      const sourceIdentifier = `import:${input.mutationId}:${index}`;
-
-      return buildShoppingItemUpsertInput({
-        list,
-        mutationId: deterministicUuid(sourceIdentifier),
-        now,
-        orderIndex: index,
-        rawText: line.rawText,
-        resolveProductMatch,
-        sourceIdentifier,
-      });
-    }),
+    existingItems,
   );
 
-  await batchShoppingItemUpserts(db, upsertInputs);
+  if (itemsToAdd.length > 0) {
+    const resolveProductMatch = await createStoreProductMatcher({
+      db,
+      userId,
+      storeId,
+    });
 
-  return readShoppingListPayload(db, store, list, "active");
+    const upsertInputs = await Promise.all(
+      itemsToAdd.map((item) =>
+        buildShoppingItemUpsertInput({
+          list,
+          mutationId: deterministicUuid(item.sourceIdentifier),
+          now,
+          orderIndex: item.index,
+          rawText: item.rawText,
+          resolveProductMatch,
+          sourceIdentifier: item.sourceIdentifier,
+        }),
+      ),
+    );
+
+    await batchShoppingItemUpserts(db, upsertInputs);
+  }
+
+  return {
+    activeList: await readShoppingListPayload(db, store, list, "active"),
+    alreadyOnList,
+  };
 }
 
 export async function setActiveShoppingItemChecked({
@@ -519,32 +535,49 @@ async function persistShoppingItem(
   await buildShoppingItemUpsertQuery(db, upsertInput);
 }
 
-function ensureImportLinesAreUnique(
-  normalizedItems: Array<{
-    lineNumber: number;
+type ImportItemCandidate = {
+  index: number;
+  rawText: string;
+  normalizedText: string;
+  sourceIdentifier: string;
+};
+
+function partitionImportItems(
+  normalizedItems: ImportItemCandidate[],
+  existingItems: Array<{
+    rawText: string;
     normalizedText: string;
+    sourceIdentifier: string | null;
   }>,
 ) {
-  const seenNormalizedTexts = new Set<string>();
-  const duplicateErrors: string[] = [];
+  const seenByNormalizedText = new Map(
+    existingItems.map((item) => [item.normalizedText, item]),
+  );
+  const alreadyOnListByNormalizedText = new Map<string, string>();
+  const itemsToAdd: ImportItemCandidate[] = [];
 
   for (const item of normalizedItems) {
-    if (seenNormalizedTexts.has(item.normalizedText)) {
-      duplicateErrors.push(
-        `Line ${item.lineNumber}: ${duplicateShoppingItemMessage}`,
-      );
+    const existing = seenByNormalizedText.get(item.normalizedText);
+
+    // A retry of the same mutation should still reach the idempotent upsert.
+    if (existing?.sourceIdentifier === item.sourceIdentifier) {
+      itemsToAdd.push(item);
+      continue;
     }
 
-    seenNormalizedTexts.add(item.normalizedText);
+    if (existing) {
+      alreadyOnListByNormalizedText.set(item.normalizedText, existing.rawText);
+      continue;
+    }
+
+    itemsToAdd.push(item);
+    seenByNormalizedText.set(item.normalizedText, item);
   }
 
-  if (duplicateErrors.length > 0) {
-    throw new ActiveShoppingListRequestError(
-      duplicateShoppingItemMessage,
-      { text: duplicateErrors },
-      409,
-    );
-  }
+  return {
+    alreadyOnList: [...alreadyOnListByNormalizedText.values()],
+    itemsToAdd,
+  };
 }
 
 async function ensureShoppingItemsAreNew(

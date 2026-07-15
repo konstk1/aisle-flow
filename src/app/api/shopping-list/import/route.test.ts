@@ -68,9 +68,12 @@ describe("shopping list import route", () => {
   it("imports valid pasted text", async () => {
     requireSessionUserId.mockResolvedValue(userId);
     importActiveShoppingListItems.mockResolvedValue({
-      store: { id: "store-1", name: "Example Market" },
-      list: { id: "list-1", source: "manual" },
-      items: [],
+      activeList: {
+        store: { id: "store-1", name: "Example Market" },
+        list: { id: "list-1", source: "manual" },
+        items: [],
+      },
+      alreadyOnList: [],
     });
 
     const response = await POST(
@@ -81,6 +84,10 @@ describe("shopping list import route", () => {
     expect(importActiveShoppingListItems).toHaveBeenCalledWith(userId, {
       text: "Rice\nBroccoli",
       mutationId,
+    });
+    await expect(response.json()).resolves.toMatchObject({
+      alreadyOnList: [],
+      activeList: { items: [] },
     });
   });
 });

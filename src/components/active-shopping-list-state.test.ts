@@ -11,6 +11,7 @@ import {
   buildProductCorrectionRequest,
   buildProductSelectionPatch,
   createProductCorrectionFormState,
+  formatAlreadyOnListMessage,
   getLocationChangeWarning,
   getStableMutationForText,
   mergeVisibleListSnapshotAfterCheck,
@@ -19,6 +20,18 @@ import {
   restoreItemInActiveList,
   shouldSaveProductCorrectionForEdit,
 } from "./active-shopping-list-state";
+
+describe("formatAlreadyOnListMessage", () => {
+  it("calls out duplicate items by name", () => {
+    expect(formatAlreadyOnListMessage(["Oatly", "Broccoli"])).toBe(
+      "Already on the list: Oatly, Broccoli.",
+    );
+  });
+
+  it("returns no message when every submitted item was new", () => {
+    expect(formatAlreadyOnListMessage([])).toBeNull();
+  });
+});
 
 describe("getStableMutationForText", () => {
   it("reuses the mutation id for a retry of the same text", () => {
