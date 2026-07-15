@@ -62,11 +62,6 @@ const shoppingItemTextSchema = z
     message: "Enter an item with letters or numbers.",
   });
 
-export const activeShoppingItemCreateRequestSchema = z.object({
-  text: shoppingItemTextSchema,
-  mutationId: mutationIdSchema,
-});
-
 export const activeShoppingListImportRequestSchema = z.object({
   text: z.string(),
   mutationId: mutationIdSchema,
@@ -93,10 +88,6 @@ export const activeShoppingItemUpdateRequestSchema = z
       });
     }
   });
-
-export type ActiveShoppingItemCreateRequest = z.output<
-  typeof activeShoppingItemCreateRequestSchema
->;
 
 export type ActiveShoppingListImportRequest = z.output<
   typeof activeShoppingListImportRequestSchema
@@ -204,44 +195,6 @@ async function readExistingShoppingList(
   }
 
   return readShoppingListPayload(context.db, context.store, context.list, view);
-}
-
-export async function addActiveShoppingListItem(
-  userId: string,
-  input: ActiveShoppingItemCreateRequest,
-): Promise<ActiveShoppingListPayload> {
-  const { db, store, storeId, list } = await loadShoppingListContext(
-    userId,
-    getOrCreateActiveShoppingList,
-  );
-  const now = new Date();
-  const sourceIdentifier = `manual:${input.mutationId}`;
-  await ensureShoppingItemsAreNew(db, {
-    list,
-    normalizedItems: [
-      {
-        normalizedText: normalizeProductText(input.text),
-        sourceIdentifier,
-      },
-    ],
-  });
-  const resolveProductMatch = await createStoreProductMatcher({
-    db,
-    userId,
-    storeId,
-  });
-
-  await persistShoppingItem(db, {
-    list,
-    mutationId: input.mutationId,
-    now,
-    orderIndex: 0,
-    rawText: input.text,
-    resolveProductMatch,
-    sourceIdentifier,
-  });
-
-  return readShoppingListPayload(db, store, list, "active");
 }
 
 export async function importActiveShoppingListItems(
@@ -518,23 +471,6 @@ async function getOrCreateActiveShoppingList(
   throw new Error("Active shopping list could not be created.");
 }
 
-async function persistShoppingItem(
-  db: Database,
-  input: {
-    list: ShoppingList;
-    rawText: string;
-    mutationId: string;
-    sourceIdentifier: string;
-    now: Date;
-    orderIndex: number;
-    resolveProductMatch: StoreProductMatcher;
-  },
-) {
-  const upsertInput = await buildShoppingItemUpsertInput(input);
-
-  await buildShoppingItemUpsertQuery(db, upsertInput);
-}
-
 type ImportItemCandidate = {
   index: number;
   rawText: string;
@@ -578,48 +514,6 @@ function partitionImportItems(
     alreadyOnList: [...alreadyOnListByNormalizedText.values()],
     itemsToAdd,
   };
-}
-
-async function ensureShoppingItemsAreNew(
-  db: Database,
-  input: {
-    list: ShoppingList;
-    normalizedItems: Array<{
-      normalizedText: string;
-      sourceIdentifier: string;
-      lineNumber?: number;
-    }>;
-  },
-) {
-  const uniqueNormalizedTexts = [
-    ...new Set(input.normalizedItems.map((item) => item.normalizedText)),
-  ];
-  const existingItems = await buildShoppingItemsByNormalizedTextQuery(db, {
-    shoppingListId: input.list.id,
-    normalizedTexts: uniqueNormalizedTexts,
-  });
-  const existingByNormalizedText = new Map(
-    existingItems.map((item) => [item.normalizedText, item]),
-  );
-  const duplicateErrors = input.normalizedItems.flatMap((item) => {
-    const existing = existingByNormalizedText.get(item.normalizedText);
-
-    if (!existing || existing.sourceIdentifier === item.sourceIdentifier) {
-      return [];
-    }
-
-    return item.lineNumber
-      ? [`Line ${item.lineNumber}: ${duplicateShoppingItemMessage}`]
-      : [duplicateShoppingItemMessage];
-  });
-
-  if (duplicateErrors.length > 0) {
-    throw new ActiveShoppingListRequestError(
-      duplicateShoppingItemMessage,
-      { text: duplicateErrors },
-      409,
-    );
-  }
 }
 
 async function ensureShoppingItemTextIsAvailable(

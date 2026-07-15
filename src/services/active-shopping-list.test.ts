@@ -49,7 +49,6 @@ vi.mock("./stores", () => ({
 }));
 
 import {
-  addActiveShoppingListItem,
   deleteActiveShoppingItem,
   getActiveShoppingList,
   getCompletedShoppingList,
@@ -301,82 +300,6 @@ describe("getCompletedShoppingList", () => {
         checkedAt: "2026-01-02T00:00:00.000Z",
       }),
     ]);
-  });
-});
-
-describe("addActiveShoppingListItem", () => {
-  it("resolves and persists a manual item with raw and normalized text", async () => {
-    await addActiveShoppingListItem(userId, {
-      text: "Rice",
-      mutationId,
-    });
-
-    expect(mocks.createStoreProductMatcher).toHaveBeenCalledWith({
-      db: mocks.db,
-      userId,
-      storeId,
-    });
-    expect(mocks.resolveProductMatch).toHaveBeenCalledWith("Rice");
-    expect(mocks.buildShoppingItemUpsertQuery).toHaveBeenCalledWith(
-      mocks.db,
-      expect.objectContaining({
-        shoppingListId: listId,
-        rawText: "Rice",
-        normalizedText: "rice",
-        productConceptId: "rice",
-        sourceIdentifier: `manual:${mutationId}`,
-        mutationId,
-      }),
-    );
-  });
-
-  it("rejects an item already on the active list regardless of capitalization", async () => {
-    mocks.buildShoppingItemsByNormalizedTextQuery.mockResolvedValue([
-      {
-        id: itemId,
-        rawText: "Oatly",
-        normalizedText: "oatly",
-        sourceIdentifier: "manual:existing",
-      },
-    ]);
-
-    await expect(
-      addActiveShoppingListItem(userId, {
-        text: "oAtLy",
-        mutationId,
-      }),
-    ).rejects.toMatchObject({
-      status: 409,
-      fieldErrors: { text: ["This item is already on the list."] },
-    });
-
-    expect(mocks.createStoreProductMatcher).not.toHaveBeenCalled();
-    expect(mocks.buildShoppingItemUpsertQuery).not.toHaveBeenCalled();
-  });
-
-  it("allows a retry of the same manual mutation to remain idempotent", async () => {
-    mocks.buildShoppingItemsByNormalizedTextQuery.mockResolvedValue([
-      {
-        id: itemId,
-        rawText: "Oatly",
-        normalizedText: "oatly",
-        sourceIdentifier: `manual:${mutationId}`,
-      },
-    ]);
-
-    await addActiveShoppingListItem(userId, {
-      text: "Oatly",
-      mutationId,
-    });
-
-    expect(mocks.buildShoppingItemUpsertQuery).toHaveBeenCalledWith(
-      mocks.db,
-      expect.objectContaining({
-        rawText: "Oatly",
-        normalizedText: "oatly",
-        sourceIdentifier: `manual:${mutationId}`,
-      }),
-    );
   });
 });
 
