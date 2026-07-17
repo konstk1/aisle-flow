@@ -46,7 +46,6 @@ describe("OpenAI product categorizer", () => {
             key: "0",
             itemName: "Apples",
             quantityText: "2",
-            confidence: 0.97,
             resolution: {
               kind: "existing",
               existingConceptName: "Apples",
@@ -104,7 +103,6 @@ describe("OpenAI product categorizer", () => {
             key: "0",
             itemName: "Apples",
             quantityText: null,
-            confidence: 0.9,
             resolution: {
               kind: "existing",
               existingConceptName: "Invented concept",

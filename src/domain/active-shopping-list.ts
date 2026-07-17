@@ -52,8 +52,7 @@ export interface ActiveShoppingItemPayload {
   } | null;
   categorization: {
     source: "learned-alias" | "llm" | "deterministic" | "manual" | null;
-    confidence: number | null;
-    reviewState: "none" | "low-confidence" | "suggested-concept";
+    reviewState: "none" | "suggested-concept";
     suggestedConceptName: string | null;
   };
   location: {

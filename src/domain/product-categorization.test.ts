@@ -28,7 +28,6 @@ describe("product categorization reconciliation", () => {
         key: "b",
         itemName: " Apples ",
         quantityText: " ",
-        confidence: 0.7,
         resolution: {
           kind: "suggested",
           productConceptId: null,
@@ -39,7 +38,6 @@ describe("product categorization reconciliation", () => {
         key: "a",
         itemName: "Chicken",
         quantityText: " 2 lbs ",
-        confidence: 0.95,
         resolution: {
           kind: "existing",
           productConceptId: "chicken",
@@ -69,7 +67,6 @@ describe("product categorization reconciliation", () => {
           key: "a",
           itemName: "Chicken",
           quantityText: null,
-          confidence: 1,
           resolution: {
             kind: "existing",
             productConceptId: "chicken",
@@ -80,7 +77,6 @@ describe("product categorization reconciliation", () => {
           key: "a",
           itemName: "Apples",
           quantityText: null,
-          confidence: 1,
           resolution: {
             kind: "existing",
             productConceptId: "chicken",
@@ -97,7 +93,6 @@ describe("product categorization reconciliation", () => {
           key: "a",
           itemName: "Chicken",
           quantityText: null,
-          confidence: 1,
           resolution: {
             kind: "existing",
             productConceptId: "unknown",
@@ -115,7 +110,7 @@ describe("product categorization reconciliation", () => {
     ).toThrow();
   });
 
-  it("rejects invalid confidence and blank names", () => {
+  it("rejects blank names", () => {
     expect(() =>
       reconcileProductCategorizationResults(
         { ...request, items: [request.items[0]] },
@@ -124,7 +119,6 @@ describe("product categorization reconciliation", () => {
             key: "a",
             itemName: " ",
             quantityText: null,
-            confidence: 2,
             resolution: {
               kind: "existing",
               productConceptId: "chicken",
@@ -133,7 +127,7 @@ describe("product categorization reconciliation", () => {
           },
         ],
       ),
-    ).toThrow("invalid structured result");
+    ).toThrow("blank item name");
   });
 
   it("uses resolution kind as authoritative for required nullable fields", () => {
@@ -145,7 +139,6 @@ describe("product categorization reconciliation", () => {
             key: "a",
             itemName: "Chicken",
             quantityText: null,
-            confidence: 1,
             resolution: {
               kind: "existing",
               productConceptId: "chicken",
@@ -166,7 +159,6 @@ describe("product categorization reconciliation", () => {
             key: "a",
             itemName: "Chicken",
             quantityText: "2 lbs",
-            confidence: 0.85,
             resolution: {
               kind: "suggested",
               productConceptId: null,
@@ -176,7 +168,6 @@ describe("product categorization reconciliation", () => {
         ],
       )[0],
     ).toMatchObject({
-      confidence: 0.85,
       quantityText: "2 lbs",
       resolution: { kind: "existing", productConceptId: "chicken" },
     });
@@ -184,25 +175,14 @@ describe("product categorization reconciliation", () => {
 });
 
 describe("product categorization presentation", () => {
-  it("derives review states at the confidence threshold", () => {
+  it("requires review only for suggested concepts", () => {
     expect(
       deriveProductCategorizationReviewState({
-        confidence: 0.8,
-        source: "llm",
         suggestedConceptName: null,
       }),
     ).toBe("none");
     expect(
       deriveProductCategorizationReviewState({
-        confidence: 0.79,
-        source: "llm",
-        suggestedConceptName: null,
-      }),
-    ).toBe("low-confidence");
-    expect(
-      deriveProductCategorizationReviewState({
-        confidence: 1,
-        source: "llm",
         suggestedConceptName: "Specialty Sauce",
       }),
     ).toBe("suggested-concept");

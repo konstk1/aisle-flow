@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  Bot,
   Check,
   Clock,
   MapPin,
@@ -1368,7 +1369,7 @@ function ShoppingItemRow({
             {...longPressHandlers}
           >
             <div
-              className="text-[16.5px] font-semibold tracking-[-0.01em] break-words"
+              className="flex items-start gap-1.5 text-[16.5px] font-semibold tracking-[-0.01em]"
               style={{
                 color: item.isChecked
                   ? "var(--color-ink-300)"
@@ -1376,7 +1377,16 @@ function ShoppingItemRow({
                 textDecoration: item.isChecked ? "line-through" : "none",
               }}
             >
-              {formatShoppingItemTitle(item.rawText, item.quantityText)}
+              <span className="min-w-0 break-words">
+                {formatShoppingItemTitle(item.rawText, item.quantityText)}
+              </span>
+              {item.categorization.source === "llm" ? (
+                <Bot
+                  aria-label="Categorized by AI"
+                  className="text-accent mt-0.5 size-4 shrink-0"
+                  role="img"
+                />
+              ) : null}
             </div>
             <div className="text-ink-400 mt-[3px] flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-medium">
               {needsAttention ? (
@@ -1625,16 +1635,6 @@ function InlineLocationEditor({
 function locationLabel(item: ActiveShoppingItemPayload) {
   if (item.categorization.reviewState === "suggested-concept") {
     return `Suggested: ${item.categorization.suggestedConceptName ?? "new product"} · choose location`;
-  }
-
-  if (item.categorization.reviewState === "low-confidence") {
-    const location = item.location
-      ? formatSectionLabel(item.location.aisleSection)
-      : item.productConcept
-        ? `${item.productConcept.canonicalName} · no saved location`
-        : "Needs correction";
-
-    return `${location} · Check category`;
   }
 
   if (item.location) {

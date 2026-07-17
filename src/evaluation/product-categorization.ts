@@ -1,5 +1,4 @@
 import {
-  deriveProductCategorizationReviewState,
   ProductCategorizationError,
   type ProductCategorizationBatchResult,
   type ProductCategorizationConcept,
@@ -102,8 +101,6 @@ export interface EvaluationResultRow {
   "Returned item name": string;
   Quantity: string;
   Concept: string;
-  Confidence: string;
-  "Review state": string;
   Error: string;
 }
 
@@ -161,10 +158,6 @@ export async function runProductCategorizationEvaluation({
           throw new Error(`Missing result for evaluation item ${index}.`);
         }
 
-        const suggestedConceptName =
-          result.resolution.kind === "suggested"
-            ? result.resolution.canonicalName
-            : null;
         resultRows.push({
           Model: modelId,
           "Submitted text": submittedText,
@@ -175,12 +168,6 @@ export async function runProductCategorizationEvaluation({
               ? (conceptsById.get(result.resolution.productConceptId) ??
                 "Unknown concept")
               : `Suggested: ${result.resolution.canonicalName}`,
-          Confidence: result.confidence.toFixed(2),
-          "Review state": deriveProductCategorizationReviewState({
-            confidence: result.confidence,
-            source: "llm",
-            suggestedConceptName,
-          }),
           Error: "",
         });
       }
@@ -212,8 +199,6 @@ export async function runProductCategorizationEvaluation({
           "Returned item name": "—",
           Quantity: "—",
           Concept: "—",
-          Confidence: "—",
-          "Review state": "—",
           Error: errorDescription,
         });
       }

@@ -26,7 +26,6 @@ export interface CategorizedSubmittedProduct {
   itemName: string;
   quantityText: string | null;
   productConceptId: string | null;
-  confidence: number | null;
   source: ProductCategorizationSource;
   suggestedProductConceptName: string | null;
 }
@@ -76,7 +75,6 @@ export async function categorizeSubmittedProducts({
           itemName: item.submittedText,
           quantityText: null,
           productConceptId: matched ? match.productConcept.id : null,
-          confidence: match.confidence,
           source:
             matched && match.source === "learned-alias"
               ? "learned-alias"
@@ -141,7 +139,6 @@ export async function categorizeSubmittedProducts({
         itemName: item.submittedText,
         quantityText: null,
         productConceptId: alias.productConcept.id,
-        confidence: alias.alias.confidence,
         source: "learned-alias" as const,
         suggestedProductConceptName: null,
       };
@@ -163,7 +160,6 @@ export async function categorizeSubmittedProducts({
         result.resolution.kind === "existing"
           ? result.resolution.productConceptId
           : null,
-      confidence: result.confidence,
       source: "llm" as const,
       suggestedProductConceptName:
         result.resolution.kind === "suggested"

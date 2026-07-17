@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createDatabase } from "../create-client";
 import { productConceptIdByNormalizedName } from "./product-corrections";
 import {
+  buildAutomaticProductAliasInsertQuery,
   buildActiveShoppingListCreateQuery,
   buildActiveShoppingListQuery,
   buildCompletedShoppingItemsQuery,
@@ -158,7 +159,6 @@ describe("shopping-list queries", () => {
       normalizedText: "wild rice",
       quantityText: null,
       productConceptId: null,
-      categorizationConfidence: 0,
       categorizationSource: "deterministic",
       suggestedProductConceptName: null,
       orderKey: "0000000000000:0000:manual:mutation",
@@ -177,7 +177,6 @@ describe("shopping-list queries", () => {
       "wild rice",
       null,
       null,
-      0,
       "deterministic",
       null,
       "0000000000000:0000:manual:mutation",
@@ -255,7 +254,6 @@ describe("shopping-list queries", () => {
       rawText: "Wild Rice",
       normalizedText: "wild rice",
       productConceptId: "11111111-1111-4111-8111-111111111111",
-      categorizationConfidence: 0.95,
       categorizationSource: "deterministic",
       now: new Date("2026-01-01T00:00:00Z"),
     }).toSQL();
@@ -266,12 +264,11 @@ describe("shopping-list queries", () => {
     expect(query).toContain('"product_concept_id" = $3');
     expect(query).not.toContain("resolved_location_id");
     expect(query).toContain('"version" = "shopping_items"."version" + 1');
-    expect(query).toContain('"shopping_items"."id" = $9');
+    expect(query).toContain('"shopping_items"."id" = $8');
     expect(params).toEqual([
       "Wild Rice",
       "wild rice",
       "11111111-1111-4111-8111-111111111111",
-      0.95,
       "deterministic",
       null,
       "2026-01-01T00:00:00.000Z",
@@ -310,10 +307,9 @@ describe("shopping-list queries", () => {
     expect(query).toContain('"product_concept_id" = $1');
     expect(query).not.toContain("resolved_location_id");
     expect(query).toContain('"version" = "shopping_items"."version" + 1');
-    expect(query).toContain('"shopping_items"."normalized_text" = $7');
+    expect(query).toContain('"shopping_items"."normalized_text" = $6');
     expect(params).toEqual([
       "11111111-1111-4111-8111-111111111111",
-      1,
       "manual",
       null,
       "2026-01-01T00:00:00.000Z",
@@ -339,12 +335,39 @@ describe("shopping-list queries", () => {
     );
     expect(params).toEqual([
       "dried fruit",
-      1,
       "manual",
       null,
       "2026-01-01T00:00:00.000Z",
       "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
       "dried mango",
+    ]);
+  });
+
+  it("learns an AI alias without overwriting any existing user alias", () => {
+    const { sql: query, params } = buildAutomaticProductAliasInsertQuery(
+      database,
+      {
+        userId: "user-a",
+        productConceptId: "11111111-1111-4111-8111-111111111111",
+        normalizedText: "chicken thighs",
+        now: new Date("2026-01-01T00:00:00Z"),
+      },
+    ).toSQL();
+
+    expect(query).toContain('insert into "product_aliases"');
+    expect(query).toContain(
+      'on conflict ("user_id","normalized_text") where "product_aliases"."scope" = \'user\' do nothing',
+    );
+    expect(query).not.toContain("do update");
+    expect(params).toEqual([
+      "11111111-1111-4111-8111-111111111111",
+      "user-a",
+      "chicken thighs",
+      "user",
+      1,
+      "learned",
+      false,
+      "2026-01-01T00:00:00.000Z",
     ]);
   });
 

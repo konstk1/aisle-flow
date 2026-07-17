@@ -64,12 +64,17 @@ Manual corrections always take precedence. A correction writes two records with 
 
 Submitted batches use a pinned OpenAI model through the Vercel AI SDK. The
 model separates optional free-text quantity from the displayed item name,
-chooses an existing product concept or suggests one, and supplies confidence.
-Low-confidence matches remain routed but require confirmation. Suggested
-concepts are not created until the user approves the concept and chooses its
-store location. If categorization fails, no item is written and the user must
-explicitly Retry or Add without AI. Ordinary item-name edits continue to use
-the deterministic matcher; quantity-only edits never rematch an item.
+and chooses an existing product concept or suggests one. Every item returned
+directly by the model displays an AI indicator, including items assigned to an
+existing concept. An existing-concept result also records a user-scoped alias
+without replacing any existing alias. A later exact alias match does not
+display the AI indicator because the unchanged categorization is treated as
+accepted. Manual corrections replace the learned alias and remain
+authoritative. Suggested concepts are not created, and no alias is learned,
+until the user approves the concept and chooses its store location. If
+categorization fails, no item is written and the user must explicitly Retry or
+Add without AI. Ordinary item-name edits continue to use the deterministic
+matcher; quantity-only edits never rematch an item.
 
 ## Technical Architecture
 
@@ -123,8 +128,8 @@ List state, source, external identifier, and synchronization metadata. The MVP e
 ### `shopping_items`
 
 Raw text, normalized text, optional free-text quantity, canonical or suggested
-product concept, categorization source and confidence, resolved location,
-checked state, ordering key, source identifier, and synchronization state.
+product concept, categorization source, resolved location, checked state,
+ordering key, source identifier, and synchronization state.
 
 ### `source_connections`
 

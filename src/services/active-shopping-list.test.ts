@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => {
   };
 
   return {
+    buildAutomaticProductAliasInsertQuery: vi.fn(),
     buildActiveShoppingListCreateQuery: vi.fn(),
     buildActiveShoppingListQuery: vi.fn(),
     buildCompletedShoppingItemsQuery: vi.fn(),
@@ -31,6 +32,8 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("@/db/client", () => ({ getDb: mocks.getDb }));
 vi.mock("@/db/repositories/shopping-lists", () => ({
+  buildAutomaticProductAliasInsertQuery:
+    mocks.buildAutomaticProductAliasInsertQuery,
   buildActiveShoppingListCreateQuery: mocks.buildActiveShoppingListCreateQuery,
   buildActiveShoppingListQuery: mocks.buildActiveShoppingListQuery,
   buildCompletedShoppingItemsQuery: mocks.buildCompletedShoppingItemsQuery,
@@ -120,6 +123,7 @@ const matchedRice = {
 };
 
 beforeEach(() => {
+  mocks.buildAutomaticProductAliasInsertQuery.mockReset();
   mocks.buildActiveShoppingListCreateQuery.mockReset();
   mocks.buildActiveShoppingListQuery.mockReset();
   mocks.buildCompletedShoppingItemsQuery.mockReset();
@@ -343,7 +347,6 @@ describe("importActiveShoppingListItems", () => {
             key: item.key,
             itemName: item.submittedText,
             quantityText: null,
-            confidence: 0.9,
             resolution: {
               kind: "existing" as const,
               productConceptId: "rice",
@@ -366,6 +369,68 @@ describe("importActiveShoppingListItems", () => {
       mocks.categorizeProductsWithProductionModel.mock.calls[0]?.[0].items,
     ).toHaveLength(2);
     expect(mocks.buildShoppingItemUpsertQuery).toHaveBeenCalledTimes(2);
+    expect(mocks.buildAutomaticProductAliasInsertQuery).toHaveBeenCalledTimes(
+      2,
+    );
+    expect(mocks.buildAutomaticProductAliasInsertQuery).toHaveBeenCalledWith(
+      mocks.db,
+      expect.objectContaining({
+        userId,
+        normalizedText: "rice",
+        productConceptId: "rice",
+      }),
+    );
+  });
+
+  it("does not learn an automatic alias for an AI-suggested concept", async () => {
+    mocks.categorizeProductsWithProductionModel.mockResolvedValue({
+      results: [
+        {
+          key: `import:${mutationId}:0`,
+          itemName: "Paper towels",
+          quantityText: null,
+          resolution: {
+            kind: "suggested",
+            canonicalName: "Paper products",
+          },
+        },
+      ],
+      usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+    });
+
+    await importActiveShoppingListItems(userId, {
+      text: "Paper towels",
+      mutationId,
+    });
+
+    expect(mocks.buildAutomaticProductAliasInsertQuery).not.toHaveBeenCalled();
+  });
+
+  it("does not relearn an alias when the submitted item matched one", async () => {
+    mocks.buildExactProductAliasesLookupQuery.mockResolvedValue([
+      {
+        alias: {
+          normalizedText: "rice",
+          confidence: 1,
+          source: "learned",
+        },
+        productConcept: {
+          id: "rice",
+        },
+      },
+    ]);
+
+    await importActiveShoppingListItems(userId, {
+      text: "Rice",
+      mutationId,
+    });
+
+    expect(mocks.categorizeProductsWithProductionModel).not.toHaveBeenCalled();
+    expect(mocks.buildAutomaticProductAliasInsertQuery).not.toHaveBeenCalled();
+    expect(mocks.buildShoppingItemUpsertQuery).toHaveBeenCalledWith(
+      mocks.db,
+      expect.objectContaining({ categorizationSource: "learned-alias" }),
+    );
   });
 
   it("replaces the quantity on an existing unchecked item", async () => {
@@ -375,7 +440,6 @@ describe("importActiveShoppingListItems", () => {
           key: `import:${mutationId}:0`,
           itemName: "Apples",
           quantityText: "2",
-          confidence: 0.95,
           resolution: {
             kind: "existing",
             productConceptId: "rice",

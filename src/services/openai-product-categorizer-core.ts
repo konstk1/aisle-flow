@@ -40,12 +40,6 @@ export const PRODUCT_CATEGORIZATION_SYSTEM_PROMPT = [
   "- For an existing resolution, set existingConceptName to the exact canonicalName from the catalog and suggestedConceptName to null.",
   "- For a suggested resolution, set existingConceptName to null and suggestedConceptName to the suggestion.",
   "- Do not replace itemName with the concept name and do not invent existing concept names.",
-  "3. Calibrate confidence for each item independently.",
-  "- 0.95 to 1.00: exact or nearly exact concept match.",
-  "- 0.80 to 0.94: clear subtype or store-category match.",
-  "- 0.60 to 0.79: plausible but meaningfully ambiguous match.",
-  "- Below 0.60: weak or uncertain classification.",
-  "- Do not reuse one default confidence value across the batch.",
 ].join("\n");
 
 export function openAIProviderOptionsForModel(
@@ -103,7 +97,6 @@ export async function categorizeProductsWithOpenAI({
       key: item.key,
       itemName: item.itemName,
       quantityText: item.quantityText,
-      confidence: item.confidence,
       resolution:
         item.resolution.kind === "existing"
           ? {

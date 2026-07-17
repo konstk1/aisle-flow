@@ -506,7 +506,6 @@ function itemWithState(
     productConcept: null,
     categorization: {
       source: null,
-      confidence: null,
       reviewState: "none",
       suggestedConceptName: null,
     },

@@ -7,7 +7,6 @@ import {
   MAX_SUGGESTED_PRODUCT_CONCEPT_NAME_LENGTH,
 } from "./shopping-item-constants";
 
-export const PRODUCT_CATEGORIZATION_REVIEW_THRESHOLD = 0.8;
 export {
   MAX_SHOPPING_ITEM_QUANTITY_LENGTH,
   MAX_SUGGESTED_PRODUCT_CONCEPT_NAME_LENGTH,
@@ -19,10 +18,7 @@ export type ProductCategorizationSource =
   | "deterministic"
   | "manual";
 
-export type ProductCategorizationReviewState =
-  | "none"
-  | "low-confidence"
-  | "suggested-concept";
+export type ProductCategorizationReviewState = "none" | "suggested-concept";
 
 export interface ProductCategorizationItem {
   key: string;
@@ -49,7 +45,6 @@ export interface ProductCategorizationResult {
   key: string;
   itemName: string;
   quantityText: string | null;
-  confidence: number;
   resolution: ProductCategorizationResolution;
 }
 
@@ -75,7 +70,6 @@ function createOutputSchema(productConceptIdSchema: z.ZodType<string | null>) {
           .string()
           .max(MAX_SHOPPING_ITEM_QUANTITY_LENGTH)
           .nullable(),
-        confidence: z.number().min(0).max(1),
         resolution: z.object({
           kind: z.enum(["existing", "suggested"]),
           productConceptId: productConceptIdSchema,
@@ -113,7 +107,6 @@ export function createProductCategorizationProviderOutputSchema(
           .string()
           .max(MAX_SHOPPING_ITEM_QUANTITY_LENGTH)
           .nullable(),
-        confidence: z.number().min(0).max(1),
         resolution: z.object({
           kind: z.enum(["existing", "suggested"]),
           existingConceptName: existingConceptNameSchema,
@@ -254,24 +247,12 @@ export function reconcileProductCategorizationResults(
 }
 
 export function deriveProductCategorizationReviewState({
-  confidence,
   suggestedConceptName,
-  source,
 }: {
-  confidence: number | null;
   suggestedConceptName: string | null;
-  source: ProductCategorizationSource | null;
 }): ProductCategorizationReviewState {
   if (suggestedConceptName) {
     return "suggested-concept";
-  }
-
-  if (
-    source === "llm" &&
-    confidence !== null &&
-    confidence < PRODUCT_CATEGORIZATION_REVIEW_THRESHOLD
-  ) {
-    return "low-confidence";
   }
 
   return "none";

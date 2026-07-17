@@ -80,7 +80,6 @@ export interface ShoppingItemUpsertInput {
   normalizedText: string;
   quantityText?: string | null;
   productConceptId: string | null;
-  categorizationConfidence?: number | null;
   categorizationSource?: "learned-alias" | "llm" | "deterministic" | "manual";
   suggestedProductConceptName?: string | null;
   orderKey: string;
@@ -110,7 +109,6 @@ export interface ShoppingItemTextUpdateInput {
   normalizedText: string;
   quantityText?: string | null;
   productConceptId: string | null;
-  categorizationConfidence?: number | null;
   categorizationSource?: "learned-alias" | "deterministic";
   now?: Date;
 }
@@ -131,6 +129,13 @@ export interface ShoppingItemProductResolutionInput {
   shoppingListId: string;
   normalizedText: string;
   productConceptId: string | SQL;
+  now?: Date;
+}
+
+export interface AutomaticProductAliasInput {
+  userId: string;
+  productConceptId: string;
+  normalizedText: string;
   now?: Date;
 }
 
@@ -264,7 +269,6 @@ export function buildShoppingItemUpsertQuery(
       normalizedText: input.normalizedText,
       quantityText: input.quantityText,
       productConceptId: input.productConceptId,
-      categorizationConfidence: input.categorizationConfidence,
       categorizationSource: input.categorizationSource,
       suggestedProductConceptName: input.suggestedProductConceptName,
       orderKey: input.orderKey,
@@ -345,7 +349,6 @@ export function buildShoppingItemTextUpdateQuery(
       normalizedText: input.normalizedText,
       quantityText: input.quantityText,
       productConceptId: input.productConceptId,
-      categorizationConfidence: input.categorizationConfidence,
       categorizationSource: input.categorizationSource,
       suggestedProductConceptName: null,
       updatedAt: now,
@@ -407,7 +410,6 @@ export function buildShoppingItemProductResolutionQuery(
     .update(shoppingItems)
     .set({
       productConceptId: input.productConceptId,
-      categorizationConfidence: 1,
       categorizationSource: "manual",
       suggestedProductConceptName: null,
       updatedAt: now,
@@ -419,6 +421,31 @@ export function buildShoppingItemProductResolutionQuery(
         eq(shoppingItems.normalizedText, input.normalizedText),
       ),
     )
+    .returning();
+}
+
+export function buildAutomaticProductAliasInsertQuery(
+  db: Database,
+  input: AutomaticProductAliasInput,
+) {
+  const now = input.now ?? new Date();
+
+  return db
+    .insert(productAliases)
+    .values({
+      userId: input.userId,
+      productConceptId: input.productConceptId,
+      normalizedText: input.normalizedText,
+      scope: "user",
+      confidence: 1,
+      source: "learned",
+      isCorrection: false,
+      updatedAt: now,
+    })
+    .onConflictDoNothing({
+      target: [productAliases.userId, productAliases.normalizedText],
+      where: sql`${productAliases.scope} = 'user'`,
+    })
     .returning();
 }
 

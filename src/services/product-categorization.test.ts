@@ -60,7 +60,6 @@ describe("submitted product categorization", () => {
           key: item.key,
           itemName: "Bananas",
           quantityText: "3",
-          confidence: 0.7,
           resolution: {
             kind: "suggested" as const,
             canonicalName: "Bananas",

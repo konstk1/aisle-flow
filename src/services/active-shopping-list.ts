@@ -22,6 +22,7 @@ import type { StoreSummary } from "@/domain/stores";
 import { getDb } from "@/db/client";
 import type { Database } from "@/db/create-client";
 import {
+  buildAutomaticProductAliasInsertQuery,
   buildActiveShoppingListCreateQuery,
   buildActiveShoppingListQuery,
   buildCompletedShoppingItemsQuery,
@@ -293,8 +294,26 @@ export async function importActiveShoppingListItems(
       now,
     }),
   );
+  const automaticAliases = categorizedItems.flatMap((item) =>
+    item.source === "llm" && item.productConceptId
+      ? [
+          {
+            normalizedText: item.normalizedText,
+            productConceptId: item.productConceptId,
+          },
+        ]
+      : [],
+  );
 
-  await executeImportWrites(db, list.id, now, upsertInputs, quantityUpdates);
+  await executeImportWrites(
+    db,
+    userId,
+    list.id,
+    now,
+    upsertInputs,
+    quantityUpdates,
+    automaticAliases,
+  );
 
   return {
     activeList: await readShoppingListPayload(db, store, list, "active"),
@@ -416,7 +435,6 @@ export async function updateActiveShoppingItemText({
     normalizedText,
     quantityText,
     productConceptId: matched ? match.productConcept.id : null,
-    categorizationConfidence: match.confidence,
     categorizationSource:
       matched && match.source === "learned-alias"
         ? "learned-alias"
@@ -558,7 +576,6 @@ type ImportItemCandidate = {
   normalizedText: string;
   quantityText: string | null;
   productConceptId: string | null;
-  confidence: number | null;
   source: ProductCategorizationSource;
   suggestedProductConceptName: string | null;
   sourceIdentifier: string;
@@ -677,7 +694,6 @@ function buildShoppingItemUpsertInput(input: {
     normalizedText: input.item.normalizedText,
     quantityText: input.item.quantityText,
     productConceptId: input.item.productConceptId,
-    categorizationConfidence: input.item.confidence,
     categorizationSource: input.item.source,
     suggestedProductConceptName: input.item.suggestedProductConceptName,
     orderKey: createOrderKey(
@@ -693,10 +709,15 @@ function buildShoppingItemUpsertInput(input: {
 
 async function executeImportWrites(
   db: Database,
+  userId: string,
   shoppingListId: string,
   now: Date,
   upserts: ShoppingItemUpsertInput[],
   quantityUpdates: Array<{ itemId: string; quantityText: string | null }>,
+  automaticAliases: Array<{
+    normalizedText: string;
+    productConceptId: string;
+  }>,
 ) {
   const queries = [
     ...upserts.map((input) => buildShoppingItemUpsertQuery(db, input)),
@@ -705,6 +726,14 @@ async function executeImportWrites(
         shoppingListId,
         itemId: update.itemId,
         quantityText: update.quantityText,
+        now,
+      }),
+    ),
+    ...automaticAliases.map((alias) =>
+      buildAutomaticProductAliasInsertQuery(db, {
+        userId,
+        productConceptId: alias.productConceptId,
+        normalizedText: alias.normalizedText,
         now,
       }),
     ),
@@ -798,10 +827,7 @@ function toItemPayload({
       : null,
     categorization: {
       source: item.categorizationSource,
-      confidence: item.categorizationConfidence,
       reviewState: deriveProductCategorizationReviewState({
-        confidence: item.categorizationConfidence,
-        source: item.categorizationSource,
         suggestedConceptName: item.suggestedProductConceptName,
       }),
       suggestedConceptName: item.suggestedProductConceptName,

@@ -40,7 +40,6 @@ describe("product categorization evaluation", () => {
           key: String(index),
           itemName,
           quantityText: index === 1 ? "2" : null,
-          confidence: 0.91,
           resolution: {
             kind: "existing" as const,
             productConceptId: "apples",
@@ -76,7 +75,6 @@ describe("product categorization evaluation", () => {
     expect(evaluation.resultRows[0]).toMatchObject({
       Concept: "Apples",
       Quantity: "2",
-      "Review state": "none",
     });
     expect(evaluation.resultRows[1]?.Error).toBe("Error");
     expect(evaluation.summaryRows).toHaveLength(3);

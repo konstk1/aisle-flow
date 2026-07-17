@@ -440,7 +440,6 @@ export const shoppingItems = pgTable(
       () => productConcepts.id,
       { onDelete: "set null" },
     ),
-    categorizationConfidence: real("categorization_confidence"),
     categorizationSource: shoppingItemCategorizationSource(
       "categorization_source",
     ),
@@ -487,10 +486,6 @@ export const shoppingItems = pgTable(
     check(
       "shopping_items_quantity_text_valid",
       sql`${table.quantityText} IS NULL OR (length(btrim(${table.quantityText})) > 0 AND length(${table.quantityText}) <= 40)`,
-    ),
-    check(
-      "shopping_items_categorization_confidence_in_range",
-      sql`${table.categorizationConfidence} IS NULL OR (${table.categorizationConfidence} >= 0 AND ${table.categorizationConfidence} <= 1)`,
     ),
     check(
       "shopping_items_suggested_product_concept_name_valid",
