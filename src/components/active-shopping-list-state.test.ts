@@ -187,8 +187,18 @@ describe("buildProductCorrectionRequest", () => {
 
 describe("applyCorrectedConceptLocation", () => {
   const concepts = [
-    { id: "a", canonicalName: "Apples", normalizedName: "apples", aisleSectionId: "s1" },
-    { id: "b", canonicalName: "Bread", normalizedName: "bread", aisleSectionId: "s2" },
+    {
+      id: "a",
+      canonicalName: "Apples",
+      normalizedName: "apples",
+      aisleSectionId: "s1",
+    },
+    {
+      id: "b",
+      canonicalName: "Bread",
+      normalizedName: "bread",
+      aisleSectionId: "s2",
+    },
   ];
 
   it("updates the location of an existing concept in place", () => {
@@ -200,8 +210,18 @@ describe("applyCorrectedConceptLocation", () => {
     });
 
     expect(result).toEqual([
-      { id: "a", canonicalName: "Apples", normalizedName: "apples", aisleSectionId: "s1" },
-      { id: "b", canonicalName: "Bread", normalizedName: "bread", aisleSectionId: "s9" },
+      {
+        id: "a",
+        canonicalName: "Apples",
+        normalizedName: "apples",
+        aisleSectionId: "s1",
+      },
+      {
+        id: "b",
+        canonicalName: "Bread",
+        normalizedName: "bread",
+        aisleSectionId: "s9",
+      },
     ]);
   });
 
@@ -478,11 +498,18 @@ function itemWithState(
     id,
     rawText: id,
     normalizedText: id,
+    quantityText: null,
     isChecked,
     checkedAt: isChecked ? "2026-01-01T00:00:00.000Z" : null,
     snoozedUntil: null,
     resolutionState: "needs-correction",
     productConcept: null,
+    categorization: {
+      source: null,
+      confidence: null,
+      reviewState: "none",
+      suggestedConceptName: null,
+    },
     location: null,
   };
 }

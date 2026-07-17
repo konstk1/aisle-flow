@@ -28,7 +28,12 @@ export const githubIssuesEnvSchema = z.object({
   GITHUB_ISSUES_TOKEN: z.string().min(20),
 });
 
+export const openAiEnvSchema = z.object({
+  OPENAI_API_KEY: z.string().min(20),
+});
+
 export type GitHubIssuesEnv = z.infer<typeof githubIssuesEnvSchema>;
+export type OpenAiEnv = z.infer<typeof openAiEnvSchema>;
 
 export function parseDatabaseUrl(value: unknown): string {
   const result = databaseUrlSchema.safeParse(value);
@@ -80,6 +85,18 @@ export function getValidatedGitHubIssuesEnv(input: unknown): GitHubIssuesEnv {
   if (!result.success) {
     throw new Error(
       "Invalid feedback environment: GITHUB_ISSUES_TOKEN. Configure it before enabling in-app issue reporting.",
+    );
+  }
+
+  return result.data;
+}
+
+export function getValidatedOpenAiEnv(input: unknown): OpenAiEnv {
+  const result = openAiEnvSchema.safeParse(input);
+
+  if (!result.success) {
+    throw new Error(
+      "Invalid AI environment: OPENAI_API_KEY. Configure it before using AI categorization.",
     );
   }
 

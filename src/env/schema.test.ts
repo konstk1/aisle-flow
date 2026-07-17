@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { getValidatedGitHubIssuesEnv, getValidatedServerEnv } from "./schema";
+import {
+  getValidatedGitHubIssuesEnv,
+  getValidatedOpenAiEnv,
+  getValidatedServerEnv,
+} from "./schema";
 
 const validEnvironment = {
   DATABASE_URL: "postgresql://user:password@example.com:5432/aisle_flow",
@@ -42,5 +46,12 @@ describe("getValidatedServerEnv", () => {
     expect(() => getValidatedGitHubIssuesEnv({})).toThrow(
       /GITHUB_ISSUES_TOKEN/,
     );
+  });
+
+  it("validates the OpenAI key independently when AI is invoked", () => {
+    expect(getValidatedOpenAiEnv({ OPENAI_API_KEY: "o".repeat(20) })).toEqual({
+      OPENAI_API_KEY: "o".repeat(20),
+    });
+    expect(() => getValidatedOpenAiEnv({})).toThrow(/OPENAI_API_KEY/);
   });
 });

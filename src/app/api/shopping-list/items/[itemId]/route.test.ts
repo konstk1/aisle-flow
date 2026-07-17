@@ -5,12 +5,14 @@ const {
   requireSessionUserId,
   setActiveShoppingItemChecked,
   snoozeActiveShoppingItem,
+  updateActiveShoppingItemQuantity,
   updateActiveShoppingItemText,
 } = vi.hoisted(() => ({
   deleteActiveShoppingItem: vi.fn(),
   requireSessionUserId: vi.fn(),
   setActiveShoppingItemChecked: vi.fn(),
   snoozeActiveShoppingItem: vi.fn(),
+  updateActiveShoppingItemQuantity: vi.fn(),
   updateActiveShoppingItemText: vi.fn(),
 }));
 
@@ -24,6 +26,7 @@ vi.mock("@/services/active-shopping-list", async (importOriginal) => {
     deleteActiveShoppingItem,
     setActiveShoppingItemChecked,
     snoozeActiveShoppingItem,
+    updateActiveShoppingItemQuantity,
     updateActiveShoppingItemText,
   };
 });
@@ -98,6 +101,7 @@ describe("shopping list item route", () => {
     requireSessionUserId.mockResolvedValue(null);
     setActiveShoppingItemChecked.mockReset();
     snoozeActiveShoppingItem.mockReset();
+    updateActiveShoppingItemQuantity.mockReset();
     updateActiveShoppingItemText.mockReset();
   });
 
@@ -264,6 +268,52 @@ describe("shopping list item route", () => {
       text: "Wild Rice",
     });
     expect(setActiveShoppingItemChecked).not.toHaveBeenCalled();
+  });
+
+  it("updates quantity without invoking item-name matching", async () => {
+    requireSessionUserId.mockResolvedValue(userId);
+    updateActiveShoppingItemQuantity.mockResolvedValue({
+      store: { id: "store-1", name: "Example Market" },
+      list: { id: "list-1", source: "manual" },
+      items: [],
+    });
+
+    const response = await PATCH(
+      checkRequest({ quantityText: "2 lbs" }),
+      params(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(updateActiveShoppingItemQuantity).toHaveBeenCalledWith({
+      userId,
+      itemId,
+      responseView: "active",
+      quantityText: "2 lbs",
+    });
+    expect(updateActiveShoppingItemText).not.toHaveBeenCalled();
+  });
+
+  it("can update item name and quantity together", async () => {
+    requireSessionUserId.mockResolvedValue(userId);
+    updateActiveShoppingItemText.mockResolvedValue({
+      store: { id: "store-1", name: "Example Market" },
+      list: { id: "list-1", source: "manual" },
+      items: [],
+    });
+
+    const response = await PATCH(
+      checkRequest({ text: "Chicken", quantityText: "2 lbs" }),
+      params(),
+    );
+
+    expect(response.status).toBe(200);
+    expect(updateActiveShoppingItemText).toHaveBeenCalledWith({
+      userId,
+      itemId,
+      responseView: "active",
+      text: "Chicken",
+      quantityText: "2 lbs",
+    });
   });
 
   it("returns the list for completed-screen text updates", async () => {

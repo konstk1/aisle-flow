@@ -1,6 +1,7 @@
 import { normalizeProductText } from "./product-matching";
 
-export const MAX_SHOPPING_ITEM_TEXT_LENGTH = 120;
+export { MAX_SHOPPING_ITEM_TEXT_LENGTH } from "./shopping-item-constants";
+import { MAX_SHOPPING_ITEM_TEXT_LENGTH } from "./shopping-item-constants";
 export const MAX_IMPORT_ITEM_COUNT = 50;
 
 // Checked items stay on the active list (struck through) for this long so a
@@ -39,6 +40,7 @@ export interface ActiveShoppingItemPayload {
   id: string;
   rawText: string;
   normalizedText: string;
+  quantityText: string | null;
   isChecked: boolean;
   checkedAt: string | null;
   snoozedUntil: string | null;
@@ -48,6 +50,12 @@ export interface ActiveShoppingItemPayload {
     canonicalName: string;
     normalizedName: string;
   } | null;
+  categorization: {
+    source: "learned-alias" | "llm" | "deterministic" | "manual" | null;
+    confidence: number | null;
+    reviewState: "none" | "low-confidence" | "suggested-concept";
+    suggestedConceptName: string | null;
+  };
   location: {
     id: string;
     aisleSectionId: string;

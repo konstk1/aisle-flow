@@ -52,6 +52,11 @@ export const shoppingListSource = pgEnum("shopping_list_source", [
   "provider",
 ]);
 
+export const shoppingItemCategorizationSource = pgEnum(
+  "shopping_item_categorization_source",
+  ["learned-alias", "llm", "deterministic", "manual"],
+);
+
 export const user = pgTable(
   "user",
   {
@@ -430,10 +435,16 @@ export const shoppingItems = pgTable(
       .references(() => shoppingLists.id, { onDelete: "cascade" }),
     rawText: text("raw_text").notNull(),
     normalizedText: text("normalized_text").notNull(),
+    quantityText: text("quantity_text"),
     productConceptId: uuid("product_concept_id").references(
       () => productConcepts.id,
       { onDelete: "set null" },
     ),
+    categorizationConfidence: real("categorization_confidence"),
+    categorizationSource: shoppingItemCategorizationSource(
+      "categorization_source",
+    ),
+    suggestedProductConceptName: text("suggested_product_concept_name"),
     isChecked: boolean("is_checked").default(false).notNull(),
     checkedAt: timestamp("checked_at", { withTimezone: true }),
     snoozedUntil: timestamp("snoozed_until", { withTimezone: true }),
@@ -472,6 +483,18 @@ export const shoppingItems = pgTable(
     check(
       "shopping_items_normalized_text_not_blank",
       sql`length(btrim(${table.normalizedText})) > 0`,
+    ),
+    check(
+      "shopping_items_quantity_text_valid",
+      sql`${table.quantityText} IS NULL OR (length(btrim(${table.quantityText})) > 0 AND length(${table.quantityText}) <= 40)`,
+    ),
+    check(
+      "shopping_items_categorization_confidence_in_range",
+      sql`${table.categorizationConfidence} IS NULL OR (${table.categorizationConfidence} >= 0 AND ${table.categorizationConfidence} <= 1)`,
+    ),
+    check(
+      "shopping_items_suggested_product_concept_name_valid",
+      sql`${table.suggestedProductConceptName} IS NULL OR (length(btrim(${table.suggestedProductConceptName})) > 0 AND length(${table.suggestedProductConceptName}) <= 80)`,
     ),
     check(
       "shopping_items_order_key_not_blank",

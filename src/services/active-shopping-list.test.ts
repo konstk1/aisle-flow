@@ -9,17 +9,21 @@ const mocks = vi.hoisted(() => {
     buildActiveShoppingListCreateQuery: vi.fn(),
     buildActiveShoppingListQuery: vi.fn(),
     buildCompletedShoppingItemsQuery: vi.fn(),
+    buildExactProductAliasesLookupQuery: vi.fn(),
     buildRouteOrderedShoppingItemsQuery: vi.fn(),
     buildShoppingItemCheckStateQuery: vi.fn(),
     buildShoppingItemDeleteQuery: vi.fn(),
     buildShoppingItemSnoozeStateQuery: vi.fn(),
     buildShoppingItemTextUpdateQuery: vi.fn(),
+    buildShoppingItemQuantityUpdateQuery: vi.fn(),
     buildShoppingItemsByNormalizedTextQuery: vi.fn(),
     buildShoppingItemUpsertQuery: vi.fn(),
     buildSnoozedShoppingItemsQuery: vi.fn(),
     createStoreProductMatcher: vi.fn(),
+    categorizeProductsWithProductionModel: vi.fn(),
     db,
     getDb: vi.fn(() => db),
+    loadProductConceptCatalog: vi.fn(),
     resolveCurrentStore: vi.fn(),
     resolveProductMatch: vi.fn(),
   };
@@ -30,12 +34,16 @@ vi.mock("@/db/repositories/shopping-lists", () => ({
   buildActiveShoppingListCreateQuery: mocks.buildActiveShoppingListCreateQuery,
   buildActiveShoppingListQuery: mocks.buildActiveShoppingListQuery,
   buildCompletedShoppingItemsQuery: mocks.buildCompletedShoppingItemsQuery,
+  buildExactProductAliasesLookupQuery:
+    mocks.buildExactProductAliasesLookupQuery,
   buildRouteOrderedShoppingItemsQuery:
     mocks.buildRouteOrderedShoppingItemsQuery,
   buildShoppingItemCheckStateQuery: mocks.buildShoppingItemCheckStateQuery,
   buildShoppingItemDeleteQuery: mocks.buildShoppingItemDeleteQuery,
   buildShoppingItemSnoozeStateQuery: mocks.buildShoppingItemSnoozeStateQuery,
   buildShoppingItemTextUpdateQuery: mocks.buildShoppingItemTextUpdateQuery,
+  buildShoppingItemQuantityUpdateQuery:
+    mocks.buildShoppingItemQuantityUpdateQuery,
   buildShoppingItemsByNormalizedTextQuery:
     mocks.buildShoppingItemsByNormalizedTextQuery,
   buildShoppingItemUpsertQuery: mocks.buildShoppingItemUpsertQuery,
@@ -43,6 +51,13 @@ vi.mock("@/db/repositories/shopping-lists", () => ({
 }));
 vi.mock("./product-matching", () => ({
   createStoreProductMatcher: mocks.createStoreProductMatcher,
+}));
+vi.mock("./openai-product-categorizer", () => ({
+  categorizeProductsWithProductionModel:
+    mocks.categorizeProductsWithProductionModel,
+}));
+vi.mock("./product-concept-catalog", () => ({
+  loadProductConceptCatalog: mocks.loadProductConceptCatalog,
 }));
 vi.mock("./stores", () => ({
   resolveCurrentStore: mocks.resolveCurrentStore,
@@ -108,27 +123,40 @@ beforeEach(() => {
   mocks.buildActiveShoppingListCreateQuery.mockReset();
   mocks.buildActiveShoppingListQuery.mockReset();
   mocks.buildCompletedShoppingItemsQuery.mockReset();
+  mocks.buildExactProductAliasesLookupQuery.mockReset();
   mocks.buildRouteOrderedShoppingItemsQuery.mockReset();
   mocks.buildShoppingItemCheckStateQuery.mockReset();
   mocks.buildShoppingItemDeleteQuery.mockReset();
   mocks.buildShoppingItemSnoozeStateQuery.mockReset();
   mocks.buildShoppingItemTextUpdateQuery.mockReset();
+  mocks.buildShoppingItemQuantityUpdateQuery.mockReset();
   mocks.buildShoppingItemsByNormalizedTextQuery.mockReset();
   mocks.buildShoppingItemUpsertQuery.mockReset();
   mocks.buildSnoozedShoppingItemsQuery.mockReset();
   mocks.createStoreProductMatcher.mockReset();
+  mocks.categorizeProductsWithProductionModel.mockReset();
   mocks.db.batch.mockReset();
   mocks.getDb.mockClear();
+  mocks.loadProductConceptCatalog.mockReset();
   mocks.resolveCurrentStore.mockReset();
   mocks.resolveProductMatch.mockReset();
 
   mocks.resolveCurrentStore.mockResolvedValue(store);
   mocks.buildActiveShoppingListQuery.mockResolvedValue([list]);
   mocks.buildCompletedShoppingItemsQuery.mockResolvedValue([]);
+  mocks.buildExactProductAliasesLookupQuery.mockResolvedValue([]);
   mocks.buildRouteOrderedShoppingItemsQuery.mockResolvedValue([]);
   mocks.buildSnoozedShoppingItemsQuery.mockResolvedValue([]);
   mocks.buildShoppingItemsByNormalizedTextQuery.mockResolvedValue([]);
   mocks.createStoreProductMatcher.mockResolvedValue(mocks.resolveProductMatch);
+  mocks.loadProductConceptCatalog.mockResolvedValue([
+    {
+      id: "rice",
+      canonicalName: "Rice",
+      normalizedName: "rice",
+      excludedTerms: [],
+    },
+  ]);
   mocks.db.batch.mockResolvedValue([]);
   mocks.resolveProductMatch.mockResolvedValue(matchedRice);
   mocks.buildShoppingItemUpsertQuery.mockImplementation((_, input) => ({
@@ -138,6 +166,9 @@ beforeEach(() => {
   mocks.buildShoppingItemDeleteQuery.mockResolvedValue([{ id: itemId }]);
   mocks.buildShoppingItemSnoozeStateQuery.mockResolvedValue([{ id: itemId }]);
   mocks.buildShoppingItemTextUpdateQuery.mockResolvedValue([{ id: itemId }]);
+  mocks.buildShoppingItemQuantityUpdateQuery.mockImplementation((_, input) => ({
+    quantityUpdate: input,
+  }));
 });
 
 describe("getActiveShoppingList", () => {
@@ -304,10 +335,105 @@ describe("getCompletedShoppingList", () => {
 });
 
 describe("importActiveShoppingListItems", () => {
+  it("categorizes unresolved submitted items in one AI batch", async () => {
+    mocks.categorizeProductsWithProductionModel.mockImplementation(
+      async (request) => ({
+        results: request.items.map(
+          (item: { key: string; submittedText: string }) => ({
+            key: item.key,
+            itemName: item.submittedText,
+            quantityText: null,
+            confidence: 0.9,
+            resolution: {
+              kind: "existing" as const,
+              productConceptId: "rice",
+            },
+          }),
+        ),
+        usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+      }),
+    );
+
+    await importActiveShoppingListItems(userId, {
+      text: "Rice\nBroccoli",
+      mutationId,
+    });
+
+    expect(mocks.categorizeProductsWithProductionModel).toHaveBeenCalledTimes(
+      1,
+    );
+    expect(
+      mocks.categorizeProductsWithProductionModel.mock.calls[0]?.[0].items,
+    ).toHaveLength(2);
+    expect(mocks.buildShoppingItemUpsertQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it("replaces the quantity on an existing unchecked item", async () => {
+    mocks.categorizeProductsWithProductionModel.mockResolvedValue({
+      results: [
+        {
+          key: `import:${mutationId}:0`,
+          itemName: "Apples",
+          quantityText: "2",
+          confidence: 0.95,
+          resolution: {
+            kind: "existing",
+            productConceptId: "rice",
+          },
+        },
+      ],
+      usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+    });
+    mocks.buildShoppingItemsByNormalizedTextQuery.mockResolvedValue([
+      {
+        id: itemId,
+        rawText: "Apples",
+        normalizedText: "apples",
+        quantityText: "1",
+        sourceIdentifier: "manual:existing",
+      },
+    ]);
+
+    const result = await importActiveShoppingListItems(userId, {
+      text: "Apples 2",
+      mutationId,
+    });
+
+    expect(result.updatedQuantities).toEqual(["Apples"]);
+    expect(mocks.buildShoppingItemUpsertQuery).not.toHaveBeenCalled();
+    expect(mocks.buildShoppingItemQuantityUpdateQuery).toHaveBeenCalledWith(
+      mocks.db,
+      expect.objectContaining({ itemId, quantityText: "2" }),
+    );
+  });
+
+  it("does not write items when AI categorization fails", async () => {
+    mocks.categorizeProductsWithProductionModel.mockRejectedValue(
+      new Error("provider unavailable"),
+    );
+
+    await expect(
+      importActiveShoppingListItems(userId, {
+        text: "Rice",
+        mutationId,
+      }),
+    ).rejects.toMatchObject({
+      code: "AI_CATEGORIZATION_UNAVAILABLE",
+      status: 503,
+    });
+
+    expect(
+      mocks.buildShoppingItemsByNormalizedTextQuery,
+    ).not.toHaveBeenCalled();
+    expect(mocks.buildShoppingItemUpsertQuery).not.toHaveBeenCalled();
+    expect(mocks.db.batch).not.toHaveBeenCalled();
+  });
+
   it("persists one item per parsed line with deterministic import identifiers", async () => {
     await importActiveShoppingListItems(userId, {
       text: "Rice\n\nBroccoli",
       mutationId,
+      categorizationMode: "deterministic",
     });
 
     expect(mocks.buildShoppingItemUpsertQuery).toHaveBeenCalledTimes(2);
@@ -345,6 +471,7 @@ describe("importActiveShoppingListItems", () => {
         id: itemId,
         rawText: "Oatly",
         normalizedText: "oatly",
+        quantityText: null,
         sourceIdentifier: "manual:existing",
       },
     ]);
@@ -352,10 +479,11 @@ describe("importActiveShoppingListItems", () => {
     const result = await importActiveShoppingListItems(userId, {
       text: "oAtLy\nBroccoli",
       mutationId,
+      categorizationMode: "deterministic",
     });
 
     expect(result.alreadyOnList).toEqual(["Oatly"]);
-    expect(mocks.resolveProductMatch).toHaveBeenCalledTimes(1);
+    expect(mocks.resolveProductMatch).toHaveBeenCalledTimes(2);
     expect(mocks.db.batch).toHaveBeenCalledWith([
       expect.objectContaining({
         input: expect.objectContaining({
@@ -370,10 +498,11 @@ describe("importActiveShoppingListItems", () => {
     const result = await importActiveShoppingListItems(userId, {
       text: "Oatly\noAtLy",
       mutationId,
+      categorizationMode: "deterministic",
     });
 
-    expect(result.alreadyOnList).toEqual(["Oatly"]);
-    expect(mocks.resolveProductMatch).toHaveBeenCalledTimes(1);
+    expect(result.alreadyOnList).toEqual([]);
+    expect(mocks.resolveProductMatch).toHaveBeenCalledTimes(2);
     expect(mocks.db.batch).toHaveBeenCalledWith([
       expect.objectContaining({
         input: expect.objectContaining({
@@ -390,6 +519,7 @@ describe("importActiveShoppingListItems", () => {
         id: itemId,
         rawText: "Oatly",
         normalizedText: "oatly",
+        quantityText: null,
         sourceIdentifier: "manual:existing",
       },
     ]);
@@ -397,10 +527,11 @@ describe("importActiveShoppingListItems", () => {
     const result = await importActiveShoppingListItems(userId, {
       text: "oAtLy",
       mutationId,
+      categorizationMode: "deterministic",
     });
 
     expect(result.alreadyOnList).toEqual(["Oatly"]);
-    expect(mocks.createStoreProductMatcher).not.toHaveBeenCalled();
+    expect(mocks.createStoreProductMatcher).toHaveBeenCalledTimes(1);
     expect(mocks.db.batch).not.toHaveBeenCalled();
   });
 
@@ -413,6 +544,7 @@ describe("importActiveShoppingListItems", () => {
       importActiveShoppingListItems(userId, {
         text: "Rice\nBroccoli",
         mutationId,
+        categorizationMode: "deterministic",
       }),
     ).rejects.toThrow("matching failed");
 
@@ -425,6 +557,7 @@ describe("importActiveShoppingListItems", () => {
       importActiveShoppingListItems(userId, {
         text: "\n",
         mutationId,
+        categorizationMode: "deterministic",
       }),
     ).rejects.toMatchObject({
       fieldErrors: { text: ["Paste at least one item, one per line."] },

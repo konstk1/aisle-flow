@@ -1,10 +1,22 @@
 import { requireSessionUserId } from "@/auth/access";
 import type { ActiveShoppingListPayload } from "@/domain/active-shopping-list";
 import { ActiveShoppingListRequestError } from "@/services/active-shopping-list";
+import { ProductCategorizationUnavailableError } from "@/services/product-categorization";
 
 import { unauthorizedResponse } from "../../_lib/responses";
 
 export function activeShoppingListErrorResponse(error: unknown) {
+  if (error instanceof ProductCategorizationUnavailableError) {
+    return Response.json(
+      {
+        code: error.code,
+        error: error.message,
+        retryable: error.retryable,
+      },
+      { status: error.status },
+    );
+  }
+
   if (error instanceof ActiveShoppingListRequestError) {
     return Response.json(
       { error: error.message, fieldErrors: error.fieldErrors },
