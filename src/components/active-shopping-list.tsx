@@ -6,6 +6,7 @@ import {
   ArrowRight,
   Bot,
   Check,
+  ChevronDown,
   Clock,
   MapPin,
   Pencil,
@@ -13,7 +14,6 @@ import {
   RotateCw,
   Search,
   Trash2,
-  X,
 } from "lucide-react";
 import Link from "next/link";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -1235,59 +1235,59 @@ function ShoppingItemRow({
 
   return (
     <div
-      className={`flex gap-4 px-[18px] py-[15px] ${
-        editExpanded ? "items-start" : "items-center"
-      }`}
+      className={
+        editExpanded ? "block" : "flex items-center gap-4 px-[18px] py-[15px]"
+      }
     >
-      {isSnoozedRow ? (
-        <button
-          aria-label="Restore item to list"
-          className="border-ink-150 text-ink-500 hover:border-accent hover:text-accent relative flex size-[26px] shrink-0 items-center justify-center rounded-full border-2 bg-white transition after:absolute after:-inset-[9px] disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={pending}
-          onClick={() => onSnoozeChange(false)}
-          title="Restore to list"
-          type="button"
-        >
-          <Clock aria-hidden="true" className="size-3.5" />
-        </button>
-      ) : (
-        <button
-          aria-label={
-            item.isChecked ? "Mark item unchecked" : "Mark item checked"
-          }
-          className="relative flex size-[26px] shrink-0 items-center justify-center rounded-full border-2 transition after:absolute after:-inset-[9px] disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={pending}
-          onClick={() => onCheckedChange(!item.isChecked)}
-          style={
-            item.isChecked
-              ? { borderColor: accentColor, background: accentColor }
-              : { borderColor: "var(--color-ink-150)", background: "#fff" }
-          }
-          type="button"
-        >
-          <Check
-            aria-hidden="true"
-            className="size-3.5 text-white"
-            strokeWidth={3.2}
-            style={{ opacity: item.isChecked ? 1 : 0 }}
-          />
-        </button>
-      )}
+      {!editExpanded ? (
+        isSnoozedRow ? (
+          <button
+            aria-label="Restore item to list"
+            className="border-ink-150 text-ink-500 hover:border-accent hover:text-accent relative flex size-[26px] shrink-0 items-center justify-center rounded-full border-2 bg-white transition after:absolute after:-inset-[9px] disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={pending}
+            onClick={() => onSnoozeChange(false)}
+            title="Restore to list"
+            type="button"
+          >
+            <Clock aria-hidden="true" className="size-3.5" />
+          </button>
+        ) : (
+          <button
+            aria-label={
+              item.isChecked ? "Mark item unchecked" : "Mark item checked"
+            }
+            className="relative flex size-[26px] shrink-0 items-center justify-center rounded-full border-2 transition after:absolute after:-inset-[9px] disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={pending}
+            onClick={() => onCheckedChange(!item.isChecked)}
+            style={
+              item.isChecked
+                ? { borderColor: accentColor, background: accentColor }
+                : { borderColor: "var(--color-ink-150)", background: "#fff" }
+            }
+            type="button"
+          >
+            <Check
+              aria-hidden="true"
+              className="size-3.5 text-white"
+              strokeWidth={3.2}
+              style={{ opacity: item.isChecked ? 1 : 0 }}
+            />
+          </button>
+        )
+      ) : null}
 
       {editExpanded ? (
-        <>
+        <div className="min-w-0">
           <form
             aria-label={`Edit ${item.rawText}`}
-            className="min-w-0 flex-1 space-y-2"
+            className="min-w-0 space-y-4 px-[18px] py-5"
             id={editFormId}
             onSubmit={onEditSubmit}
           >
             <label className="block">
-              <span className="text-ink-500 mb-1 block text-xs font-semibold">
-                Item
-              </span>
+              <span className="sr-only">Item</span>
               <input
-                className="focus:border-accent min-h-10 w-full rounded-xl border border-black/[0.07] bg-white px-3.5 text-base leading-6 transition outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                className="bg-ink-50 focus:border-accent min-h-12 w-full rounded-[14px] border border-black/[0.07] px-3.5 text-[17px] leading-6 font-semibold transition outline-none disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={editPending}
                 onChange={(event) => onEditTextChange(event.target.value)}
                 value={editText}
@@ -1295,73 +1295,82 @@ function ShoppingItemRow({
               <FieldError messages={editFieldErrors.text} />
               <FieldError messages={editFieldErrors.form} />
             </label>
-            <label className="block">
-              <span className="text-ink-500 mb-1 block text-xs font-semibold">
-                Quantity
-              </span>
-              <input
-                className="focus:border-accent min-h-10 w-full rounded-xl border border-black/[0.07] bg-white px-3.5 text-base leading-6 transition outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                disabled={editPending}
-                maxLength={40}
-                onChange={(event) =>
-                  onEditQuantityTextChange(event.target.value)
-                }
-                placeholder="Optional, e.g. 2 lbs"
-                value={editQuantityText}
+            <div className="grid grid-cols-2 gap-3">
+              <label
+                className={`block min-w-0 ${
+                  correctionOptions?.aisleSections.length === 0
+                    ? "col-span-2"
+                    : ""
+                }`}
+              >
+                <span className="text-ink-500 mb-1.5 block text-[11px] font-bold tracking-[0.06em] uppercase">
+                  Quantity
+                </span>
+                <input
+                  className="bg-ink-50 focus:border-accent min-h-12 w-full rounded-[14px] border border-black/[0.07] px-3.5 text-base leading-6 transition outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={editPending}
+                  maxLength={40}
+                  onChange={(event) =>
+                    onEditQuantityTextChange(event.target.value)
+                  }
+                  placeholder="e.g. 2 lbs"
+                  value={editQuantityText}
+                />
+                <FieldError messages={editFieldErrors.quantityText} />
+              </label>
+              <InlineLocationEditor
+                fieldErrors={correctionFieldErrors}
+                form={correctionForm}
+                item={item}
+                loadingOptions={correctionOptionsLoading}
+                message={correctionMessage}
+                onFormChange={onCorrectionFormChange}
+                onRetryOptions={onRetryCorrectionOptions}
+                options={correctionOptions}
+                optionsError={correctionOptionsError}
+                pending={editPending}
               />
-              <FieldError messages={editFieldErrors.quantityText} />
-            </label>
-            <InlineLocationEditor
-              fieldErrors={correctionFieldErrors}
-              form={correctionForm}
-              item={item}
-              loadingOptions={correctionOptionsLoading}
-              message={correctionMessage}
-              onFormChange={onCorrectionFormChange}
-              onRetryOptions={onRetryCorrectionOptions}
-              options={correctionOptions}
-              optionsError={correctionOptionsError}
-              pending={editPending}
-            />
+            </div>
             {editMessage ? (
               <p className="text-ink-600 text-sm" role="status">
                 {editMessage}
               </p>
             ) : null}
           </form>
-          <div className="ml-auto flex shrink-0 items-center gap-1.5">
-            <button
-              aria-label="Save item"
-              className="from-accent to-accent-bright shadow-accent-glow-sm flex size-10 items-center justify-center rounded-xl bg-gradient-to-br text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={editPending || saveDisabled}
-              form={editFormId}
-              title="Save"
-              type="submit"
-            >
-              <Check aria-hidden="true" className="size-4" />
-            </button>
-            <button
-              aria-label="Cancel edit"
-              className="bg-ink-50 text-ink-600 hover:bg-divider flex size-10 items-center justify-center rounded-xl transition disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={editPending}
-              onClick={onEditCancel}
-              title="Cancel"
-              type="button"
-            >
-              <X aria-hidden="true" className="size-4" />
-            </button>
+          <div className="border-divider-soft flex items-center justify-between gap-3 border-t px-[18px] py-3.5">
             <button
               aria-label="Delete item"
-              className="bg-danger-50 text-danger hover:bg-danger-100 flex size-10 items-center justify-center rounded-xl transition disabled:cursor-not-allowed disabled:opacity-50"
+              className="text-danger hover:bg-danger-50 inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
               disabled={pendingDelete || editPending}
               onClick={onDelete}
-              title="Delete"
               type="button"
             >
               <Trash2 aria-hidden="true" className="size-4" />
+              Delete
             </button>
+            <div className="flex items-center gap-2">
+              <button
+                aria-label="Cancel edit"
+                className="bg-ink-50 text-ink-600 hover:bg-divider inline-flex min-h-11 items-center justify-center rounded-xl px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={editPending}
+                onClick={onEditCancel}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                aria-label="Save item"
+                className="from-accent to-accent-bright shadow-accent-glow-sm inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-br px-4 text-sm font-semibold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={editPending || saveDisabled}
+                form={editFormId}
+                type="submit"
+              >
+                <Check aria-hidden="true" className="size-4" />
+                Save
+              </button>
+            </div>
           </div>
-        </>
+        </div>
       ) : (
         <>
           <div
@@ -1488,15 +1497,118 @@ function InlineLocationEditor({
   const [isNewProductDialogOpen, setIsNewProductDialogOpen] = useState(false);
 
   return (
-    <div className="space-y-2">
+    <>
+      {options && aisleSections.length === 0 ? (
+        <p className="text-ink-400 col-span-2 text-sm">
+          <Link
+            className="text-accent font-semibold underline-offset-4 hover:underline"
+            href="/route"
+          >
+            Build a store route
+          </Link>{" "}
+          before assigning item locations.
+        </p>
+      ) : (
+        <>
+          <div className="block min-w-0">
+            <label
+              className="text-ink-500 mb-1.5 block text-[11px] font-bold tracking-[0.06em] uppercase"
+              htmlFor={productControlId}
+            >
+              Product
+            </label>
+            <div className="relative">
+              <select
+                className="bg-ink-50 focus:border-accent min-h-12 w-full appearance-none rounded-[14px] border border-black/[0.07] py-0 pr-10 pl-3.5 text-sm transition outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={formDisabled}
+                id={productControlId}
+                onChange={(event) => {
+                  if (event.target.value === NEW_PRODUCT_DIALOG_OPTION_VALUE) {
+                    setIsNewProductDialogOpen(true);
+                    return;
+                  }
+
+                  onFormChange(
+                    buildProductSelectionPatch(
+                      event.target.value,
+                      productConcepts,
+                    ),
+                  );
+                }}
+                value={selectValue}
+              >
+                <option value="">Choose product</option>
+                {isAddingProduct && form.canonicalName ? (
+                  <option value={ADD_PRODUCT_OPTION_VALUE}>
+                    {form.canonicalName} (new)
+                  </option>
+                ) : null}
+                {selectedConceptIsMissing && item.productConcept ? (
+                  <option value={item.productConcept.id}>
+                    {item.productConcept.canonicalName}
+                  </option>
+                ) : null}
+                {productConcepts.map((concept) => (
+                  <option key={concept.id} value={concept.id}>
+                    {concept.canonicalName}
+                  </option>
+                ))}
+                <option value={NEW_PRODUCT_DIALOG_OPTION_VALUE}>
+                  Add product
+                </option>
+              </select>
+              <ChevronDown
+                aria-hidden="true"
+                className="text-ink-500 pointer-events-none absolute top-1/2 right-3.5 size-4 -translate-y-1/2"
+              />
+            </div>
+            <FieldError messages={fieldErrors.productConceptId} />
+            <FieldError messages={fieldErrors.canonicalName} />
+          </div>
+
+          <label className="col-span-2 block min-w-0">
+            <span className="text-ink-500 mb-1.5 block text-[11px] font-bold tracking-[0.06em] uppercase">
+              Aisle
+            </span>
+            <div className="relative">
+              <select
+                className="bg-ink-50 focus:border-accent min-h-12 w-full appearance-none rounded-[14px] border border-black/[0.07] py-0 pr-10 pl-3.5 text-base transition outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={formDisabled}
+                onChange={(event) =>
+                  onFormChange({ aisleSectionId: event.target.value })
+                }
+                value={form.aisleSectionId}
+              >
+                <option value="">Choose section</option>
+                {selectedSectionIsMissing && item.location ? (
+                  <option value={item.location.aisleSectionId}>
+                    {correctionSectionLabel(item.location.aisleSection)}
+                  </option>
+                ) : null}
+                {aisleSections.map((section) => (
+                  <option key={section.id} value={section.id}>
+                    {correctionSectionLabel(section)}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown
+                aria-hidden="true"
+                className="text-ink-500 pointer-events-none absolute top-1/2 right-3.5 size-4 -translate-y-1/2"
+              />
+            </div>
+            <FieldError messages={fieldErrors.aisleSectionId} />
+          </label>
+        </>
+      )}
+
       {loadingOptions ? (
-        <p className="text-ink-400 text-sm" role="status">
+        <p className="text-ink-400 col-span-2 text-sm" role="status">
           Loading location options.
         </p>
       ) : null}
 
       {optionsError ? (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="col-span-2 flex flex-wrap items-center gap-2">
           <p className="text-danger text-sm" role="alert">
             {optionsError}
           </p>
@@ -1512,97 +1624,15 @@ function InlineLocationEditor({
         </div>
       ) : null}
 
-      <FieldError messages={fieldErrors.form} />
-      <FieldError messages={fieldErrors.rawText} />
-
-      {options && aisleSections.length === 0 ? (
-        <p className="text-ink-400 text-sm">
-          <Link
-            className="text-accent font-semibold underline-offset-4 hover:underline"
-            href="/route"
-          >
-            Build a store route
-          </Link>{" "}
-          before assigning item locations.
-        </p>
-      ) : (
-        <div className="grid gap-2 sm:grid-cols-2">
-          <div className="block min-w-0">
-            <label className="sr-only" htmlFor={productControlId}>
-              Product
-            </label>
-            <select
-              className="focus:border-accent min-h-10 w-full rounded-xl border border-black/[0.07] bg-white px-3.5 text-sm transition outline-none disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={formDisabled}
-              id={productControlId}
-              onChange={(event) => {
-                if (event.target.value === NEW_PRODUCT_DIALOG_OPTION_VALUE) {
-                  setIsNewProductDialogOpen(true);
-                  return;
-                }
-
-                onFormChange(
-                  buildProductSelectionPatch(
-                    event.target.value,
-                    productConcepts,
-                  ),
-                );
-              }}
-              value={selectValue}
-            >
-              <option value="">Choose product</option>
-              {isAddingProduct && form.canonicalName ? (
-                <option value={ADD_PRODUCT_OPTION_VALUE}>
-                  {form.canonicalName} (new)
-                </option>
-              ) : null}
-              {selectedConceptIsMissing && item.productConcept ? (
-                <option value={item.productConcept.id}>
-                  {item.productConcept.canonicalName}
-                </option>
-              ) : null}
-              {productConcepts.map((concept) => (
-                <option key={concept.id} value={concept.id}>
-                  {concept.canonicalName}
-                </option>
-              ))}
-              <option value={NEW_PRODUCT_DIALOG_OPTION_VALUE}>
-                Add product
-              </option>
-            </select>
-            <FieldError messages={fieldErrors.productConceptId} />
-            <FieldError messages={fieldErrors.canonicalName} />
-          </div>
-
-          <label className="block min-w-0">
-            <span className="sr-only">Route section</span>
-            <select
-              className="focus:border-accent min-h-10 w-full rounded-xl border border-black/[0.07] bg-white px-3.5 text-sm transition outline-none disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={formDisabled}
-              onChange={(event) =>
-                onFormChange({ aisleSectionId: event.target.value })
-              }
-              value={form.aisleSectionId}
-            >
-              <option value="">Choose section</option>
-              {selectedSectionIsMissing && item.location ? (
-                <option value={item.location.aisleSectionId}>
-                  {correctionSectionLabel(item.location.aisleSection)}
-                </option>
-              ) : null}
-              {aisleSections.map((section) => (
-                <option key={section.id} value={section.id}>
-                  {correctionSectionLabel(section)}
-                </option>
-              ))}
-            </select>
-            <FieldError messages={fieldErrors.aisleSectionId} />
-          </label>
+      {fieldErrors.form?.length || fieldErrors.rawText?.length ? (
+        <div className="col-span-2">
+          <FieldError messages={fieldErrors.form} />
+          <FieldError messages={fieldErrors.rawText} />
         </div>
-      )}
+      ) : null}
 
       {message ? (
-        <p className="text-ink-600 text-sm" role="status">
+        <p className="text-ink-600 col-span-2 text-sm" role="status">
           {message}
         </p>
       ) : null}
@@ -1629,7 +1659,7 @@ function InlineLocationEditor({
           storeName={options?.store?.name ?? null}
         />
       ) : null}
-    </div>
+    </>
   );
 }
 function locationLabel(item: ActiveShoppingItemPayload) {
