@@ -8,6 +8,7 @@ import {
   buildActiveShoppingListQuery,
   buildCompletedShoppingItemsQuery,
   buildExactProductAliasLookupQuery,
+  buildExactProductAliasesLookupQuery,
   buildRouteOrderedShoppingItemsQuery,
   buildShoppingItemCheckStateQuery,
   buildShoppingItemDeleteQuery,
@@ -348,6 +349,8 @@ describe("shopping-list queries", () => {
       database,
       {
         userId: "user-a",
+        shoppingListId: "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
+        sourceIdentifier: "import:mutation:0",
         productConceptId: "11111111-1111-4111-8111-111111111111",
         normalizedText: "chicken thighs",
         now: new Date("2026-01-01T00:00:00Z"),
@@ -355,6 +358,12 @@ describe("shopping-list queries", () => {
     ).toSQL();
 
     expect(query).toContain('insert into "product_aliases"');
+    expect(query).toContain('from "shopping_items"');
+    expect(query).toContain('"shopping_items"."categorization_source" =');
+    expect(query).toContain('"shopping_items"."source_identifier" =');
+    expect(query).toContain(
+      '"shopping_items"."suggested_product_concept_name" is null',
+    );
     expect(query).toContain(
       'on conflict ("user_id","normalized_text") where "product_aliases"."scope" = \'user\' do nothing',
     );
@@ -363,11 +372,14 @@ describe("shopping-list queries", () => {
       "11111111-1111-4111-8111-111111111111",
       "user-a",
       "chicken thighs",
-      "user",
+      new Date("2026-01-01T00:00:00Z"),
+      new Date("2026-01-01T00:00:00Z"),
+      "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
+      "import:mutation:0",
+      "chicken thighs",
+      "11111111-1111-4111-8111-111111111111",
+      "llm",
       1,
-      "learned",
-      false,
-      "2026-01-01T00:00:00.000Z",
     ]);
   });
 
@@ -408,10 +420,33 @@ describe("shopping-list queries", () => {
       "wild rice",
       "learned",
       "imported",
+      0,
+      1,
       "global",
       "user",
       "user-a",
       1,
+    ]);
+  });
+
+  it("excludes invalid-confidence aliases from batch AI fast-path lookups", () => {
+    const { sql: query, params } = buildExactProductAliasesLookupQuery(
+      database,
+      "user-a",
+      ["wild rice"],
+    ).toSQL();
+
+    expect(query).toContain('"product_aliases"."confidence" >');
+    expect(query).toContain('"product_aliases"."confidence" <=');
+    expect(params).toEqual([
+      "wild rice",
+      "learned",
+      "imported",
+      0,
+      1,
+      "global",
+      "user",
+      "user-a",
     ]);
   });
 });

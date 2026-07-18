@@ -376,6 +376,8 @@ describe("importActiveShoppingListItems", () => {
       mocks.db,
       expect.objectContaining({
         userId,
+        shoppingListId: listId,
+        sourceIdentifier: `import:${mutationId}:0`,
         normalizedText: "rice",
         productConceptId: "rice",
       }),

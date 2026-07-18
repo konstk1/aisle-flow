@@ -101,6 +101,44 @@ describe("product categorization evaluation", () => {
     ).toBeNull();
   });
 
+  it("does not retain partial rows when a model omits a result", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => undefined);
+    vi.spyOn(console, "table").mockImplementation(() => undefined);
+
+    const evaluation = await runProductCategorizationEvaluation({
+      concepts,
+      items: ["Apples", "Bananas"],
+      models: ["partial-model"],
+      categorize: async () => ({
+        results: [
+          {
+            key: "0",
+            itemName: "Apples",
+            quantityText: null,
+            resolution: {
+              kind: "existing",
+              productConceptId: "apples",
+            },
+          },
+        ],
+        usage: { inputTokens: 10, outputTokens: 5, totalTokens: 15 },
+      }),
+    });
+
+    expect(evaluation.resultRows).toEqual([
+      expect.objectContaining({
+        Model: "partial-model",
+        "Submitted text": "Apples",
+        Error: "Error",
+      }),
+      expect.objectContaining({
+        Model: "partial-model",
+        "Submitted text": "Bananas",
+        Error: "Error",
+      }),
+    ]);
+  });
+
   it("prints reconciliation messages but hides provider error messages", async () => {
     vi.spyOn(console, "info").mockImplementation(() => undefined);
     vi.spyOn(console, "table").mockImplementation(() => undefined);

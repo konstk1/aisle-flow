@@ -30,7 +30,6 @@ interface ModelPricing {
 // USD per one million tokens. OpenAI does not return pricing in API responses.
 // Verified 2026-07-16 against the official model pages:
 // https://developers.openai.com/api/docs/models/gpt-5.4-nano
-// https://developers.openai.com/api/docs/models/gpt-5.4-mini
 // https://developers.openai.com/api/docs/models/gpt-5-nano
 // https://developers.openai.com/api/docs/models/gpt-4o-mini
 export const EVALUATION_MODEL_PRICING_USD_PER_MILLION: Readonly<
@@ -40,11 +39,6 @@ export const EVALUATION_MODEL_PRICING_USD_PER_MILLION: Readonly<
     input: 0.2,
     cachedInput: 0.02,
     output: 1.25,
-  },
-  "gpt-5.4-mini-2026-03-17": {
-    input: 0.75,
-    cachedInput: 0.075,
-    output: 4.5,
   },
   "gpt-5-nano-2025-08-07": {
     input: 0.05,
@@ -151,14 +145,14 @@ export async function runProductCategorizationEvaluation({
         batch.results.map((result) => [result.key, result]),
       );
 
-      for (const [index, submittedText] of items.entries()) {
+      const modelResultRows = items.map((submittedText, index) => {
         const result = resultsByKey.get(String(index));
 
         if (!result) {
           throw new Error(`Missing result for evaluation item ${index}.`);
         }
 
-        resultRows.push({
+        return {
           Model: modelId,
           "Submitted text": submittedText,
           "Returned item name": result.itemName,
@@ -169,8 +163,9 @@ export async function runProductCategorizationEvaluation({
                 "Unknown concept")
               : `Suggested: ${result.resolution.canonicalName}`,
           Error: "",
-        });
-      }
+        } satisfies EvaluationResultRow;
+      });
+      resultRows.push(...modelResultRows);
 
       summaryRows.push({
         Model: modelId,

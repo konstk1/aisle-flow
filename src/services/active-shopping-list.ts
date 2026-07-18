@@ -300,6 +300,7 @@ export async function importActiveShoppingListItems(
           {
             normalizedText: item.normalizedText,
             productConceptId: item.productConceptId,
+            sourceIdentifier: item.sourceIdentifier,
           },
         ]
       : [],
@@ -717,6 +718,7 @@ async function executeImportWrites(
   automaticAliases: Array<{
     normalizedText: string;
     productConceptId: string;
+    sourceIdentifier: string;
   }>,
 ) {
   const queries = [
@@ -732,6 +734,8 @@ async function executeImportWrites(
     ...automaticAliases.map((alias) =>
       buildAutomaticProductAliasInsertQuery(db, {
         userId,
+        shoppingListId,
+        sourceIdentifier: alias.sourceIdentifier,
         productConceptId: alias.productConceptId,
         normalizedText: alias.normalizedText,
         now,

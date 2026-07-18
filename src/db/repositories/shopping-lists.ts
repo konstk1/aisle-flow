@@ -134,6 +134,8 @@ export interface ShoppingItemProductResolutionInput {
 
 export interface AutomaticProductAliasInput {
   userId: string;
+  shoppingListId: string;
+  sourceIdentifier: string;
   productConceptId: string;
   normalizedText: string;
   now?: Date;
@@ -429,19 +431,39 @@ export function buildAutomaticProductAliasInsertQuery(
   input: AutomaticProductAliasInput,
 ) {
   const now = input.now ?? new Date();
+  const persistedLlmCategorization = db
+    .select({
+      id: sql<string>`gen_random_uuid()`.as("id"),
+      productConceptId: sql<string>`${input.productConceptId}`.as(
+        "product_concept_id",
+      ),
+      userId: sql<string>`${input.userId}`.as("user_id"),
+      normalizedText: sql<string>`${input.normalizedText}`.as(
+        "normalized_text",
+      ),
+      scope: sql<"user">`'user'`.as("scope"),
+      confidence: sql<number>`1`.as("confidence"),
+      source: sql<"learned">`'learned'`.as("source"),
+      isCorrection: sql<boolean>`false`.as("is_correction"),
+      createdAt: sql<Date>`${now}`.as("created_at"),
+      updatedAt: sql<Date>`${now}`.as("updated_at"),
+    })
+    .from(shoppingItems)
+    .where(
+      and(
+        eq(shoppingItems.shoppingListId, input.shoppingListId),
+        eq(shoppingItems.sourceIdentifier, input.sourceIdentifier),
+        eq(shoppingItems.normalizedText, input.normalizedText),
+        eq(shoppingItems.productConceptId, input.productConceptId),
+        eq(shoppingItems.categorizationSource, "llm"),
+        isNull(shoppingItems.suggestedProductConceptName),
+      ),
+    )
+    .limit(1);
 
   return db
     .insert(productAliases)
-    .values({
-      userId: input.userId,
-      productConceptId: input.productConceptId,
-      normalizedText: input.normalizedText,
-      scope: "user",
-      confidence: 1,
-      source: "learned",
-      isCorrection: false,
-      updatedAt: now,
-    })
+    .select(persistedLlmCategorization)
     .onConflictDoNothing({
       target: [productAliases.userId, productAliases.normalizedText],
       where: sql`${productAliases.scope} = 'user'`,
@@ -504,6 +526,8 @@ export function buildExactProductAliasLookupQuery(
           eq(productAliases.source, "learned"),
           eq(productAliases.source, "imported"),
         ),
+        gt(productAliases.confidence, 0),
+        lte(productAliases.confidence, 1),
         productAliasUserScopeFilter(userId),
       ),
     )
@@ -539,6 +563,8 @@ export function buildExactProductAliasesLookupQuery(
           eq(productAliases.source, "learned"),
           eq(productAliases.source, "imported"),
         ),
+        gt(productAliases.confidence, 0),
+        lte(productAliases.confidence, 1),
         productAliasUserScopeFilter(userId),
       ),
     )
