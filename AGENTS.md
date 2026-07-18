@@ -18,3 +18,8 @@
 ## This is NOT the Next.js you know
 
 - This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
+
+## Local UI validation
+
+- When browser automation needs an authenticated local session, do not go through Google OAuth. Start the app with `ENABLE_DEV_LOGIN=true pnpm dev`, then navigate the test browser to `http://localhost:3000/api/auth/dev-login?callbackURL=/`. This signs in as the first account in `ALLOWED_EMAILS` and redirects to the app.
+- The development login is local-only. Never enable it for a preview or production deployment.
