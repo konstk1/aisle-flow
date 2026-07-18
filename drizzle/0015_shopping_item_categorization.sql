@@ -1,0 +1,8 @@
+CREATE TYPE "public"."shopping_item_categorization_source" AS ENUM('learned-alias', 'llm', 'deterministic', 'manual');--> statement-breakpoint
+ALTER TABLE "shopping_items" ADD COLUMN "quantity_text" text;--> statement-breakpoint
+ALTER TABLE "shopping_items" ADD COLUMN "categorization_confidence" real;--> statement-breakpoint
+ALTER TABLE "shopping_items" ADD COLUMN "categorization_source" "shopping_item_categorization_source";--> statement-breakpoint
+ALTER TABLE "shopping_items" ADD COLUMN "suggested_product_concept_name" text;--> statement-breakpoint
+ALTER TABLE "shopping_items" ADD CONSTRAINT "shopping_items_quantity_text_valid" CHECK ("shopping_items"."quantity_text" IS NULL OR (length(btrim("shopping_items"."quantity_text")) > 0 AND length("shopping_items"."quantity_text") <= 40));--> statement-breakpoint
+ALTER TABLE "shopping_items" ADD CONSTRAINT "shopping_items_categorization_confidence_in_range" CHECK ("shopping_items"."categorization_confidence" IS NULL OR ("shopping_items"."categorization_confidence" >= 0 AND "shopping_items"."categorization_confidence" <= 1));--> statement-breakpoint
+ALTER TABLE "shopping_items" ADD CONSTRAINT "shopping_items_suggested_product_concept_name_valid" CHECK ("shopping_items"."suggested_product_concept_name" IS NULL OR (length(btrim("shopping_items"."suggested_product_concept_name")) > 0 AND length("shopping_items"."suggested_product_concept_name") <= 80));

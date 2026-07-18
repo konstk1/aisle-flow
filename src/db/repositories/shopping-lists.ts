@@ -78,7 +78,10 @@ export interface ShoppingItemUpsertInput {
   shoppingListId: string;
   rawText: string;
   normalizedText: string;
+  quantityText?: string | null;
   productConceptId: string | null;
+  categorizationSource?: "learned-alias" | "llm" | "deterministic" | "manual";
+  suggestedProductConceptName?: string | null;
   orderKey: string;
   sourceIdentifier: string;
   mutationId: string;
@@ -104,7 +107,16 @@ export interface ShoppingItemTextUpdateInput {
   itemId: string;
   rawText: string;
   normalizedText: string;
+  quantityText?: string | null;
   productConceptId: string | null;
+  categorizationSource?: "learned-alias" | "deterministic";
+  now?: Date;
+}
+
+export interface ShoppingItemQuantityUpdateInput {
+  shoppingListId: string;
+  itemId: string;
+  quantityText: string | null;
   now?: Date;
 }
 
@@ -117,6 +129,15 @@ export interface ShoppingItemProductResolutionInput {
   shoppingListId: string;
   normalizedText: string;
   productConceptId: string | SQL;
+  now?: Date;
+}
+
+export interface AutomaticProductAliasInput {
+  userId: string;
+  shoppingListId: string;
+  sourceIdentifier: string;
+  productConceptId: string;
+  normalizedText: string;
   now?: Date;
 }
 
@@ -248,7 +269,10 @@ export function buildShoppingItemUpsertQuery(
       shoppingListId: input.shoppingListId,
       rawText: input.rawText,
       normalizedText: input.normalizedText,
+      quantityText: input.quantityText,
       productConceptId: input.productConceptId,
+      categorizationSource: input.categorizationSource,
+      suggestedProductConceptName: input.suggestedProductConceptName,
       orderKey: input.orderKey,
       sourceIdentifier: input.sourceIdentifier,
       mutationId: input.mutationId,
@@ -325,7 +349,32 @@ export function buildShoppingItemTextUpdateQuery(
     .set({
       rawText: input.rawText,
       normalizedText: input.normalizedText,
+      quantityText: input.quantityText,
       productConceptId: input.productConceptId,
+      categorizationSource: input.categorizationSource,
+      suggestedProductConceptName: null,
+      updatedAt: now,
+      version: sql`${shoppingItems.version} + 1`,
+    })
+    .where(
+      and(
+        eq(shoppingItems.shoppingListId, input.shoppingListId),
+        eq(shoppingItems.id, input.itemId),
+      ),
+    )
+    .returning();
+}
+
+export function buildShoppingItemQuantityUpdateQuery(
+  db: Database,
+  input: ShoppingItemQuantityUpdateInput,
+) {
+  const now = input.now ?? new Date();
+
+  return db
+    .update(shoppingItems)
+    .set({
+      quantityText: input.quantityText,
       updatedAt: now,
       version: sql`${shoppingItems.version} + 1`,
     })
@@ -363,6 +412,8 @@ export function buildShoppingItemProductResolutionQuery(
     .update(shoppingItems)
     .set({
       productConceptId: input.productConceptId,
+      categorizationSource: "manual",
+      suggestedProductConceptName: null,
       updatedAt: now,
       version: sql`${shoppingItems.version} + 1`,
     })
@@ -372,6 +423,51 @@ export function buildShoppingItemProductResolutionQuery(
         eq(shoppingItems.normalizedText, input.normalizedText),
       ),
     )
+    .returning();
+}
+
+export function buildAutomaticProductAliasInsertQuery(
+  db: Database,
+  input: AutomaticProductAliasInput,
+) {
+  const now = input.now ?? new Date();
+  const persistedLlmCategorization = db
+    .select({
+      id: sql<string>`gen_random_uuid()`.as("id"),
+      productConceptId: sql<string>`${input.productConceptId}`.as(
+        "product_concept_id",
+      ),
+      userId: sql<string>`${input.userId}`.as("user_id"),
+      normalizedText: sql<string>`${input.normalizedText}`.as(
+        "normalized_text",
+      ),
+      scope: sql<"user">`'user'`.as("scope"),
+      confidence: sql<number>`1`.as("confidence"),
+      source: sql<"learned">`'learned'`.as("source"),
+      isCorrection: sql<boolean>`false`.as("is_correction"),
+      createdAt: sql<Date>`${now}`.as("created_at"),
+      updatedAt: sql<Date>`${now}`.as("updated_at"),
+    })
+    .from(shoppingItems)
+    .where(
+      and(
+        eq(shoppingItems.shoppingListId, input.shoppingListId),
+        eq(shoppingItems.sourceIdentifier, input.sourceIdentifier),
+        eq(shoppingItems.normalizedText, input.normalizedText),
+        eq(shoppingItems.productConceptId, input.productConceptId),
+        eq(shoppingItems.categorizationSource, "llm"),
+        isNull(shoppingItems.suggestedProductConceptName),
+      ),
+    )
+    .limit(1);
+
+  return db
+    .insert(productAliases)
+    .select(persistedLlmCategorization)
+    .onConflictDoNothing({
+      target: [productAliases.userId, productAliases.normalizedText],
+      where: sql`${productAliases.scope} = 'user'`,
+    })
     .returning();
 }
 
@@ -386,6 +482,7 @@ export function buildShoppingItemsByNormalizedTextQuery(
       id: shoppingItems.id,
       rawText: shoppingItems.rawText,
       normalizedText: shoppingItems.normalizedText,
+      quantityText: shoppingItems.quantityText,
       sourceIdentifier: shoppingItems.sourceIdentifier,
     })
     .from(shoppingItems)
@@ -429,6 +526,8 @@ export function buildExactProductAliasLookupQuery(
           eq(productAliases.source, "learned"),
           eq(productAliases.source, "imported"),
         ),
+        gt(productAliases.confidence, 0),
+        lte(productAliases.confidence, 1),
         productAliasUserScopeFilter(userId),
       ),
     )
@@ -440,6 +539,42 @@ export function buildExactProductAliasLookupQuery(
       desc(productAliases.confidence),
     )
     .limit(1);
+}
+
+export function buildExactProductAliasesLookupQuery(
+  db: Database,
+  userId: string,
+  normalizedTexts: string[],
+) {
+  return db
+    .select({
+      alias: productAliases,
+      productConcept: productConcepts,
+    })
+    .from(productAliases)
+    .innerJoin(
+      productConcepts,
+      eq(productAliases.productConceptId, productConcepts.id),
+    )
+    .where(
+      and(
+        inArray(productAliases.normalizedText, normalizedTexts),
+        or(
+          eq(productAliases.source, "learned"),
+          eq(productAliases.source, "imported"),
+        ),
+        gt(productAliases.confidence, 0),
+        lte(productAliases.confidence, 1),
+        productAliasUserScopeFilter(userId),
+      ),
+    )
+    .orderBy(
+      desc(productAliases.isCorrection),
+      desc(
+        sql<number>`case when ${productAliases.scope} = 'user' then 1 else 0 end`,
+      ),
+      desc(productAliases.confidence),
+    );
 }
 
 export async function findExactProductAlias(

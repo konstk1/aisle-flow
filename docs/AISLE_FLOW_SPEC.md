@@ -11,7 +11,8 @@ Alexa synchronization is deferred. The application must not depend on a custom A
 ## Primary Workflow
 
 1. Add or import shopping-list items.
-2. Resolve each item to a canonical product or category.
+2. Resolve exact learned aliases, then categorize the remaining submitted
+   items in one structured AI request.
 3. Find the product's learned location in the selected store.
 4. Sort the list by the configured route through the store.
 5. Check off items while shopping.
@@ -60,6 +61,20 @@ Matching must prefer longer or more specific phrases and support exclusions so a
 When an item cannot be matched confidently, the app creates or selects a canonical shelf category and asks the user to assign its aisle section. The correction is persisted as an exact learned alias. For example, assigning `wild rice` to `rice` records `wild rice` -> `rice` for future lists.
 
 Manual corrections always take precedence. A correction writes two records with different owners: the learned alias belongs to the correcting user (personal vocabulary that follows the user across stores), while the category location belongs to the store. Matching prefers the user's own alias over global catalog aliases. Semantic embeddings and vector search are deferred from the MVP.
+
+Submitted batches use a pinned OpenAI model through the Vercel AI SDK. The
+model separates optional free-text quantity from the displayed item name,
+and chooses an existing product concept or suggests one. Every item returned
+directly by the model displays an AI indicator, including items assigned to an
+existing concept. An existing-concept result also records a user-scoped alias
+without replacing any existing alias. A later exact alias match does not
+display the AI indicator because the unchanged categorization is treated as
+accepted. Manual corrections replace the learned alias and remain
+authoritative. Suggested concepts are not created, and no alias is learned,
+until the user approves the concept and chooses its store location. If
+categorization fails, no item is written and the user must explicitly Retry or
+Add without AI. Ordinary item-name edits continue to use the deterministic
+matcher; quantity-only edits never rematch an item.
 
 ## Technical Architecture
 
@@ -112,7 +127,9 @@ List state, source, external identifier, and synchronization metadata. The MVP e
 
 ### `shopping_items`
 
-Raw text, normalized text, canonical product, resolved location, checked state, ordering key, source identifier, and synchronization state.
+Raw text, normalized text, optional free-text quantity, canonical or suggested
+product concept, categorization source, resolved location, checked state,
+ordering key, source identifier, and synchronization state.
 
 ### `source_connections`
 

@@ -8,6 +8,7 @@ import {
   setActiveShoppingItemChecked,
   snoozeActiveShoppingItem,
   type ShoppingListView,
+  updateActiveShoppingItemQuantity,
   updateActiveShoppingItemText,
 } from "@/services/active-shopping-list";
 
@@ -87,6 +88,20 @@ export async function PATCH(
         itemId: parsedItemId.data,
         responseView,
         text: parsed.data.text,
+        ...(parsed.data.quantityText !== undefined
+          ? { quantityText: parsed.data.quantityText }
+          : {}),
+      });
+
+      return Response.json(shoppingListResponse(list));
+    }
+
+    if (parsed.data.quantityText !== undefined) {
+      const list = await updateActiveShoppingItemQuantity({
+        userId,
+        itemId: parsedItemId.data,
+        quantityText: parsed.data.quantityText,
+        responseView,
       });
 
       return Response.json(shoppingListResponse(list));

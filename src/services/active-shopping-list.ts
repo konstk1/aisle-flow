@@ -12,11 +12,17 @@ import {
   type FieldErrors,
 } from "@/domain/active-shopping-list";
 import { normalizeProductText } from "@/domain/product-matching";
+import {
+  deriveProductCategorizationReviewState,
+  MAX_SHOPPING_ITEM_QUANTITY_LENGTH,
+  type ProductCategorizationSource,
+} from "@/domain/product-categorization";
 import type { StoreSummary } from "@/domain/stores";
 
 import { getDb } from "@/db/client";
 import type { Database } from "@/db/create-client";
 import {
+  buildAutomaticProductAliasInsertQuery,
   buildActiveShoppingListCreateQuery,
   buildActiveShoppingListQuery,
   buildCompletedShoppingItemsQuery,
@@ -25,6 +31,7 @@ import {
   buildShoppingItemDeleteQuery,
   buildShoppingItemSnoozeStateQuery,
   buildShoppingItemTextUpdateQuery,
+  buildShoppingItemQuantityUpdateQuery,
   buildShoppingItemsByNormalizedTextQuery,
   buildShoppingItemUpsertQuery,
   buildSnoozedShoppingItemsQuery,
@@ -39,10 +46,8 @@ import type {
   ShoppingList,
 } from "@/db/schema";
 
-import {
-  createStoreProductMatcher,
-  type StoreProductMatcher,
-} from "./product-matching";
+import { categorizeSubmittedProducts } from "./product-categorization";
+import { createStoreProductMatcher } from "./product-matching";
 import { resolveCurrentStore } from "./stores";
 
 const mutationIdSchema = z.uuid("Provide a valid mutation id.");
@@ -65,20 +70,33 @@ const shoppingItemTextSchema = z
 export const activeShoppingListImportRequestSchema = z.object({
   text: z.string(),
   mutationId: mutationIdSchema,
+  categorizationMode: z.enum(["ai", "deterministic"]).default("ai"),
 });
+
+const shoppingItemQuantitySchema = z
+  .string()
+  .transform((value) => value.trim())
+  .refine((value) => value.length <= MAX_SHOPPING_ITEM_QUANTITY_LENGTH, {
+    message: `Quantity must be ${MAX_SHOPPING_ITEM_QUANTITY_LENGTH} characters or fewer.`,
+  })
+  .transform((value) => value || null)
+  .nullable();
 
 export const activeShoppingItemUpdateRequestSchema = z
   .object({
     isChecked: z.boolean().optional(),
     snoozed: z.boolean().optional(),
     text: shoppingItemTextSchema.optional(),
+    quantityText: shoppingItemQuantitySchema.optional(),
   })
   .strict()
   .superRefine((input, context) => {
+    const detailUpdate =
+      input.text !== undefined || input.quantityText !== undefined;
     const updateCount =
       Number(input.isChecked !== undefined) +
       Number(input.snoozed !== undefined) +
-      Number(input.text !== undefined);
+      Number(detailUpdate);
 
     if (updateCount !== 1) {
       context.addIssue({
@@ -89,13 +107,14 @@ export const activeShoppingItemUpdateRequestSchema = z
     }
   });
 
-export type ActiveShoppingListImportRequest = z.output<
+export type ActiveShoppingListImportRequest = z.input<
   typeof activeShoppingListImportRequestSchema
 >;
 
 export type ActiveShoppingListImportResult = {
   activeList: ActiveShoppingListPayload;
   alreadyOnList: string[];
+  updatedQuantities: string[];
 };
 
 export type ActiveShoppingItemUpdateRequest = z.output<
@@ -210,56 +229,97 @@ export async function importActiveShoppingListItems(
     );
   }
 
-  const { db, store, storeId, list } = await loadShoppingListContext(
-    userId,
-    getOrCreateActiveShoppingList,
-  );
+  const {
+    db,
+    store,
+    storeId,
+    list: existingList,
+  } = await loadShoppingListContext(userId, findActiveShoppingList);
   const now = new Date();
-  const normalizedItems = parsed.lines.map((line, index) => ({
+  const uniqueLines = parsed.lines.filter(
+    (line, index, lines) =>
+      lines.findIndex((candidate) => candidate.rawText === line.rawText) ===
+      index,
+  );
+  const submittedItems = uniqueLines.map((line, index) => ({
     ...line,
     index,
-    lineNumber: line.lineNumber,
-    normalizedText: normalizeProductText(line.rawText),
     sourceIdentifier: `import:${input.mutationId}:${index}`,
   }));
+  const categorizations = await categorizeSubmittedProducts({
+    db,
+    items: submittedItems.map((item) => ({
+      key: item.sourceIdentifier,
+      submittedText: item.rawText,
+    })),
+    mode: input.categorizationMode ?? "ai",
+    storeId,
+    userId,
+  });
+  const submittedByKey = new Map(
+    submittedItems.map((item) => [item.sourceIdentifier, item]),
+  );
+  const categorizedItems = consolidateImportItems(
+    categorizations.map((categorization) => {
+      const submitted = submittedByKey.get(categorization.key);
+
+      if (!submitted) {
+        throw new Error("Categorization returned an unknown submitted item.");
+      }
+
+      return {
+        ...categorization,
+        index: submitted.index,
+        normalizedText: normalizeProductText(categorization.itemName),
+        sourceIdentifier: submitted.sourceIdentifier,
+      };
+    }),
+  );
+  const list =
+    existingList ?? (await getOrCreateActiveShoppingList(db, userId));
   const existingItems = await buildShoppingItemsByNormalizedTextQuery(db, {
     shoppingListId: list.id,
     normalizedTexts: [
-      ...new Set(normalizedItems.map((item) => item.normalizedText)),
+      ...new Set(categorizedItems.map((item) => item.normalizedText)),
     ],
   });
-  const { alreadyOnList, itemsToAdd } = partitionImportItems(
-    normalizedItems,
-    existingItems,
+  const { alreadyOnList, itemsToAdd, quantityUpdates, updatedQuantities } =
+    partitionImportItems(categorizedItems, existingItems);
+
+  const upsertInputs = itemsToAdd.map((item) =>
+    buildShoppingItemUpsertInput({
+      item,
+      list,
+      mutationId: deterministicUuid(item.sourceIdentifier),
+      now,
+    }),
+  );
+  const automaticAliases = categorizedItems.flatMap((item) =>
+    item.source === "llm" && item.productConceptId
+      ? [
+          {
+            normalizedText: item.normalizedText,
+            productConceptId: item.productConceptId,
+            sourceIdentifier: item.sourceIdentifier,
+          },
+        ]
+      : [],
   );
 
-  if (itemsToAdd.length > 0) {
-    const resolveProductMatch = await createStoreProductMatcher({
-      db,
-      userId,
-      storeId,
-    });
-
-    const upsertInputs = await Promise.all(
-      itemsToAdd.map((item) =>
-        buildShoppingItemUpsertInput({
-          list,
-          mutationId: deterministicUuid(item.sourceIdentifier),
-          now,
-          orderIndex: item.index,
-          rawText: item.rawText,
-          resolveProductMatch,
-          sourceIdentifier: item.sourceIdentifier,
-        }),
-      ),
-    );
-
-    await batchShoppingItemUpserts(db, upsertInputs);
-  }
+  await executeImportWrites(
+    db,
+    userId,
+    list.id,
+    now,
+    upsertInputs,
+    quantityUpdates,
+    automaticAliases,
+  );
 
   return {
     activeList: await readShoppingListPayload(db, store, list, "active"),
     alreadyOnList,
+    updatedQuantities,
   };
 }
 
@@ -338,11 +398,13 @@ export async function updateActiveShoppingItemText({
   userId,
   itemId,
   text,
+  quantityText,
   responseView = "active",
 }: {
   userId: string;
   itemId: string;
   text: string;
+  quantityText?: string | null;
   responseView?: ShoppingListView;
 }): Promise<ActiveShoppingListPayload> {
   const { db, store, storeId, list } = await loadShoppingListContext(
@@ -372,7 +434,45 @@ export async function updateActiveShoppingItemText({
     itemId,
     rawText: text,
     normalizedText,
+    quantityText,
     productConceptId: matched ? match.productConcept.id : null,
+    categorizationSource:
+      matched && match.source === "learned-alias"
+        ? "learned-alias"
+        : "deterministic",
+  });
+
+  if (!updatedItem) {
+    throw activeShoppingItemNotFoundError();
+  }
+
+  return readShoppingListPayload(db, store, list, responseView);
+}
+
+export async function updateActiveShoppingItemQuantity({
+  userId,
+  itemId,
+  quantityText,
+  responseView = "active",
+}: {
+  userId: string;
+  itemId: string;
+  quantityText: string | null;
+  responseView?: ShoppingListView;
+}): Promise<ActiveShoppingListPayload> {
+  const { db, store, list } = await loadShoppingListContext(
+    userId,
+    findActiveShoppingList,
+  );
+
+  if (!list) {
+    throw activeShoppingItemNotFoundError();
+  }
+
+  const [updatedItem] = await buildShoppingItemQuantityUpdateQuery(db, {
+    shoppingListId: list.id,
+    itemId,
+    quantityText,
   });
 
   if (!updatedItem) {
@@ -473,16 +573,38 @@ async function getOrCreateActiveShoppingList(
 
 type ImportItemCandidate = {
   index: number;
-  rawText: string;
+  itemName: string;
   normalizedText: string;
+  quantityText: string | null;
+  productConceptId: string | null;
+  source: ProductCategorizationSource;
+  suggestedProductConceptName: string | null;
   sourceIdentifier: string;
 };
+
+function consolidateImportItems(items: ImportItemCandidate[]) {
+  const consolidated = new Map<string, ImportItemCandidate>();
+
+  for (const item of items) {
+    const existing = consolidated.get(item.normalizedText);
+
+    if (existing) {
+      existing.quantityText = item.quantityText;
+    } else {
+      consolidated.set(item.normalizedText, { ...item });
+    }
+  }
+
+  return [...consolidated.values()];
+}
 
 function partitionImportItems(
   normalizedItems: ImportItemCandidate[],
   existingItems: Array<{
+    id: string;
     rawText: string;
     normalizedText: string;
+    quantityText: string | null;
     sourceIdentifier: string | null;
   }>,
 ) {
@@ -490,7 +612,12 @@ function partitionImportItems(
     existingItems.map((item) => [item.normalizedText, item]),
   );
   const alreadyOnListByNormalizedText = new Map<string, string>();
+  const updatedQuantitiesByNormalizedText = new Map<string, string>();
   const itemsToAdd: ImportItemCandidate[] = [];
+  const quantityUpdates: Array<{
+    itemId: string;
+    quantityText: string | null;
+  }> = [];
 
   for (const item of normalizedItems) {
     const existing = seenByNormalizedText.get(item.normalizedText);
@@ -502,17 +629,32 @@ function partitionImportItems(
     }
 
     if (existing) {
-      alreadyOnListByNormalizedText.set(item.normalizedText, existing.rawText);
+      if (existing.quantityText !== item.quantityText) {
+        quantityUpdates.push({
+          itemId: existing.id,
+          quantityText: item.quantityText,
+        });
+        updatedQuantitiesByNormalizedText.set(
+          item.normalizedText,
+          existing.rawText,
+        );
+      } else {
+        alreadyOnListByNormalizedText.set(
+          item.normalizedText,
+          existing.rawText,
+        );
+      }
       continue;
     }
 
     itemsToAdd.push(item);
-    seenByNormalizedText.set(item.normalizedText, item);
   }
 
   return {
     alreadyOnList: [...alreadyOnListByNormalizedText.values()],
     itemsToAdd,
+    quantityUpdates,
+    updatedQuantities: [...updatedQuantitiesByNormalizedText.values()],
   };
 }
 
@@ -541,41 +683,65 @@ async function ensureShoppingItemTextIsAvailable(
   }
 }
 
-async function buildShoppingItemUpsertInput(input: {
+function buildShoppingItemUpsertInput(input: {
+  item: ImportItemCandidate;
   list: ShoppingList;
-  rawText: string;
   mutationId: string;
-  sourceIdentifier: string;
   now: Date;
-  orderIndex: number;
-  resolveProductMatch: StoreProductMatcher;
-}): Promise<ShoppingItemUpsertInput> {
-  const match = await input.resolveProductMatch(input.rawText);
-  const matched = match.state === "matched";
-
+}): ShoppingItemUpsertInput {
   return {
     shoppingListId: input.list.id,
-    rawText: input.rawText,
-    normalizedText: normalizeProductText(input.rawText),
-    productConceptId: matched ? match.productConcept.id : null,
+    rawText: input.item.itemName,
+    normalizedText: input.item.normalizedText,
+    quantityText: input.item.quantityText,
+    productConceptId: input.item.productConceptId,
+    categorizationSource: input.item.source,
+    suggestedProductConceptName: input.item.suggestedProductConceptName,
     orderKey: createOrderKey(
       input.now,
-      input.orderIndex,
-      input.sourceIdentifier,
+      input.item.index,
+      input.item.sourceIdentifier,
     ),
-    sourceIdentifier: input.sourceIdentifier,
+    sourceIdentifier: input.item.sourceIdentifier,
     mutationId: input.mutationId,
     now: input.now,
   };
 }
 
-async function batchShoppingItemUpserts(
+async function executeImportWrites(
   db: Database,
-  inputs: ShoppingItemUpsertInput[],
+  userId: string,
+  shoppingListId: string,
+  now: Date,
+  upserts: ShoppingItemUpsertInput[],
+  quantityUpdates: Array<{ itemId: string; quantityText: string | null }>,
+  automaticAliases: Array<{
+    normalizedText: string;
+    productConceptId: string;
+    sourceIdentifier: string;
+  }>,
 ) {
-  const queries = inputs.map((input) =>
-    buildShoppingItemUpsertQuery(db, input),
-  );
+  const queries = [
+    ...upserts.map((input) => buildShoppingItemUpsertQuery(db, input)),
+    ...quantityUpdates.map((update) =>
+      buildShoppingItemQuantityUpdateQuery(db, {
+        shoppingListId,
+        itemId: update.itemId,
+        quantityText: update.quantityText,
+        now,
+      }),
+    ),
+    ...automaticAliases.map((alias) =>
+      buildAutomaticProductAliasInsertQuery(db, {
+        userId,
+        shoppingListId,
+        sourceIdentifier: alias.sourceIdentifier,
+        productConceptId: alias.productConceptId,
+        normalizedText: alias.normalizedText,
+        now,
+      }),
+    ),
+  ];
 
   if (queries.length === 0) {
     return;
@@ -647,6 +813,7 @@ function toItemPayload({
     id: item.id,
     rawText: item.rawText,
     normalizedText: item.normalizedText,
+    quantityText: item.quantityText,
     isChecked: item.isChecked,
     checkedAt: item.checkedAt?.toISOString() ?? null,
     snoozedUntil: item.snoozedUntil?.toISOString() ?? null,
@@ -662,6 +829,13 @@ function toItemPayload({
           normalizedName: productConcept.normalizedName,
         }
       : null,
+    categorization: {
+      source: item.categorizationSource,
+      reviewState: deriveProductCategorizationReviewState({
+        suggestedConceptName: item.suggestedProductConceptName,
+      }),
+      suggestedConceptName: item.suggestedProductConceptName,
+    },
     location,
   };
 }

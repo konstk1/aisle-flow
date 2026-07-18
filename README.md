@@ -43,24 +43,36 @@ them, and never commit real values.
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret for Sign in with Google.                                                                               |
 | `ALLOWED_EMAILS`       | Comma-separated allowlist of Google account emails that may sign in.                                                              |
 | `GITHUB_ISSUES_TOKEN`  | Required only when in-app feedback is enabled; a fine-grained token restricted to `konstk1/aisle-flow` with `Issues: write` only. |
+| `OPENAI_API_KEY`       | Server-only OpenAI key used for batch shopping-item categorization and the local model evaluation command.                        |
 
 The server environment is validated before database access or database
 migrations run. Validation reports only invalid variable names, never values.
 
 ## Commands
 
-| Command             | Purpose                                          |
-| ------------------- | ------------------------------------------------ |
-| `pnpm dev`          | Run the development server.                      |
-| `pnpm build`        | Create a production build.                       |
-| `pnpm start`        | Serve a production build.                        |
-| `pnpm lint`         | Run ESLint.                                      |
-| `pnpm typecheck`    | Type-check without emitting files.               |
-| `pnpm format`       | Apply Prettier formatting.                       |
-| `pnpm format:check` | Verify formatting without writing files.         |
-| `pnpm test`         | Run the Vitest unit tests.                       |
-| `pnpm db:generate`  | Generate Drizzle SQL migrations from the schema. |
-| `pnpm db:migrate`   | Apply generated migrations to Neon.              |
+| Command             | Purpose                                                                   |
+| ------------------- | ------------------------------------------------------------------------- |
+| `pnpm dev`          | Run the development server.                                               |
+| `pnpm build`        | Create a production build.                                                |
+| `pnpm start`        | Serve a production build.                                                 |
+| `pnpm lint`         | Run ESLint.                                                               |
+| `pnpm typecheck`    | Type-check without emitting files.                                        |
+| `pnpm format`       | Apply Prettier formatting.                                                |
+| `pnpm format:check` | Verify formatting without writing files.                                  |
+| `pnpm test`         | Run the Vitest unit tests.                                                |
+| `pnpm db:generate`  | Generate Drizzle SQL migrations from the schema.                          |
+| `pnpm db:migrate`   | Apply generated migrations to Neon.                                       |
+| `pnpm eval:llm`     | Compare the hard-coded shopping list across the hard-coded OpenAI models. |
+
+The categorization evaluation reads the current product-concept catalog from
+the database selected by `DATABASE_URL`, sends no user or store data, and never
+writes results. Edit `EVALUATION_MODELS` and `EVALUATION_ITEMS` in
+`src/evaluation/product-categorization.ts`, then run
+`pnpm eval:llm`. The command requires `DATABASE_URL` and
+`OPENAI_API_KEY`; it is intended for manual development use, not CI. Results
+are grouped by submitted text for side-by-side model comparison. The summary
+includes an estimated USD cost calculated from token usage and the pinned
+OpenAI pricing in the evaluation module.
 
 ## Data migrations
 
@@ -87,7 +99,7 @@ documentation only and is never applied automatically.
    `vercel.json` is required for this standard App Router deployment.
 2. Add the Neon integration from the Vercel Marketplace and create or attach a
    Postgres database.
-3. Set `DATABASE_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`,
+3. Set `DATABASE_URL`, `OPENAI_API_KEY`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`,
    `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `ALLOWED_EMAILS` for
    Development, Preview, and Production. Set `GITHUB_ISSUES_TOKEN` when
    deploying in-app feedback.

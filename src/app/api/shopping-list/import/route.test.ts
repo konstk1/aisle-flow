@@ -19,6 +19,7 @@ vi.mock("@/services/active-shopping-list", async (importOriginal) => {
 });
 
 import { POST } from "./route";
+import { ProductCategorizationUnavailableError } from "@/services/product-categorization";
 
 const mutationId = "44444444-4444-4444-8444-444444444444";
 const userId = "user-a";
@@ -74,6 +75,7 @@ describe("shopping list import route", () => {
         items: [],
       },
       alreadyOnList: [],
+      updatedQuantities: [],
     });
 
     const response = await POST(
@@ -84,10 +86,27 @@ describe("shopping list import route", () => {
     expect(importActiveShoppingListItems).toHaveBeenCalledWith(userId, {
       text: "Rice\nBroccoli",
       mutationId,
+      categorizationMode: "ai",
     });
     await expect(response.json()).resolves.toMatchObject({
       alreadyOnList: [],
       activeList: { items: [] },
+    });
+  });
+
+  it("returns the retryable AI recovery contract", async () => {
+    requireSessionUserId.mockResolvedValue(userId);
+    importActiveShoppingListItems.mockRejectedValue(
+      new ProductCategorizationUnavailableError(),
+    );
+
+    const response = await POST(importRequest({ text: "Rice", mutationId }));
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({
+      code: "AI_CATEGORIZATION_UNAVAILABLE",
+      error: "The items could not be categorized.",
+      retryable: true,
     });
   });
 });

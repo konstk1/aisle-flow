@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
+  Bot,
   Check,
   Clock,
   MapPin,
@@ -23,6 +24,7 @@ import type {
   FieldErrors,
 } from "@/domain/active-shopping-list";
 import { formatAisleLabel, formatSectionLabel } from "@/domain/store-layout";
+import { formatShoppingItemTitle } from "@/domain/product-categorization";
 
 import { colorForKey } from "@/components/aisle-accents";
 import { useShellProgress } from "@/components/shell-progress";
@@ -76,11 +78,14 @@ type ShoppingListViewProps = {
 type ShoppingListResponse = {
   activeList?: ActiveShoppingListPayload;
   alreadyOnList?: string[];
+  updatedQuantities?: string[];
   completedList?: ActiveShoppingListPayload | null;
   snoozedList?: ActiveShoppingListPayload | null;
   list?: ActiveShoppingListPayload | null;
   error?: string;
   fieldErrors?: FieldErrors;
+  code?: string;
+  retryable?: boolean;
 };
 
 type ProductCorrectionOptionsResponse = {
@@ -218,6 +223,7 @@ function ShoppingListView({
   const [activeList, setActiveList] = useState(initialList);
   const [itemText, setItemText] = useState("");
   const [addItemsMessage, setAddItemsMessage] = useState<string | null>(null);
+  const [aiRecoveryAvailable, setAiRecoveryAvailable] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [fieldErrorScope, setFieldErrorScope] =
     useState<FieldErrorScope | null>(null);
@@ -254,6 +260,7 @@ function ShoppingListView({
   } | null>(null);
   const [editItemId, setEditItemId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
+  const [editQuantityText, setEditQuantityText] = useState("");
   const [editFieldErrors, setEditFieldErrors] = useState<FieldErrors>({});
   const [editMessage, setEditMessage] = useState<string | null>(null);
   const [pendingEditItemId, setPendingEditItemId] = useState<string | null>(
@@ -284,7 +291,9 @@ function ShoppingListView({
   const itemGroups = useMemo(() => groupShoppingItemsByAisle(items), [items]);
   const editItem = items.find((item) => item.id === editItemId) ?? null;
   const editHasChanges = editItem
-    ? editText !== editItem.rawText || editLocationTouched
+    ? editText !== editItem.rawText ||
+      editQuantityText !== (editItem.quantityText ?? "") ||
+      editLocationTouched
     : false;
 
   useLayoutEffect(() => {
@@ -330,7 +339,20 @@ function ShoppingListView({
     if (!response.ok || !listResult.found) {
       setFieldErrors(result.fieldErrors ?? {});
       setFieldErrorScope(fieldScope);
-      setMessage(result.error ?? "The shopping list could not be updated.");
+      const canRecoverFromAi =
+        fieldScope === "add" &&
+        result.code === "AI_CATEGORIZATION_UNAVAILABLE" &&
+        result.retryable === true;
+      setAiRecoveryAvailable(canRecoverFromAi);
+
+      if (canRecoverFromAi) {
+        setAddItemsMessage(
+          result.error ?? "The items could not be categorized.",
+        );
+        setMessage(null);
+      } else {
+        setMessage(result.error ?? "The shopping list could not be updated.");
+      }
       return null;
     }
 
@@ -348,6 +370,7 @@ function ShoppingListView({
     setFieldErrors({});
     setFieldErrorScope(null);
     setMessage(null);
+    setAiRecoveryAvailable(false);
     return result;
   }
 
@@ -384,6 +407,10 @@ function ShoppingListView({
 
   async function addItems(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    await submitItems("ai");
+  }
+
+  async function submitItems(categorizationMode: "ai" | "deterministic") {
     setPendingAction("add");
     setAddItemsMessage(null);
     const mutation = getStableMutationForText(
@@ -398,6 +425,7 @@ function ShoppingListView({
         body: JSON.stringify({
           text: itemText,
           mutationId: mutation.mutationId,
+          categorizationMode,
         }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
@@ -409,7 +437,10 @@ function ShoppingListView({
         setItemText("");
         pendingAddMutation.current = null;
         setAddItemsMessage(
-          formatAlreadyOnListMessage(result.alreadyOnList ?? []),
+          formatImportResultMessage(
+            result.alreadyOnList ?? [],
+            result.updatedQuantities ?? [],
+          ),
         );
       }
     } catch {
@@ -586,21 +617,30 @@ function ShoppingListView({
   function openEdit(item: ActiveShoppingItemPayload) {
     setEditItemId(item.id);
     setEditText(item.rawText);
+    setEditQuantityText(item.quantityText ?? "");
     setEditFieldErrors({});
     setEditMessage(null);
-    setEditLocationTouched(false);
+    setEditLocationTouched(item.categorization.reviewState !== "none");
     setCorrectionFieldErrors({});
     setCorrectionMessage(null);
     setCorrectionOptionsError(null);
-    setCorrectionForm({
-      ...createProductCorrectionFormState({
-        productConceptId: item.productConcept?.id ?? null,
-        hasProductConceptOptions: correctionOptions
-          ? correctionOptions.productConcepts.length > 0
-          : true,
-      }),
-      aisleSectionId: item.location?.aisleSectionId ?? "",
-    });
+    setCorrectionForm(
+      item.categorization.reviewState === "suggested-concept"
+        ? {
+            productSelection: ADD_PRODUCT_OPTION_VALUE,
+            canonicalName: item.categorization.suggestedConceptName ?? "",
+            aisleSectionId: "",
+          }
+        : {
+            ...createProductCorrectionFormState({
+              productConceptId: item.productConcept?.id ?? null,
+              hasProductConceptOptions: correctionOptions
+                ? correctionOptions.productConcepts.length > 0
+                : true,
+            }),
+            aisleSectionId: item.location?.aisleSectionId ?? "",
+          },
+    );
 
     if (!correctionOptions && !correctionOptionsLoading) {
       void loadCorrectionOptions();
@@ -610,6 +650,7 @@ function ShoppingListView({
   function closeEdit() {
     setEditItemId(null);
     setEditText("");
+    setEditQuantityText("");
     setEditFieldErrors({});
     setEditMessage(null);
     setEditLocationTouched(false);
@@ -681,18 +722,30 @@ function ShoppingListView({
     }
 
     try {
-      const response = await fetch(itemEndpoint(editItem.id), {
-        body: JSON.stringify({ text: editText }),
-        headers: { "Content-Type": "application/json" },
-        method: "PATCH",
-      });
-      const result = (await response.json()) as ShoppingListResponse;
-      const listResult = getListFromResponse(result);
+      const detailUpdate = {
+        ...(editText !== editItem.rawText ? { text: editText } : {}),
+        ...(editQuantityText !== (editItem.quantityText ?? "")
+          ? { quantityText: editQuantityText.trim() || null }
+          : {}),
+      };
+      let updatedList = activeList;
 
-      if (!response.ok || !listResult.found) {
-        setEditFieldErrors(result.fieldErrors ?? {});
-        setEditMessage(result.error ?? "The item could not be updated.");
-        return;
+      if (Object.keys(detailUpdate).length > 0) {
+        const response = await fetch(itemEndpoint(editItem.id), {
+          body: JSON.stringify(detailUpdate),
+          headers: { "Content-Type": "application/json" },
+          method: "PATCH",
+        });
+        const result = (await response.json()) as ShoppingListResponse;
+        const listResult = getListFromResponse(result);
+
+        if (!response.ok || !listResult.found) {
+          setEditFieldErrors(result.fieldErrors ?? {});
+          setEditMessage(result.error ?? "The item could not be updated.");
+          return;
+        }
+
+        updatedList = listResult.list;
       }
 
       if (correctionBody) {
@@ -745,7 +798,7 @@ function ShoppingListView({
 
         setActiveList(refreshedList.list);
       } else {
-        setActiveList(listResult.list);
+        setActiveList(updatedList);
       }
 
       closeEdit();
@@ -867,6 +920,7 @@ function ShoppingListView({
         editExpanded={editItemId === item.id}
         editFieldErrors={editFieldErrors}
         editMessage={editMessage}
+        editQuantityText={editQuantityText}
         editText={editText}
         item={item}
         mode={mode}
@@ -875,6 +929,7 @@ function ShoppingListView({
         onDelete={() => deleteItem(item)}
         onEditCancel={closeEdit}
         onEditOpen={() => openEdit(item)}
+        onEditQuantityTextChange={setEditQuantityText}
         onEditSubmit={saveEdit}
         onEditTextChange={setEditText}
         onRetryCorrectionOptions={loadCorrectionOptions}
@@ -894,7 +949,7 @@ function ShoppingListView({
       {!isActiveMode ? (
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
           <Link
-            className="inline-flex min-h-10 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-ink-900 shadow-card-sm transition hover:text-accent"
+            className="text-ink-900 shadow-card-sm hover:text-accent inline-flex min-h-10 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold transition"
             href="/"
           >
             <ArrowLeft aria-hidden="true" className="size-4" />
@@ -902,7 +957,7 @@ function ShoppingListView({
           </Link>
           <button
             aria-label={modeConfig.refreshLabel}
-            className="inline-flex size-11 shrink-0 items-center justify-center rounded-xl bg-white text-ink-600 shadow-card-sm transition hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+            className="text-ink-600 shadow-card-sm hover:text-accent inline-flex size-11 shrink-0 items-center justify-center rounded-xl bg-white transition disabled:cursor-not-allowed disabled:opacity-50"
             disabled={pendingAction !== null}
             onClick={refreshList}
             type="button"
@@ -922,15 +977,16 @@ function ShoppingListView({
               </label>
               <Search
                 aria-hidden="true"
-                className="pointer-events-none absolute top-[17px] left-4 size-[18px] text-ink-200"
+                className="text-ink-200 pointer-events-none absolute top-[17px] left-4 size-[18px]"
               />
               <textarea
-                className="block min-h-[52px] w-full resize-none rounded-[15px] border border-black/[0.07] bg-white py-[13px] pr-4 pl-11 text-base leading-6 shadow-card-sm transition outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
+                className="shadow-card-sm focus:border-accent block min-h-[52px] w-full resize-none rounded-[15px] border border-black/[0.07] bg-white py-[13px] pr-4 pl-11 text-base leading-6 transition outline-none disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={pendingAction !== null}
                 id="add-items"
                 onChange={(event) => {
                   setItemText(event.target.value);
                   setAddItemsMessage(null);
+                  setAiRecoveryAvailable(false);
                 }}
                 placeholder="Add item(s), one per line…"
                 ref={addItemsTextareaRef}
@@ -942,16 +998,36 @@ function ShoppingListView({
               />
               {addItemsMessage ? (
                 <span
-                  className="mt-1 ml-11 block text-sm text-ink-600"
-                  role="status"
+                  className="text-ink-600 mt-1 ml-11 block text-sm"
+                  role={aiRecoveryAvailable ? "alert" : "status"}
                 >
                   {addItemsMessage}
                 </span>
               ) : null}
+              {aiRecoveryAvailable ? (
+                <div className="mt-2 ml-11 flex flex-wrap gap-2">
+                  <button
+                    className="bg-ink-50 text-ink-700 hover:text-accent rounded-lg px-3 py-1.5 text-sm font-semibold transition disabled:opacity-50"
+                    disabled={pendingAction !== null}
+                    onClick={() => void submitItems("ai")}
+                    type="button"
+                  >
+                    Retry
+                  </button>
+                  <button
+                    className="bg-ink-50 text-ink-700 hover:text-accent rounded-lg px-3 py-1.5 text-sm font-semibold transition disabled:opacity-50"
+                    disabled={pendingAction !== null}
+                    onClick={() => void submitItems("deterministic")}
+                    type="button"
+                  >
+                    Add without AI
+                  </button>
+                </div>
+              ) : null}
             </div>
             <div className="flex shrink-0 items-start gap-2.5">
               <button
-                className="inline-flex h-[52px] flex-1 items-center justify-center gap-1.5 rounded-[15px] bg-gradient-to-br from-accent to-accent-bright px-5 text-base font-semibold text-white shadow-accent-glow transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none"
+                className="from-accent to-accent-bright shadow-accent-glow inline-flex h-[52px] flex-1 items-center justify-center gap-1.5 rounded-[15px] bg-gradient-to-br px-5 text-base font-semibold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none"
                 disabled={pendingAction !== null}
                 type="submit"
               >
@@ -960,7 +1036,7 @@ function ShoppingListView({
               </button>
               <button
                 aria-label={modeConfig.refreshLabel}
-                className="inline-flex size-[52px] shrink-0 items-center justify-center rounded-[15px] border border-black/[0.07] bg-white text-ink-600 shadow-card-sm transition hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+                className="text-ink-600 shadow-card-sm hover:text-accent inline-flex size-[52px] shrink-0 items-center justify-center rounded-[15px] border border-black/[0.07] bg-white transition disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={pendingAction !== null}
                 onClick={refreshList}
                 title="Refresh"
@@ -974,9 +1050,9 @@ function ShoppingListView({
       )}
 
       {!hasStoreRoute ? (
-        <p className="mt-4 text-sm text-ink-500">
+        <p className="text-ink-500 mt-4 text-sm">
           <Link
-            className="font-semibold text-accent underline-offset-4 hover:underline"
+            className="text-accent font-semibold underline-offset-4 hover:underline"
             href="/route"
           >
             Build a store route
@@ -987,14 +1063,14 @@ function ShoppingListView({
 
       <div className="mt-7 space-y-6">
         {items.length === 0 ? (
-          <div className="card p-6 text-sm text-ink-400">
+          <div className="card text-ink-400 p-6 text-sm">
             {modeConfig.emptyText}
           </div>
         ) : !isActiveMode ? (
-          <div className="overflow-hidden card">
+          <div className="card overflow-hidden">
             {items.map((item, index) => (
               <div
-                className={index > 0 ? "border-t border-divider-soft" : ""}
+                className={index > 0 ? "border-divider-soft border-t" : ""}
                 key={item.id}
               >
                 {renderShoppingItemRow(item, itemAccentColor(item))}
@@ -1013,17 +1089,19 @@ function ShoppingListView({
                     className="size-2.5 shrink-0 rounded-[4px]"
                     style={{ background: accentColor }}
                   />
-                  <h2 className="text-[13px] font-bold tracking-[0.05em] text-ink-500 uppercase">
+                  <h2 className="text-ink-500 text-[13px] font-bold tracking-[0.05em] uppercase">
                     {group.label}
                   </h2>
-                  <span className="rounded-full bg-divider px-2.5 py-0.5 text-xs font-semibold text-ink-250">
+                  <span className="bg-divider text-ink-250 rounded-full px-2.5 py-0.5 text-xs font-semibold">
                     {group.items.length}
                   </span>
                 </div>
-                <div className="overflow-hidden card">
+                <div className="card overflow-hidden">
                   {group.items.map((item, index) => (
                     <div
-                      className={index > 0 ? "border-t border-divider-soft" : ""}
+                      className={
+                        index > 0 ? "border-divider-soft border-t" : ""
+                      }
                       key={item.id}
                     >
                       {renderShoppingItemRow(item, accentColor)}
@@ -1037,7 +1115,7 @@ function ShoppingListView({
       </div>
 
       {message ? (
-        <p className="mt-5 text-sm text-ink-600" role="status">
+        <p className="text-ink-600 mt-5 text-sm" role="status">
           {message}
         </p>
       ) : null}
@@ -1045,20 +1123,20 @@ function ShoppingListView({
       {isActiveMode ? (
         <div className="mt-8 flex flex-wrap gap-2.5">
           <Link
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-ink-900 shadow-card-sm transition hover:text-accent"
+            className="text-ink-900 shadow-card-sm hover:text-accent inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold transition"
             href="/snoozed"
           >
-            <Clock aria-hidden="true" className="size-4 text-ink-350" />
+            <Clock aria-hidden="true" className="text-ink-350 size-4" />
             Snoozed
-            <ArrowRight aria-hidden="true" className="size-4 text-ink-200" />
+            <ArrowRight aria-hidden="true" className="text-ink-200 size-4" />
           </Link>
           <Link
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold text-ink-900 shadow-card-sm transition hover:text-accent"
+            className="text-ink-900 shadow-card-sm hover:text-accent inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold transition"
             href="/completed"
           >
-            <Check aria-hidden="true" className="size-4 text-ink-350" />
+            <Check aria-hidden="true" className="text-ink-350 size-4" />
             Completed
-            <ArrowRight aria-hidden="true" className="size-4 text-ink-200" />
+            <ArrowRight aria-hidden="true" className="text-ink-200 size-4" />
           </Link>
         </div>
       ) : null}
@@ -1091,6 +1169,7 @@ function ShoppingItemRow({
   editExpanded,
   editFieldErrors,
   editMessage,
+  editQuantityText,
   editText,
   item,
   mode,
@@ -1099,6 +1178,7 @@ function ShoppingItemRow({
   onDelete,
   onEditCancel,
   onEditOpen,
+  onEditQuantityTextChange,
   onEditSubmit,
   onEditTextChange,
   onRetryCorrectionOptions,
@@ -1120,6 +1200,7 @@ function ShoppingItemRow({
   editExpanded: boolean;
   editFieldErrors: FieldErrors;
   editMessage: string | null;
+  editQuantityText: string;
   editText: string;
   item: ActiveShoppingItemPayload;
   mode: ShoppingListMode;
@@ -1128,6 +1209,7 @@ function ShoppingItemRow({
   onDelete: () => void;
   onEditCancel: () => void;
   onEditOpen: () => void;
+  onEditQuantityTextChange: (quantityText: string) => void;
   onEditSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
   onEditTextChange: (text: string) => void;
   onRetryCorrectionOptions: () => void;
@@ -1139,7 +1221,9 @@ function ShoppingItemRow({
   saveDisabled: boolean;
   showCompletedAt: boolean;
 }) {
-  const needsAttention = item.resolutionState !== "route-resolved";
+  const needsAttention =
+    item.resolutionState !== "route-resolved" ||
+    item.categorization.reviewState !== "none";
   const editFormId = `edit-${item.id}`;
   const editPending = pendingEdit || pendingCorrection;
   const isActiveRow = mode === "active";
@@ -1158,7 +1242,7 @@ function ShoppingItemRow({
       {isSnoozedRow ? (
         <button
           aria-label="Restore item to list"
-          className="relative flex size-[26px] shrink-0 items-center justify-center rounded-full border-2 border-ink-150 bg-white text-ink-500 transition after:absolute after:-inset-[9px] hover:border-accent hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+          className="border-ink-150 text-ink-500 hover:border-accent hover:text-accent relative flex size-[26px] shrink-0 items-center justify-center rounded-full border-2 bg-white transition after:absolute after:-inset-[9px] disabled:cursor-not-allowed disabled:opacity-50"
           disabled={pending}
           onClick={() => onSnoozeChange(false)}
           title="Restore to list"
@@ -1199,15 +1283,33 @@ function ShoppingItemRow({
             onSubmit={onEditSubmit}
           >
             <label className="block">
-              <span className="sr-only">Item name</span>
+              <span className="text-ink-500 mb-1 block text-xs font-semibold">
+                Item
+              </span>
               <input
-                className="min-h-10 w-full rounded-xl border border-black/[0.07] bg-white px-3.5 text-base leading-6 outline-none transition focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
+                className="focus:border-accent min-h-10 w-full rounded-xl border border-black/[0.07] bg-white px-3.5 text-base leading-6 transition outline-none disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={editPending}
                 onChange={(event) => onEditTextChange(event.target.value)}
                 value={editText}
               />
               <FieldError messages={editFieldErrors.text} />
               <FieldError messages={editFieldErrors.form} />
+            </label>
+            <label className="block">
+              <span className="text-ink-500 mb-1 block text-xs font-semibold">
+                Quantity
+              </span>
+              <input
+                className="focus:border-accent min-h-10 w-full rounded-xl border border-black/[0.07] bg-white px-3.5 text-base leading-6 transition outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={editPending}
+                maxLength={40}
+                onChange={(event) =>
+                  onEditQuantityTextChange(event.target.value)
+                }
+                placeholder="Optional, e.g. 2 lbs"
+                value={editQuantityText}
+              />
+              <FieldError messages={editFieldErrors.quantityText} />
             </label>
             <InlineLocationEditor
               fieldErrors={correctionFieldErrors}
@@ -1222,7 +1324,7 @@ function ShoppingItemRow({
               pending={editPending}
             />
             {editMessage ? (
-              <p className="text-sm text-ink-600" role="status">
+              <p className="text-ink-600 text-sm" role="status">
                 {editMessage}
               </p>
             ) : null}
@@ -1230,7 +1332,7 @@ function ShoppingItemRow({
           <div className="ml-auto flex shrink-0 items-center gap-1.5">
             <button
               aria-label="Save item"
-              className="flex size-10 items-center justify-center rounded-xl bg-gradient-to-br from-accent to-accent-bright text-white shadow-accent-glow-sm transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+              className="from-accent to-accent-bright shadow-accent-glow-sm flex size-10 items-center justify-center rounded-xl bg-gradient-to-br text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
               disabled={editPending || saveDisabled}
               form={editFormId}
               title="Save"
@@ -1240,7 +1342,7 @@ function ShoppingItemRow({
             </button>
             <button
               aria-label="Cancel edit"
-              className="flex size-10 items-center justify-center rounded-xl bg-ink-50 text-ink-600 transition hover:bg-divider disabled:cursor-not-allowed disabled:opacity-50"
+              className="bg-ink-50 text-ink-600 hover:bg-divider flex size-10 items-center justify-center rounded-xl transition disabled:cursor-not-allowed disabled:opacity-50"
               disabled={editPending}
               onClick={onEditCancel}
               title="Cancel"
@@ -1250,7 +1352,7 @@ function ShoppingItemRow({
             </button>
             <button
               aria-label="Delete item"
-              className="flex size-10 items-center justify-center rounded-xl bg-danger-50 text-danger transition hover:bg-danger-100 disabled:cursor-not-allowed disabled:opacity-50"
+              className="bg-danger-50 text-danger hover:bg-danger-100 flex size-10 items-center justify-center rounded-xl transition disabled:cursor-not-allowed disabled:opacity-50"
               disabled={pendingDelete || editPending}
               onClick={onDelete}
               title="Delete"
@@ -1267,15 +1369,26 @@ function ShoppingItemRow({
             {...longPressHandlers}
           >
             <div
-              className="text-[16.5px] font-semibold tracking-[-0.01em] break-words"
+              className="flex items-start gap-1.5 text-[16.5px] font-semibold tracking-[-0.01em]"
               style={{
-                color: item.isChecked ? "var(--color-ink-300)" : "var(--color-foreground)",
+                color: item.isChecked
+                  ? "var(--color-ink-300)"
+                  : "var(--color-foreground)",
                 textDecoration: item.isChecked ? "line-through" : "none",
               }}
             >
-              {item.rawText}
+              <span className="min-w-0 break-words">
+                {formatShoppingItemTitle(item.rawText, item.quantityText)}
+              </span>
+              {item.categorization.source === "llm" ? (
+                <Bot
+                  aria-label="Categorized by AI"
+                  className="text-accent mt-0.5 size-4 shrink-0"
+                  role="img"
+                />
+              ) : null}
             </div>
-            <div className="mt-[3px] flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-medium text-ink-400">
+            <div className="text-ink-400 mt-[3px] flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-medium">
               {needsAttention ? (
                 <AlertTriangle
                   aria-hidden="true"
@@ -1302,7 +1415,7 @@ function ShoppingItemRow({
             {isActiveRow ? (
               <button
                 aria-label="Snooze item"
-                className="relative flex size-[34px] items-center justify-center rounded-[10px] bg-ink-50 text-ink-500 transition after:absolute after:-inset-y-[5px] after:-inset-x-px hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+                className="bg-ink-50 text-ink-500 hover:text-accent relative flex size-[34px] items-center justify-center rounded-[10px] transition after:absolute after:-inset-x-px after:-inset-y-[5px] disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={pending || pendingEdit || pendingDelete}
                 onClick={() => onSnoozeChange(true)}
                 title="Snooze"
@@ -1315,7 +1428,7 @@ function ShoppingItemRow({
               aria-controls={editFormId}
               aria-expanded={editExpanded}
               aria-label="Edit item"
-              className="relative flex size-[34px] items-center justify-center rounded-[10px] bg-ink-50 text-ink-500 transition after:absolute after:-inset-y-[5px] after:-inset-x-px hover:text-accent disabled:cursor-not-allowed disabled:opacity-50"
+              className="bg-ink-50 text-ink-500 hover:text-accent relative flex size-[34px] items-center justify-center rounded-[10px] transition after:absolute after:-inset-x-px after:-inset-y-[5px] disabled:cursor-not-allowed disabled:opacity-50"
               disabled={pendingEdit || pendingDelete}
               onClick={onEditOpen}
               title="Edit"
@@ -1325,7 +1438,7 @@ function ShoppingItemRow({
             </button>
             <button
               aria-label="Delete item"
-              className="relative flex size-[34px] items-center justify-center rounded-[10px] bg-danger-50 text-danger transition after:absolute after:-inset-y-[5px] after:-inset-x-px hover:bg-danger-100 disabled:cursor-not-allowed disabled:opacity-50"
+              className="bg-danger-50 text-danger hover:bg-danger-100 relative flex size-[34px] items-center justify-center rounded-[10px] transition after:absolute after:-inset-x-px after:-inset-y-[5px] disabled:cursor-not-allowed disabled:opacity-50"
               disabled={pendingDelete || pendingEdit}
               onClick={onDelete}
               title="Delete"
@@ -1377,19 +1490,19 @@ function InlineLocationEditor({
   return (
     <div className="space-y-2">
       {loadingOptions ? (
-        <p className="text-sm text-ink-400" role="status">
+        <p className="text-ink-400 text-sm" role="status">
           Loading location options.
         </p>
       ) : null}
 
       {optionsError ? (
         <div className="flex flex-wrap items-center gap-2">
-          <p className="text-sm text-danger" role="alert">
+          <p className="text-danger text-sm" role="alert">
             {optionsError}
           </p>
           <button
             aria-label="Retry loading location options"
-            className="flex size-9 items-center justify-center rounded-[10px] bg-ink-50 text-ink-500 transition hover:text-accent"
+            className="bg-ink-50 text-ink-500 hover:text-accent flex size-9 items-center justify-center rounded-[10px] transition"
             onClick={onRetryOptions}
             title="Retry"
             type="button"
@@ -1403,9 +1516,9 @@ function InlineLocationEditor({
       <FieldError messages={fieldErrors.rawText} />
 
       {options && aisleSections.length === 0 ? (
-        <p className="text-sm text-ink-400">
+        <p className="text-ink-400 text-sm">
           <Link
-            className="font-semibold text-accent underline-offset-4 hover:underline"
+            className="text-accent font-semibold underline-offset-4 hover:underline"
             href="/route"
           >
             Build a store route
@@ -1419,7 +1532,7 @@ function InlineLocationEditor({
               Product
             </label>
             <select
-              className="min-h-10 w-full rounded-xl border border-black/[0.07] bg-white px-3.5 text-sm outline-none transition focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
+              className="focus:border-accent min-h-10 w-full rounded-xl border border-black/[0.07] bg-white px-3.5 text-sm transition outline-none disabled:cursor-not-allowed disabled:opacity-60"
               disabled={formDisabled}
               id={productControlId}
               onChange={(event) => {
@@ -1464,7 +1577,7 @@ function InlineLocationEditor({
           <label className="block min-w-0">
             <span className="sr-only">Route section</span>
             <select
-              className="min-h-10 w-full rounded-xl border border-black/[0.07] bg-white px-3.5 text-sm outline-none transition focus:border-accent disabled:cursor-not-allowed disabled:opacity-60"
+              className="focus:border-accent min-h-10 w-full rounded-xl border border-black/[0.07] bg-white px-3.5 text-sm transition outline-none disabled:cursor-not-allowed disabled:opacity-60"
               disabled={formDisabled}
               onChange={(event) =>
                 onFormChange({ aisleSectionId: event.target.value })
@@ -1489,7 +1602,7 @@ function InlineLocationEditor({
       )}
 
       {message ? (
-        <p className="text-sm text-ink-600" role="status">
+        <p className="text-ink-600 text-sm" role="status">
           {message}
         </p>
       ) : null}
@@ -1520,6 +1633,10 @@ function InlineLocationEditor({
   );
 }
 function locationLabel(item: ActiveShoppingItemPayload) {
+  if (item.categorization.reviewState === "suggested-concept") {
+    return `Suggested: ${item.categorization.suggestedConceptName ?? "new product"} · choose location`;
+  }
+
   if (item.location) {
     return formatSectionLabel(item.location.aisleSection);
   }
@@ -1529,6 +1646,20 @@ function locationLabel(item: ActiveShoppingItemPayload) {
   }
 
   return "Needs correction";
+}
+
+function formatImportResultMessage(
+  alreadyOnList: readonly string[],
+  updatedQuantities: readonly string[],
+) {
+  const messages = [
+    formatAlreadyOnListMessage(alreadyOnList),
+    updatedQuantities.length > 0
+      ? `Updated quantities: ${updatedQuantities.join(", ")}.`
+      : null,
+  ].filter((message): message is string => message !== null);
+
+  return messages.join(" ") || null;
 }
 
 function formatCompletedAt(checkedAt: string) {
@@ -1687,7 +1818,7 @@ function FieldError({
     <>
       {allMessages.map((fieldMessage, index) => (
         <span
-          className="mt-1 block text-sm font-medium text-danger"
+          className="text-danger mt-1 block text-sm font-medium"
           key={`${fieldMessage}-${index}`}
         >
           {fieldMessage}

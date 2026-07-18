@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import { createDatabase } from "../create-client";
 import { productConceptIdByNormalizedName } from "./product-corrections";
 import {
+  buildAutomaticProductAliasInsertQuery,
   buildActiveShoppingListCreateQuery,
   buildActiveShoppingListQuery,
   buildCompletedShoppingItemsQuery,
   buildExactProductAliasLookupQuery,
+  buildExactProductAliasesLookupQuery,
   buildRouteOrderedShoppingItemsQuery,
   buildShoppingItemCheckStateQuery,
   buildShoppingItemDeleteQuery,
@@ -156,7 +158,10 @@ describe("shopping-list queries", () => {
       shoppingListId: "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
       rawText: "Wild Rice",
       normalizedText: "wild rice",
+      quantityText: null,
       productConceptId: null,
+      categorizationSource: "deterministic",
+      suggestedProductConceptName: null,
       orderKey: "0000000000000:0000:manual:mutation",
       sourceIdentifier: "manual:44444444-4444-4444-8444-444444444444",
       mutationId: "44444444-4444-4444-8444-444444444444",
@@ -171,6 +176,9 @@ describe("shopping-list queries", () => {
       "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
       "Wild Rice",
       "wild rice",
+      null,
+      null,
+      "deterministic",
       null,
       "0000000000000:0000:manual:mutation",
       "manual:44444444-4444-4444-8444-444444444444",
@@ -247,6 +255,7 @@ describe("shopping-list queries", () => {
       rawText: "Wild Rice",
       normalizedText: "wild rice",
       productConceptId: "11111111-1111-4111-8111-111111111111",
+      categorizationSource: "deterministic",
       now: new Date("2026-01-01T00:00:00Z"),
     }).toSQL();
 
@@ -256,11 +265,13 @@ describe("shopping-list queries", () => {
     expect(query).toContain('"product_concept_id" = $3');
     expect(query).not.toContain("resolved_location_id");
     expect(query).toContain('"version" = "shopping_items"."version" + 1');
-    expect(query).toContain('"shopping_items"."id" = $6');
+    expect(query).toContain('"shopping_items"."id" = $8');
     expect(params).toEqual([
       "Wild Rice",
       "wild rice",
       "11111111-1111-4111-8111-111111111111",
+      "deterministic",
+      null,
       "2026-01-01T00:00:00.000Z",
       "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
       "33333333-3333-4333-8333-333333333333",
@@ -297,9 +308,11 @@ describe("shopping-list queries", () => {
     expect(query).toContain('"product_concept_id" = $1');
     expect(query).not.toContain("resolved_location_id");
     expect(query).toContain('"version" = "shopping_items"."version" + 1');
-    expect(query).toContain('"shopping_items"."normalized_text" = $4');
+    expect(query).toContain('"shopping_items"."normalized_text" = $6');
     expect(params).toEqual([
       "11111111-1111-4111-8111-111111111111",
+      "manual",
+      null,
       "2026-01-01T00:00:00.000Z",
       "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
       "wild rice",
@@ -323,9 +336,50 @@ describe("shopping-list queries", () => {
     );
     expect(params).toEqual([
       "dried fruit",
+      "manual",
+      null,
       "2026-01-01T00:00:00.000Z",
       "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
       "dried mango",
+    ]);
+  });
+
+  it("learns an AI alias without overwriting any existing user alias", () => {
+    const { sql: query, params } = buildAutomaticProductAliasInsertQuery(
+      database,
+      {
+        userId: "user-a",
+        shoppingListId: "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
+        sourceIdentifier: "import:mutation:0",
+        productConceptId: "11111111-1111-4111-8111-111111111111",
+        normalizedText: "chicken thighs",
+        now: new Date("2026-01-01T00:00:00Z"),
+      },
+    ).toSQL();
+
+    expect(query).toContain('insert into "product_aliases"');
+    expect(query).toContain('from "shopping_items"');
+    expect(query).toContain('"shopping_items"."categorization_source" =');
+    expect(query).toContain('"shopping_items"."source_identifier" =');
+    expect(query).toContain(
+      '"shopping_items"."suggested_product_concept_name" is null',
+    );
+    expect(query).toContain(
+      'on conflict ("user_id","normalized_text") where "product_aliases"."scope" = \'user\' do nothing',
+    );
+    expect(query).not.toContain("do update");
+    expect(params).toEqual([
+      "11111111-1111-4111-8111-111111111111",
+      "user-a",
+      "chicken thighs",
+      new Date("2026-01-01T00:00:00Z"),
+      new Date("2026-01-01T00:00:00Z"),
+      "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
+      "import:mutation:0",
+      "chicken thighs",
+      "11111111-1111-4111-8111-111111111111",
+      "llm",
+      1,
     ]);
   });
 
@@ -366,10 +420,33 @@ describe("shopping-list queries", () => {
       "wild rice",
       "learned",
       "imported",
+      0,
+      1,
       "global",
       "user",
       "user-a",
       1,
+    ]);
+  });
+
+  it("excludes invalid-confidence aliases from batch AI fast-path lookups", () => {
+    const { sql: query, params } = buildExactProductAliasesLookupQuery(
+      database,
+      "user-a",
+      ["wild rice"],
+    ).toSQL();
+
+    expect(query).toContain('"product_aliases"."confidence" >');
+    expect(query).toContain('"product_aliases"."confidence" <=');
+    expect(params).toEqual([
+      "wild rice",
+      "learned",
+      "imported",
+      0,
+      1,
+      "global",
+      "user",
+      "user-a",
     ]);
   });
 });
