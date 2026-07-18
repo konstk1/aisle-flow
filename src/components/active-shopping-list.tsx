@@ -1295,36 +1295,42 @@ function ShoppingItemRow({
               <FieldError messages={editFieldErrors.text} />
               <FieldError messages={editFieldErrors.form} />
             </label>
-            <InlineLocationEditor
-              fieldErrors={correctionFieldErrors}
-              form={correctionForm}
-              item={item}
-              loadingOptions={correctionOptionsLoading}
-              message={correctionMessage}
-              onFormChange={onCorrectionFormChange}
-              onRetryOptions={onRetryCorrectionOptions}
-              options={correctionOptions}
-              optionsError={correctionOptionsError}
-              pending={editPending}
-              quantityField={
-                <label className="block min-w-0">
-                  <span className="text-ink-500 mb-1.5 block text-[11px] font-bold tracking-[0.06em] uppercase">
-                    Quantity
-                  </span>
-                  <input
-                    className="bg-ink-50 focus:border-accent min-h-12 w-full rounded-[14px] border border-black/[0.07] px-3.5 text-base leading-6 transition outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={editPending}
-                    maxLength={40}
-                    onChange={(event) =>
-                      onEditQuantityTextChange(event.target.value)
-                    }
-                    placeholder="e.g. 2 lbs"
-                    value={editQuantityText}
-                  />
-                  <FieldError messages={editFieldErrors.quantityText} />
-                </label>
-              }
-            />
+            <div className="grid grid-cols-2 gap-3">
+              <label
+                className={`block min-w-0 ${
+                  correctionOptions?.aisleSections.length === 0
+                    ? "col-span-2"
+                    : ""
+                }`}
+              >
+                <span className="text-ink-500 mb-1.5 block text-[11px] font-bold tracking-[0.06em] uppercase">
+                  Quantity
+                </span>
+                <input
+                  className="bg-ink-50 focus:border-accent min-h-12 w-full rounded-[14px] border border-black/[0.07] px-3.5 text-base leading-6 transition outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={editPending}
+                  maxLength={40}
+                  onChange={(event) =>
+                    onEditQuantityTextChange(event.target.value)
+                  }
+                  placeholder="e.g. 2 lbs"
+                  value={editQuantityText}
+                />
+                <FieldError messages={editFieldErrors.quantityText} />
+              </label>
+              <InlineLocationEditor
+                fieldErrors={correctionFieldErrors}
+                form={correctionForm}
+                item={item}
+                loadingOptions={correctionOptionsLoading}
+                message={correctionMessage}
+                onFormChange={onCorrectionFormChange}
+                onRetryOptions={onRetryCorrectionOptions}
+                options={correctionOptions}
+                optionsError={correctionOptionsError}
+                pending={editPending}
+              />
+            </div>
             {editMessage ? (
               <p className="text-ink-600 text-sm" role="status">
                 {editMessage}
@@ -1467,7 +1473,6 @@ function InlineLocationEditor({
   options,
   optionsError,
   pending,
-  quantityField,
 }: {
   fieldErrors: FieldErrors;
   form: ProductCorrectionFormState;
@@ -1479,7 +1484,6 @@ function InlineLocationEditor({
   options: ProductCorrectionOptions | null;
   optionsError: string | null;
   pending: boolean;
-  quantityField: React.ReactNode;
 }) {
   const productConcepts = options?.productConcepts ?? [];
   const aisleSections = options?.aisleSections ?? [];
@@ -1493,110 +1497,76 @@ function InlineLocationEditor({
   const [isNewProductDialogOpen, setIsNewProductDialogOpen] = useState(false);
 
   return (
-    <div className="space-y-2">
-      {loadingOptions ? (
-        <p className="text-ink-400 text-sm" role="status">
-          Loading location options.
-        </p>
-      ) : null}
-
-      {optionsError ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="text-danger text-sm" role="alert">
-            {optionsError}
-          </p>
-          <button
-            aria-label="Retry loading location options"
-            className="bg-ink-50 text-ink-500 hover:text-accent flex size-9 items-center justify-center rounded-[10px] transition"
-            onClick={onRetryOptions}
-            title="Retry"
-            type="button"
-          >
-            <RotateCw aria-hidden="true" className="size-4" />
-          </button>
-        </div>
-      ) : null}
-
-      <FieldError messages={fieldErrors.form} />
-      <FieldError messages={fieldErrors.rawText} />
-
+    <>
       {options && aisleSections.length === 0 ? (
-        <>
-          {quantityField}
-          <p className="text-ink-400 text-sm">
-            <Link
-              className="text-accent font-semibold underline-offset-4 hover:underline"
-              href="/route"
-            >
-              Build a store route
-            </Link>{" "}
-            before assigning item locations.
-          </p>
-        </>
+        <p className="text-ink-400 col-span-2 text-sm">
+          <Link
+            className="text-accent font-semibold underline-offset-4 hover:underline"
+            href="/route"
+          >
+            Build a store route
+          </Link>{" "}
+          before assigning item locations.
+        </p>
       ) : (
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            {quantityField}
-            <div className="block min-w-0">
-              <label
-                className="text-ink-500 mb-1.5 block text-[11px] font-bold tracking-[0.06em] uppercase"
-                htmlFor={productControlId}
-              >
-                Category
-              </label>
-              <div className="relative">
-                <select
-                  className="bg-ink-50 focus:border-accent min-h-12 w-full appearance-none rounded-[14px] border border-black/[0.07] py-0 pr-10 pl-3.5 text-sm transition outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={formDisabled}
-                  id={productControlId}
-                  onChange={(event) => {
-                    if (
-                      event.target.value === NEW_PRODUCT_DIALOG_OPTION_VALUE
-                    ) {
-                      setIsNewProductDialogOpen(true);
-                      return;
-                    }
+        <>
+          <div className="block min-w-0">
+            <label
+              className="text-ink-500 mb-1.5 block text-[11px] font-bold tracking-[0.06em] uppercase"
+              htmlFor={productControlId}
+            >
+              Product
+            </label>
+            <div className="relative">
+              <select
+                className="bg-ink-50 focus:border-accent min-h-12 w-full appearance-none rounded-[14px] border border-black/[0.07] py-0 pr-10 pl-3.5 text-sm transition outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={formDisabled}
+                id={productControlId}
+                onChange={(event) => {
+                  if (event.target.value === NEW_PRODUCT_DIALOG_OPTION_VALUE) {
+                    setIsNewProductDialogOpen(true);
+                    return;
+                  }
 
-                    onFormChange(
-                      buildProductSelectionPatch(
-                        event.target.value,
-                        productConcepts,
-                      ),
-                    );
-                  }}
-                  value={selectValue}
-                >
-                  <option value="">Choose product</option>
-                  {isAddingProduct && form.canonicalName ? (
-                    <option value={ADD_PRODUCT_OPTION_VALUE}>
-                      {form.canonicalName} (new)
-                    </option>
-                  ) : null}
-                  {selectedConceptIsMissing && item.productConcept ? (
-                    <option value={item.productConcept.id}>
-                      {item.productConcept.canonicalName}
-                    </option>
-                  ) : null}
-                  {productConcepts.map((concept) => (
-                    <option key={concept.id} value={concept.id}>
-                      {concept.canonicalName}
-                    </option>
-                  ))}
-                  <option value={NEW_PRODUCT_DIALOG_OPTION_VALUE}>
-                    Add product
+                  onFormChange(
+                    buildProductSelectionPatch(
+                      event.target.value,
+                      productConcepts,
+                    ),
+                  );
+                }}
+                value={selectValue}
+              >
+                <option value="">Choose product</option>
+                {isAddingProduct && form.canonicalName ? (
+                  <option value={ADD_PRODUCT_OPTION_VALUE}>
+                    {form.canonicalName} (new)
                   </option>
-                </select>
-                <ChevronDown
-                  aria-hidden="true"
-                  className="text-ink-500 pointer-events-none absolute top-1/2 right-3.5 size-4 -translate-y-1/2"
-                />
-              </div>
-              <FieldError messages={fieldErrors.productConceptId} />
-              <FieldError messages={fieldErrors.canonicalName} />
+                ) : null}
+                {selectedConceptIsMissing && item.productConcept ? (
+                  <option value={item.productConcept.id}>
+                    {item.productConcept.canonicalName}
+                  </option>
+                ) : null}
+                {productConcepts.map((concept) => (
+                  <option key={concept.id} value={concept.id}>
+                    {concept.canonicalName}
+                  </option>
+                ))}
+                <option value={NEW_PRODUCT_DIALOG_OPTION_VALUE}>
+                  Add product
+                </option>
+              </select>
+              <ChevronDown
+                aria-hidden="true"
+                className="text-ink-500 pointer-events-none absolute top-1/2 right-3.5 size-4 -translate-y-1/2"
+              />
             </div>
+            <FieldError messages={fieldErrors.productConceptId} />
+            <FieldError messages={fieldErrors.canonicalName} />
           </div>
 
-          <label className="block min-w-0">
+          <label className="col-span-2 block min-w-0">
             <span className="text-ink-500 mb-1.5 block text-[11px] font-bold tracking-[0.06em] uppercase">
               Aisle
             </span>
@@ -1628,11 +1598,41 @@ function InlineLocationEditor({
             </div>
             <FieldError messages={fieldErrors.aisleSectionId} />
           </label>
-        </div>
+        </>
       )}
 
+      {loadingOptions ? (
+        <p className="text-ink-400 col-span-2 text-sm" role="status">
+          Loading location options.
+        </p>
+      ) : null}
+
+      {optionsError ? (
+        <div className="col-span-2 flex flex-wrap items-center gap-2">
+          <p className="text-danger text-sm" role="alert">
+            {optionsError}
+          </p>
+          <button
+            aria-label="Retry loading location options"
+            className="bg-ink-50 text-ink-500 hover:text-accent flex size-9 items-center justify-center rounded-[10px] transition"
+            onClick={onRetryOptions}
+            title="Retry"
+            type="button"
+          >
+            <RotateCw aria-hidden="true" className="size-4" />
+          </button>
+        </div>
+      ) : null}
+
+      {fieldErrors.form?.length || fieldErrors.rawText?.length ? (
+        <div className="col-span-2">
+          <FieldError messages={fieldErrors.form} />
+          <FieldError messages={fieldErrors.rawText} />
+        </div>
+      ) : null}
+
       {message ? (
-        <p className="text-ink-600 text-sm" role="status">
+        <p className="text-ink-600 col-span-2 text-sm" role="status">
           {message}
         </p>
       ) : null}
@@ -1659,7 +1659,7 @@ function InlineLocationEditor({
           storeName={options?.store?.name ?? null}
         />
       ) : null}
-    </div>
+    </>
   );
 }
 function locationLabel(item: ActiveShoppingItemPayload) {
