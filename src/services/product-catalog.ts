@@ -1,5 +1,6 @@
 import {
   normalizeProductText,
+  type CuratedProductTerm,
   type ProductQualifierRule,
 } from "@/domain/product-matching";
 
@@ -187,6 +188,28 @@ export const curatedQualifierRules = [
     targetCanonicalName: "canned vegetables",
   },
 ] as const satisfies readonly CuratedQualifierRuleDefinition[];
+
+export function resolveCuratedProductTerms(
+  concepts: readonly { id: string; normalizedName: string }[],
+) {
+  const conceptIdsByName = new Map(
+    concepts.map((concept) => [concept.normalizedName, concept.id]),
+  );
+
+  return curatedProductConcepts.flatMap((concept) => {
+    const productConceptId = conceptIdsByName.get(
+      normalizeProductText(concept.canonicalName),
+    );
+
+    if (!productConceptId) {
+      return [];
+    }
+
+    return concept.terms.map(
+      (text) => ({ productConceptId, text }) satisfies CuratedProductTerm,
+    );
+  });
+}
 
 export function resolveCuratedQualifierRules(
   concepts: readonly { id: string; normalizedName: string }[],

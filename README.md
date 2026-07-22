@@ -62,7 +62,7 @@ migrations run. Validation reports only invalid variable names, never values.
 | `pnpm test`                    | Run the Vitest unit tests.                                                |
 | `pnpm db:generate`             | Generate a new Drizzle SQL migration after changing the schema.           |
 | `pnpm db:migrate`              | Apply committed migrations to Neon.                                       |
-| `pnpm db:seed-product-catalog` | Upsert the 30 code-owned product concepts; it does not seed aliases.      |
+| `pnpm db:seed-product-catalog` | Upsert the code-owned product concepts; it does not seed aliases.         |
 | `pnpm eval:llm`                | Compare the hard-coded shopping list across the hard-coded OpenAI models. |
 
 The categorization evaluation reads the current product-concept catalog from

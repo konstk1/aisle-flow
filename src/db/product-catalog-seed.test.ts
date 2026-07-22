@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 
+import { curatedProductConcepts } from "@/services/product-catalog";
+
 import { createDatabase } from "./create-client";
 import { buildCuratedProductConceptSeedQuery } from "./product-catalog-seed";
 
@@ -21,7 +23,7 @@ describe("curated product catalog seed queries", () => {
     const { sql: query, params } =
       buildCuratedProductConceptSeedQuery(database).toSQL();
 
-    expect(params).toHaveLength(30 * 3 + 1);
+    expect(params).toHaveLength(curatedProductConcepts.length * 3 + 1);
     expect(query).toContain('insert into "product_concepts"');
     expect(query).not.toContain("product_aliases");
   });
