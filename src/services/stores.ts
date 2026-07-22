@@ -23,6 +23,7 @@ const storeNameSchema = z
   .max(80, "Store names must be 80 characters or fewer.");
 
 export const storeCreateRequestSchema = z.object({ name: storeNameSchema });
+export const storeCopyRequestSchema = z.object({ name: storeNameSchema });
 export const storeRenameRequestSchema = z.object({ name: storeNameSchema });
 export const currentStoreRequestSchema = z.object({
   storeId: z.uuid("Choose a valid store."),
