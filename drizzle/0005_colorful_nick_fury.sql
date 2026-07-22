@@ -1,2 +1,0 @@
-ALTER TABLE "shopping_items" ADD COLUMN "snoozed_until" timestamp with time zone;--> statement-breakpoint
-CREATE INDEX "shopping_items_snoozed_index" ON "shopping_items" USING btree ("shopping_list_id","snoozed_until") WHERE "shopping_items"."snoozed_until" IS NOT NULL;

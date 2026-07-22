@@ -1,1 +1,0 @@
-DROP INDEX "product_locations_product_store_index";

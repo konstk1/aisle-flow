@@ -1,7 +1,5 @@
 import "server-only";
 
-import { and, eq } from "drizzle-orm";
-
 import {
   normalizeProductText,
   prepareProductMatchingCatalog,
@@ -15,11 +13,13 @@ import type { Database } from "@/db/create-client";
 import {
   findExactProductAlias,
   findProductLocation,
-  productAliasUserScopeFilter,
 } from "@/db/repositories/shopping-lists";
-import { productAliases, productConcepts } from "@/db/schema";
+import { productConcepts } from "@/db/schema";
 
-import { resolveCuratedQualifierRules } from "./product-catalog";
+import {
+  resolveCuratedProductTerms,
+  resolveCuratedQualifierRules,
+} from "./product-catalog";
 
 export interface ResolvedProductLocation {
   id: string;
@@ -50,7 +50,7 @@ export async function createStoreProductMatcher({
   userId: string;
   storeId: string | null;
 }): Promise<StoreProductMatcher> {
-  const catalog = await loadProductMatchingCatalog(db, userId);
+  const catalog = await loadProductMatchingCatalog(db);
 
   return async (text) => {
     const learnedAlias = await findExactProductAlias(
@@ -118,30 +118,12 @@ async function resolveProductMatchWithCatalog({
 
 async function loadProductMatchingCatalog(
   db: Database,
-  userId: string,
 ): Promise<PreparedProductMatchingCatalog> {
-  const [concepts, curatedAliases] = await Promise.all([
-    db.select().from(productConcepts),
-    db
-      .select({ alias: productAliases })
-      .from(productAliases)
-      .where(
-        and(
-          // Learned and imported aliases are exact-only in the MVP. Imported
-          // source vocabulary may be user- or provider-specific, and learned
-          // corrections are persisted as exact aliases for manual precedence.
-          eq(productAliases.source, "curated"),
-          productAliasUserScopeFilter(userId),
-        ),
-      ),
-  ]);
+  const concepts = await db.select().from(productConcepts);
 
   return prepareProductMatchingCatalog({
     concepts,
-    curatedTerms: curatedAliases.map(({ alias }) => ({
-      productConceptId: alias.productConceptId,
-      text: alias.normalizedText,
-    })),
+    curatedTerms: resolveCuratedProductTerms(concepts),
     qualifierRules: resolveCuratedQualifierRules(concepts),
   });
 }

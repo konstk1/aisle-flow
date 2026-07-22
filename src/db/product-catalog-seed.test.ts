@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
 
+import { curatedProductConcepts } from "@/services/product-catalog";
+
 import { createDatabase } from "./create-client";
-import {
-  buildCuratedProductAliasSeedQuery,
-  buildCuratedProductConceptSeedQuery,
-} from "./product-catalog-seed";
+import { buildCuratedProductConceptSeedQuery } from "./product-catalog-seed";
 
 const database = createDatabase(
   "postgresql://user:password@localhost:5432/aisle_flow",
@@ -20,34 +19,12 @@ describe("curated product catalog seed queries", () => {
     expect(query).toContain('"excluded_terms" = excluded.excluded_terms');
   });
 
-  it("updates only conflicting global curated aliases", () => {
-    const { sql: query, params } = buildCuratedProductAliasSeedQuery(database, [
-      {
-        productConceptId: "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
-        normalizedText: "broccoli",
-        scope: "global",
-        confidence: 1,
-        source: "curated",
-        isCorrection: false,
-      },
-    ]).toSQL();
+  it("contains the complete code-owned catalog and no alias writes", () => {
+    const { sql: query, params } =
+      buildCuratedProductConceptSeedQuery(database).toSQL();
 
-    expect(query).toContain(
-      'on conflict ("normalized_text") where "product_aliases"."scope" = \'global\' do update set',
-    );
-    expect(query).toContain(
-      '"product_concept_id" = excluded.product_concept_id',
-    );
-    expect(query).toContain('where "product_aliases"."source" = $8');
-    expect(params).toEqual([
-      "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
-      "broccoli",
-      "global",
-      1,
-      "curated",
-      false,
-      expect.any(String),
-      "curated",
-    ]);
+    expect(params).toHaveLength(curatedProductConcepts.length * 3 + 1);
+    expect(query).toContain('insert into "product_concepts"');
+    expect(query).not.toContain("product_aliases");
   });
 });

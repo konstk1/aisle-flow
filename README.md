@@ -22,8 +22,8 @@ configured store.
 
 1. Install dependencies with `pnpm install`.
 2. Copy `.env.sample` to `.env.local` and replace every placeholder.
-3. Generate the initial migration with `pnpm db:generate`.
-4. Apply it with `pnpm db:migrate`.
+3. Apply the committed database baseline with `pnpm db:migrate`.
+4. Seed the product concept catalog with `pnpm db:seed-product-catalog`.
 5. Start the app with `pnpm dev`.
 
 Environment files remain at the repository root because Next.js loads `.env*`
@@ -50,19 +50,20 @@ migrations run. Validation reports only invalid variable names, never values.
 
 ## Commands
 
-| Command             | Purpose                                                                   |
-| ------------------- | ------------------------------------------------------------------------- |
-| `pnpm dev`          | Run the development server.                                               |
-| `pnpm build`        | Create a production build.                                                |
-| `pnpm start`        | Serve a production build.                                                 |
-| `pnpm lint`         | Run ESLint.                                                               |
-| `pnpm typecheck`    | Type-check without emitting files.                                        |
-| `pnpm format`       | Apply Prettier formatting.                                                |
-| `pnpm format:check` | Verify formatting without writing files.                                  |
-| `pnpm test`         | Run the Vitest unit tests.                                                |
-| `pnpm db:generate`  | Generate Drizzle SQL migrations from the schema.                          |
-| `pnpm db:migrate`   | Apply generated migrations to Neon.                                       |
-| `pnpm eval:llm`     | Compare the hard-coded shopping list across the hard-coded OpenAI models. |
+| Command                        | Purpose                                                                   |
+| ------------------------------ | ------------------------------------------------------------------------- |
+| `pnpm dev`                     | Run the development server.                                               |
+| `pnpm build`                   | Create a production build.                                                |
+| `pnpm start`                   | Serve a production build.                                                 |
+| `pnpm lint`                    | Run ESLint.                                                               |
+| `pnpm typecheck`               | Type-check without emitting files.                                        |
+| `pnpm format`                  | Apply Prettier formatting.                                                |
+| `pnpm format:check`            | Verify formatting without writing files.                                  |
+| `pnpm test`                    | Run the Vitest unit tests.                                                |
+| `pnpm db:generate`             | Generate a new Drizzle SQL migration after changing the schema.           |
+| `pnpm db:migrate`              | Apply committed migrations to Neon.                                       |
+| `pnpm db:seed-product-catalog` | Upsert the code-owned product concepts; it does not seed aliases.         |
+| `pnpm eval:llm`                | Compare the hard-coded shopping list across the hard-coded OpenAI models. |
 
 The categorization evaluation reads the current product-concept catalog from
 the database selected by `DATABASE_URL`, sends no user or store data, and never
@@ -77,7 +78,13 @@ OpenAI pricing in the evaluation module.
 ## Data migrations
 
 Run `pnpm db:migrate` against a fresh Neon database to apply the complete MVP
-data model. Migrations are forward-only: do not delete or edit a migration
+data model, then run `pnpm db:seed-product-catalog`. The committed `0000`
+migration is the post-MVP baseline. Its journal timestamp predates the final
+migration already applied to the retained development database, so that
+database skips the baseline while a fresh database applies it. Do not regenerate
+or change the baseline timestamp.
+
+After the baseline, migrations are forward-only: do not delete or edit one
 after it has been applied. To roll back development or preview data, discard
 the Neon branch/database and create a fresh one before re-running migrations.
 For production, restore a verified Neon backup or deploy a separate, reviewed
