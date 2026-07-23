@@ -4,12 +4,14 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import type { StoreLayout } from "@/domain/store-layout";
+import type { StoreSummary } from "@/domain/stores";
 
 import { getDb } from "@/db/client";
-import { aisles, aisleSections, stores } from "@/db/schema";
+import { aisles, aisleSections, stores, user } from "@/db/schema";
 import {
   requireManageableStore,
   resolveCurrentStore,
+  StoreRequestError,
 } from "@/services/stores";
 
 const MAX_ORDER = 9_999;
@@ -147,22 +149,20 @@ export async function getStoreLayout(
   storeId: string,
 ): Promise<StoreLayout | null> {
   const db = getDb();
-  const [store] = await db
-    .select()
-    .from(stores)
-    .where(eq(stores.id, storeId))
-    .limit(1);
+  const [storeRows, rows] = await db.batch([
+    db.select().from(stores).where(eq(stores.id, storeId)).limit(1),
+    db
+      .select({ aisle: aisles, section: aisleSections })
+      .from(aisles)
+      .leftJoin(aisleSections, eq(aisleSections.aisleId, aisles.id))
+      .where(eq(aisles.storeId, storeId))
+      .orderBy(asc(aisles.displayOrder), asc(aisleSections.pathOrder)),
+  ]);
+  const [store] = storeRows;
 
   if (!store) {
     return null;
   }
-
-  const rows = await db
-    .select({ aisle: aisles, section: aisleSections })
-    .from(aisles)
-    .leftJoin(aisleSections, eq(aisleSections.aisleId, aisles.id))
-    .where(eq(aisles.storeId, store.id))
-    .orderBy(asc(aisles.displayOrder), asc(aisleSections.pathOrder));
 
   const layoutAisles = new Map<string, StoreLayout["aisles"][number]>();
 
@@ -191,6 +191,87 @@ export async function getStoreLayout(
   }
 
   return { id: store.id, name: store.name, aisles: [...layoutAisles.values()] };
+}
+
+export function buildStoreRouteCopy(
+  source: StoreLayout,
+  name: string,
+): StoreLayout {
+  return {
+    id: crypto.randomUUID(),
+    name,
+    aisles: source.aisles.map((aisle) => ({
+      ...aisle,
+      id: crypto.randomUUID(),
+      sections: aisle.sections.map((section) => ({
+        ...section,
+        id: crypto.randomUUID(),
+      })),
+    })),
+  };
+}
+
+export async function copyStoreRoute(
+  sourceStoreId: string,
+  name: string,
+  userId: string,
+): Promise<StoreSummary> {
+  const source = await getStoreLayout(sourceStoreId);
+
+  if (!source) {
+    const message = "This store no longer exists. Refresh the page.";
+    throw new StoreRequestError(message, { sourceStoreId: [message] }, 404);
+  }
+
+  const copy = buildStoreRouteCopy(source, name);
+  const db = getDb();
+  const storeInsert = db.insert(stores).values({
+    id: copy.id,
+    name: copy.name,
+    createdBy: userId,
+  });
+  const currentStoreUpdate = db
+    .update(user)
+    .set({ currentStoreId: copy.id, updatedAt: new Date() })
+    .where(eq(user.id, userId));
+
+  if (copy.aisles.length === 0) {
+    await db.batch([storeInsert, currentStoreUpdate]);
+    return { id: copy.id, name: copy.name };
+  }
+
+  const aisleInsert = db.insert(aisles).values(
+    copy.aisles.map((aisle) => ({
+      id: aisle.id,
+      storeId: copy.id,
+      identifier: aisle.identifier,
+      displayName: aisle.displayName,
+      displayOrder: aisle.displayOrder,
+    })),
+  );
+  const copiedSections = copy.aisles.flatMap((aisle) =>
+    aisle.sections.map((section) => ({
+      id: section.id,
+      storeId: copy.id,
+      aisleId: aisle.id,
+      label: section.label,
+      pathOrder: section.pathOrder,
+      side: section.side,
+    })),
+  );
+
+  if (copiedSections.length === 0) {
+    await db.batch([storeInsert, aisleInsert, currentStoreUpdate]);
+  } else {
+    await db.batch([
+      storeInsert,
+      aisleInsert,
+      db.insert(aisleSections).values(copiedSections),
+      currentStoreUpdate,
+    ]);
+  }
+
+  return { id: copy.id, name: copy.name };
 }
 
 export async function replaceStoreLayout(

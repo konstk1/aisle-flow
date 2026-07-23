@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { storeLayoutSchema } from "./store-layout";
+import { buildStoreRouteCopy, storeLayoutSchema } from "./store-layout";
 
 const layout = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -121,5 +121,28 @@ describe("storeLayoutSchema", () => {
     });
 
     expect(result.success).toBe(true);
+  });
+});
+
+describe("buildStoreRouteCopy", () => {
+  it("copies route values under completely new record identifiers", () => {
+    const copy = buildStoreRouteCopy(layout, "Example Market copy");
+
+    expect(copy).toMatchObject({
+      name: "Example Market copy",
+      aisles: [
+        {
+          identifier: "1",
+          displayName: null,
+          displayOrder: 0,
+          sections: [{ label: "Produce", pathOrder: 0, side: "left" }],
+        },
+      ],
+    });
+    expect(copy.id).not.toBe(layout.id);
+    expect(copy.aisles[0].id).not.toBe(layout.aisles[0].id);
+    expect(copy.aisles[0].sections[0].id).not.toBe(
+      layout.aisles[0].sections[0].id,
+    );
   });
 });

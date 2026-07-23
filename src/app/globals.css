@@ -42,6 +42,20 @@
   --shadow-accent-glow: 0 6px 16px rgba(10, 132, 255, 0.32);
   --shadow-accent-glow-sm: 0 4px 12px rgba(10, 132, 255, 0.3);
   --shadow-popover: 0 10px 34px rgba(20, 23, 40, 0.14);
+  --animate-bot-bob: bot-bob 1.1s ease-in-out infinite;
+
+  @keyframes bot-bob {
+    0%,
+    100% {
+      transform: translateY(0) rotate(0deg);
+    }
+    25% {
+      transform: translateY(-4px) rotate(-6deg);
+    }
+    75% {
+      transform: translateY(-4px) rotate(6deg);
+    }
+  }
 }
 
 @layer base {
