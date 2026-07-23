@@ -1,20 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { copyStoreRoute, requireSessionUserId, setCurrentStore } = vi.hoisted(
-  () => ({
-    copyStoreRoute: vi.fn(),
-    requireSessionUserId: vi.fn(),
-    setCurrentStore: vi.fn(),
-  }),
-);
+const { copyStoreRoute, requireSessionUserId } = vi.hoisted(() => ({
+  copyStoreRoute: vi.fn(),
+  requireSessionUserId: vi.fn(),
+}));
 
 vi.mock("@/auth/access", () => ({ requireSessionUserId }));
 vi.mock("@/services/store-layout", () => ({ copyStoreRoute }));
-vi.mock("@/services/stores", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/services/stores")>();
-
-  return { ...actual, setCurrentStore };
-});
 
 import { POST } from "./route";
 
@@ -43,7 +35,6 @@ describe("copy store route", () => {
   beforeEach(() => {
     copyStoreRoute.mockReset();
     requireSessionUserId.mockReset();
-    setCurrentStore.mockReset();
     requireSessionUserId.mockResolvedValue("user-1");
   });
 
@@ -90,7 +81,6 @@ describe("copy store route", () => {
       copiedStore.name,
       "user-1",
     );
-    expect(setCurrentStore).toHaveBeenCalledWith("user-1", copiedStore.id);
     await expect(response.json()).resolves.toEqual({ store: copiedStore });
   });
 

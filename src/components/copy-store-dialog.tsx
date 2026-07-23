@@ -1,7 +1,7 @@
 "use client";
 
 import { Copy, X } from "lucide-react";
-import { FormEvent, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import type { StoreSummary } from "@/domain/stores";
@@ -14,17 +14,30 @@ type StoreCopyResponse = {
   fieldErrors?: Record<string, string[]>;
 };
 
-function defaultCopyName(sourceName: string) {
+export function defaultCopyName(sourceName: string) {
   const suffix = " copy";
-  return `${sourceName.slice(0, 80 - suffix.length)}${suffix}`;
+  const maxPrefixLength = 80 - suffix.length;
+  let prefix = "";
+
+  for (const character of sourceName) {
+    if (prefix.length + character.length > maxPrefixLength) {
+      break;
+    }
+
+    prefix += character;
+  }
+
+  return `${prefix}${suffix}`;
 }
 
 export function CopyStoreDialog({
+  hasUnsavedChanges,
   onCancel,
   onCopied,
   sourceStoreId,
   sourceStoreName,
 }: {
+  hasUnsavedChanges: boolean;
   onCancel: () => void;
   onCopied: (store: StoreSummary) => void;
   sourceStoreId: string;
@@ -35,16 +48,29 @@ export function CopyStoreDialog({
   const [isCopying, setIsCopying] = useState(false);
   const dialogRef = useRef<HTMLFormElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
+  const isCopyingRef = useRef(false);
+  const onCancelRef = useRef(onCancel);
+
+  useEffect(() => {
+    onCancelRef.current = onCancel;
+  }, [onCancel]);
+
+  const close = useCallback(() => {
+    if (!isCopyingRef.current) {
+      onCancelRef.current();
+    }
+  }, []);
 
   useDialogFocusTrap({
     dialogRef,
     initialFocusRef: nameRef,
-    onClose: isCopying ? () => undefined : onCancel,
+    onClose: close,
   });
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     event.stopPropagation();
+    isCopyingRef.current = true;
     setIsCopying(true);
     setError(null);
 
@@ -71,6 +97,7 @@ export function CopyStoreDialog({
         "The store could not be copied. Check your connection and try again.",
       );
     } finally {
+      isCopyingRef.current = false;
       setIsCopying(false);
     }
   }
@@ -83,8 +110,8 @@ export function CopyStoreDialog({
       onClick={(event) => {
         event.stopPropagation();
 
-        if (event.target === event.currentTarget && !isCopying) {
-          onCancel();
+        if (event.target === event.currentTarget) {
+          close();
         }
       }}
       role="dialog"
@@ -103,7 +130,7 @@ export function CopyStoreDialog({
               Copy to new store
             </h2>
             <p className="text-ink-400 mt-1 text-sm leading-6">
-              Create a separate store using the saved route from{" "}
+              Create a separate store using the saved aisles and sections from{" "}
               {sourceStoreName}. Future changes will not affect the original.
             </p>
           </div>
@@ -111,7 +138,7 @@ export function CopyStoreDialog({
             aria-label="Close copy store dialog"
             className="text-ink-350 hover:text-ink-900 inline-flex size-8 shrink-0 items-center justify-center rounded-lg transition disabled:opacity-50"
             disabled={isCopying}
-            onClick={onCancel}
+            onClick={close}
             type="button"
           >
             <X aria-hidden="true" className="size-4" />
@@ -130,8 +157,17 @@ export function CopyStoreDialog({
           />
         </label>
         <p className="text-ink-350 mt-2 text-xs leading-5">
-          Only saved route changes are copied.
+          Item locations are not copied.
         </p>
+        {hasUnsavedChanges ? (
+          <p
+            className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm leading-5 text-amber-900"
+            role="alert"
+          >
+            Unsaved route changes will not be copied and will be discarded when
+            you switch to the new store.
+          </p>
+        ) : null}
         {error ? (
           <p className="text-danger mt-2 text-sm" role="alert">
             {error}
@@ -142,7 +178,7 @@ export function CopyStoreDialog({
           <button
             className="text-ink-500 hover:text-ink-900 min-h-10 px-3 text-sm font-semibold transition disabled:opacity-50"
             disabled={isCopying}
-            onClick={onCancel}
+            onClick={close}
             type="button"
           >
             Cancel
@@ -153,7 +189,11 @@ export function CopyStoreDialog({
             type="submit"
           >
             <Copy aria-hidden="true" className="size-4" />
-            {isCopying ? "Copying…" : "Copy store"}
+            {isCopying
+              ? "Copying…"
+              : hasUnsavedChanges
+                ? "Discard & copy"
+                : "Copy store"}
           </button>
         </div>
       </form>

@@ -2,11 +2,7 @@ import { z } from "zod";
 
 import { requireSessionUserId } from "@/auth/access";
 import { copyStoreRoute } from "@/services/store-layout";
-import {
-  setCurrentStore,
-  StoreRequestError,
-  storeCopyRequestSchema,
-} from "@/services/stores";
+import { StoreRequestError, storeCopyRequestSchema } from "@/services/stores";
 
 import {
   unauthorizedResponse,
@@ -59,7 +55,6 @@ export async function POST(
       parsed.data.name,
       userId,
     );
-    await setCurrentStore(userId, store.id);
 
     return Response.json({ store });
   } catch (error) {

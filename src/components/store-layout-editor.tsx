@@ -58,6 +58,7 @@ function createId() {
 export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
   const router = useRouter();
   const [layout, setLayout] = useState<StoreLayout>(initialLayout);
+  const [savedLayout, setSavedLayout] = useState<StoreLayout>(initialLayout);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [message, setMessage] = useState<string | null>(
     initialLayout.aisles.length > 0
@@ -72,6 +73,10 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
   const [routePreviewExpanded, setRoutePreviewExpanded] = useState(false);
   const [copyDialogOpen, setCopyDialogOpen] = useState(false);
   const routeSections = useMemo(() => getRouteSections(layout), [layout]);
+  const hasUnsavedChanges = useMemo(
+    () => JSON.stringify(layout) !== JSON.stringify(savedLayout),
+    [layout, savedLayout],
+  );
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(KeyboardSensor, {
@@ -317,6 +322,7 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
       }
 
       setLayout(result.layout);
+      setSavedLayout(result.layout);
       setMessage("Route saved.");
     } catch {
       setMessage(
@@ -343,7 +349,8 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
         <div className="flex w-full shrink-0 flex-wrap justify-end gap-2 sm:w-auto">
           <button
             aria-label="Copy to new store"
-            className="text-ink-900 shadow-card-sm hover:text-accent inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-[14px] bg-white px-4 text-sm font-semibold transition sm:flex-none"
+            className="text-ink-900 shadow-card-sm hover:text-accent inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-[14px] bg-white px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none"
+            disabled={isSaving}
             onClick={() => setCopyDialogOpen(true)}
             type="button"
           >
@@ -612,6 +619,7 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
       ) : null}
       {copyDialogOpen ? (
         <CopyStoreDialog
+          hasUnsavedChanges={hasUnsavedChanges}
           onCancel={() => setCopyDialogOpen(false)}
           onCopied={() => {
             setCopyDialogOpen(false);

@@ -7,7 +7,7 @@ import type { StoreLayout } from "@/domain/store-layout";
 import type { StoreSummary } from "@/domain/stores";
 
 import { getDb } from "@/db/client";
-import { aisles, aisleSections, stores } from "@/db/schema";
+import { aisles, aisleSections, stores, user } from "@/db/schema";
 import {
   requireManageableStore,
   resolveCurrentStore,
@@ -149,22 +149,20 @@ export async function getStoreLayout(
   storeId: string,
 ): Promise<StoreLayout | null> {
   const db = getDb();
-  const [store] = await db
-    .select()
-    .from(stores)
-    .where(eq(stores.id, storeId))
-    .limit(1);
+  const [storeRows, rows] = await db.batch([
+    db.select().from(stores).where(eq(stores.id, storeId)).limit(1),
+    db
+      .select({ aisle: aisles, section: aisleSections })
+      .from(aisles)
+      .leftJoin(aisleSections, eq(aisleSections.aisleId, aisles.id))
+      .where(eq(aisles.storeId, storeId))
+      .orderBy(asc(aisles.displayOrder), asc(aisleSections.pathOrder)),
+  ]);
+  const [store] = storeRows;
 
   if (!store) {
     return null;
   }
-
-  const rows = await db
-    .select({ aisle: aisles, section: aisleSections })
-    .from(aisles)
-    .leftJoin(aisleSections, eq(aisleSections.aisleId, aisles.id))
-    .where(eq(aisles.storeId, store.id))
-    .orderBy(asc(aisles.displayOrder), asc(aisleSections.pathOrder));
 
   const layoutAisles = new Map<string, StoreLayout["aisles"][number]>();
 
@@ -232,9 +230,13 @@ export async function copyStoreRoute(
     name: copy.name,
     createdBy: userId,
   });
+  const currentStoreUpdate = db
+    .update(user)
+    .set({ currentStoreId: copy.id, updatedAt: new Date() })
+    .where(eq(user.id, userId));
 
   if (copy.aisles.length === 0) {
-    await storeInsert;
+    await db.batch([storeInsert, currentStoreUpdate]);
     return { id: copy.id, name: copy.name };
   }
 
@@ -259,12 +261,13 @@ export async function copyStoreRoute(
   );
 
   if (copiedSections.length === 0) {
-    await db.batch([storeInsert, aisleInsert]);
+    await db.batch([storeInsert, aisleInsert, currentStoreUpdate]);
   } else {
     await db.batch([
       storeInsert,
       aisleInsert,
       db.insert(aisleSections).values(copiedSections),
+      currentStoreUpdate,
     ]);
   }
 
