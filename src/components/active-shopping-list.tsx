@@ -8,11 +8,11 @@ import {
   Check,
   ChevronDown,
   Clock,
+  ListPlus,
   MapPin,
   Pencil,
   Plus,
   RotateCw,
-  Search,
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
@@ -29,6 +29,7 @@ import { formatShoppingItemTitle } from "@/domain/product-categorization";
 import { colorForKey } from "@/components/aisle-accents";
 import { useShellProgress } from "@/components/shell-progress";
 
+import { AiCategorizingOverlay } from "./ai-categorizing-overlay";
 import { LocationChangeDialog } from "./location-change-dialog";
 import { NewProductDialog } from "./new-product-dialog";
 import {
@@ -224,6 +225,7 @@ function ShoppingListView({
   const [itemText, setItemText] = useState("");
   const [addItemsMessage, setAddItemsMessage] = useState<string | null>(null);
   const [aiRecoveryAvailable, setAiRecoveryAvailable] = useState(false);
+  const [aiCategorizing, setAiCategorizing] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [fieldErrorScope, setFieldErrorScope] =
     useState<FieldErrorScope | null>(null);
@@ -412,6 +414,7 @@ function ShoppingListView({
 
   async function submitItems(categorizationMode: "ai" | "deterministic") {
     setPendingAction("add");
+    setAiCategorizing(categorizationMode === "ai");
     setAddItemsMessage(null);
     const mutation = getStableMutationForText(
       pendingAddMutation.current,
@@ -447,6 +450,7 @@ function ShoppingListView({
       setMessage("The items could not be added. Check your connection.");
     } finally {
       setPendingAction(null);
+      setAiCategorizing(false);
     }
   }
 
@@ -975,7 +979,7 @@ function ShoppingListView({
               <label className="sr-only" htmlFor="add-items">
                 Add item(s), one per line
               </label>
-              <Search
+              <ListPlus
                 aria-hidden="true"
                 className="text-ink-200 pointer-events-none absolute top-[17px] left-4 size-[18px]"
               />
@@ -996,32 +1000,47 @@ function ShoppingListView({
               <FieldError
                 messages={fieldErrorScope === "add" ? fieldErrors.text : null}
               />
-              {addItemsMessage ? (
+              {addItemsMessage && !aiRecoveryAvailable ? (
                 <span
                   className="text-ink-600 mt-1 ml-11 block text-sm"
-                  role={aiRecoveryAvailable ? "alert" : "status"}
+                  role="status"
                 >
                   {addItemsMessage}
                 </span>
               ) : null}
               {aiRecoveryAvailable ? (
-                <div className="mt-2 ml-11 flex flex-wrap gap-2">
-                  <button
-                    className="bg-ink-50 text-ink-700 hover:text-accent rounded-lg px-3 py-1.5 text-sm font-semibold transition disabled:opacity-50"
-                    disabled={pendingAction !== null}
-                    onClick={() => void submitItems("ai")}
-                    type="button"
-                  >
-                    Retry
-                  </button>
-                  <button
-                    className="bg-ink-50 text-ink-700 hover:text-accent rounded-lg px-3 py-1.5 text-sm font-semibold transition disabled:opacity-50"
-                    disabled={pendingAction !== null}
-                    onClick={() => void submitItems("deterministic")}
-                    type="button"
-                  >
-                    Add without AI
-                  </button>
+                <div
+                  className="mt-2.5 flex flex-col gap-3 rounded-[15px] border border-amber-400/25 bg-amber-50 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between"
+                  role="alert"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <AlertTriangle
+                      aria-hidden="true"
+                      className="size-4 shrink-0 text-amber-500"
+                    />
+                    <span className="text-ink-700 text-sm font-medium">
+                      {addItemsMessage}
+                    </span>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    <button
+                      className="text-accent shadow-card-sm inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-white px-3.5 text-sm font-semibold transition hover:brightness-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={pendingAction !== null}
+                      onClick={() => void submitItems("ai")}
+                      type="button"
+                    >
+                      <RotateCw aria-hidden="true" className="size-3.5" />
+                      Retry
+                    </button>
+                    <button
+                      className="text-ink-700 shadow-card-sm hover:text-accent inline-flex min-h-9 items-center gap-1.5 rounded-xl bg-white px-3.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={pendingAction !== null}
+                      onClick={() => void submitItems("deterministic")}
+                      type="button"
+                    >
+                      Add without AI
+                    </button>
+                  </div>
                 </div>
               ) : null}
             </div>
@@ -1140,6 +1159,8 @@ function ShoppingListView({
           </Link>
         </div>
       ) : null}
+
+      {aiCategorizing ? <AiCategorizingOverlay /> : null}
 
       {locationChangeConfirm ? (
         <LocationChangeDialog
