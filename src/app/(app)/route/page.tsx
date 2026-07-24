@@ -5,7 +5,7 @@ import { DataUnavailable } from "@/components/data-unavailable";
 import { StoreLayoutEditor } from "@/components/store-layout-editor";
 
 export default async function RoutePage() {
-  const { dataError, layout } = await loadStoreLayoutPageData();
+  const { canManage, dataError, layout } = await loadStoreLayoutPageData();
 
   if (dataError) {
     return <DataUnavailable eyebrow="Store route" retryHref="/route" />;
@@ -35,5 +35,11 @@ export default async function RoutePage() {
     );
   }
 
-  return <StoreLayoutEditor initialLayout={layout} key={layout.id} />;
+  return (
+    <StoreLayoutEditor
+      canManage={canManage}
+      initialLayout={layout}
+      key={layout.id}
+    />
+  );
 }

@@ -3,8 +3,8 @@
 import {
   Check,
   ChevronDown,
-  GraduationCap,
   ListChecks,
+  PackageSearch,
   Route,
   Store,
 } from "lucide-react";
@@ -15,7 +15,12 @@ import { useEffect, useRef, useState } from "react";
 const navItems = [
   { exact: true, href: "/", icon: ListChecks, label: "Shopping list" },
   { exact: false, href: "/route", icon: Route, label: "Store route" },
-  { exact: false, href: "/learned", icon: GraduationCap, label: "Learned products" },
+  {
+    exact: false,
+    href: "/products",
+    icon: PackageSearch,
+    label: "Manage products",
+  },
   { exact: false, href: "/stores", icon: Store, label: "Manage stores" },
 ] as const;
 

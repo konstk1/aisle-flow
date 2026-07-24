@@ -3,22 +3,14 @@ import "server-only";
 import type { SQL } from "drizzle-orm";
 import { z } from "zod";
 
-import type { LearnedProductsPayload } from "@/domain/learned-products";
 import { normalizeProductText } from "@/domain/product-matching";
-import {
-  formatAisleLabel,
-  formatSectionLabel,
-  type AisleSectionSide,
-  type StoreLayout,
-} from "@/domain/store-layout";
+import { type AisleSectionSide, type StoreLayout } from "@/domain/store-layout";
 
 import { getDb } from "@/db/client";
+import { ensureUserProductCatalog } from "@/db/product-catalog-seed";
 import type { Database } from "@/db/create-client";
 import { isForeignKeyError } from "@/db/errors";
 import {
-  buildLearnedAliasByIdQuery,
-  buildLearnedAliasDeleteQuery,
-  buildLearnedAliasListQuery,
   buildManualProductAliasCorrectionQuery,
   buildManualProductLocationCorrectionQuery,
   buildProductConceptByIdQuery,
@@ -101,14 +93,6 @@ export type ProductCorrectionRequest = z.output<
   typeof productCorrectionRequestSchema
 >;
 
-export const learnedProductUpdateRequestSchema = z
-  .object(correctionProductFields)
-  .superRefine(requireExactlyOneProduct);
-
-export type LearnedProductUpdateRequest = z.output<
-  typeof learnedProductUpdateRequestSchema
->;
-
 export interface ProductCorrectionProductConcept {
   id: string;
   canonicalName: string;
@@ -173,9 +157,11 @@ export async function getProductCorrectionOptions(
   userId: string,
 ): Promise<ProductCorrectionOptions> {
   const db = getDb();
+  await ensureUserProductCatalog(db, userId);
   const layout = await getCurrentStoreLayout(userId);
   const conceptRows = await buildProductConceptListQuery(
     db,
+    userId,
     layout?.id ?? null,
   );
 
@@ -219,6 +205,7 @@ export async function applyProductCorrection(
   }
 
   const db = getDb();
+  await ensureUserProductCatalog(db, userId);
   const normalizedText = normalizeProductText(input.rawText);
   const now = new Date();
   const [activeList] = await buildActiveShoppingListQuery(db, userId);
@@ -240,6 +227,7 @@ export async function applyProductCorrection(
     if (input.productConceptId) {
       productConcept = await getExistingProductConcept(
         db,
+        userId,
         input.productConceptId,
       );
       productConceptId = productConcept.id;
@@ -251,8 +239,12 @@ export async function applyProductCorrection(
       }
 
       const normalizedName = normalizeProductText(canonicalName);
-      productConceptId = productConceptIdByNormalizedName(normalizedName);
+      productConceptId = productConceptIdByNormalizedName(
+        userId,
+        normalizedName,
+      );
       conceptQuery = buildProductConceptCreateQuery(db, {
+        userId,
         canonicalName,
         normalizedName,
       });
@@ -261,10 +253,12 @@ export async function applyProductCorrection(
     const aliasQuery = buildManualProductAliasCorrectionQuery(db, {
       userId,
       productConceptId,
+      displayText: input.rawText.trim(),
       normalizedText,
       now,
     });
     const locationQuery = buildManualProductLocationCorrectionQuery(db, {
+      userId,
       storeId: layout.id,
       productConceptId,
       aisleSectionId: aisleSection.id,
@@ -343,88 +337,14 @@ export async function applyProductCorrection(
   };
 }
 
-export async function getLearnedProducts(
-  userId: string,
-): Promise<LearnedProductsPayload> {
-  const layout = await getCurrentStoreLayout(userId);
-
-  const db = getDb();
-  // Aliases are the user's vocabulary and outlive any store; only the location
-  // columns are store-specific, so they empty out without a layout.
-  const aliasRows = await buildLearnedAliasListQuery(
-    db,
-    userId,
-    layout?.id ?? null,
-  );
-
-  return {
-    store: layout ? { id: layout.id, name: layout.name } : null,
-    learnedProducts: aliasRows.map((row) => ({
-      aliasId: row.alias.id,
-      normalizedText: row.alias.normalizedText,
-      updatedAt: row.alias.updatedAt.toISOString(),
-      productConcept: toProductConceptPayload(row.productConcept),
-      aisleSectionId: row.location?.aisleSectionId ?? null,
-      locationLabel:
-        row.aisle && row.aisleSection
-          ? `${formatAisleLabel(row.aisle)} · ${formatSectionLabel(row.aisleSection)}`
-          : null,
-    })),
-  };
-}
-
-export async function updateLearnedProduct(
-  userId: string,
-  aliasId: string,
-  input: LearnedProductUpdateRequest,
-): Promise<LearnedProductsPayload> {
-  const db = getDb();
-  // Scoped to the user, so another user's alias id reads as missing (404)
-  // rather than leaking across accounts.
-  const [alias] = await buildLearnedAliasByIdQuery(db, userId, aliasId);
-
-  if (!alias) {
-    throw missingLearnedProductError();
-  }
-
-  await applyProductCorrection(userId, {
-    rawText: alias.normalizedText,
-    productConceptId: input.productConceptId,
-    canonicalName: input.canonicalName,
-    aisleSectionId: input.aisleSectionId,
-  });
-
-  return getLearnedProducts(userId);
-}
-
-export async function deleteLearnedProduct(
-  userId: string,
-  aliasId: string,
-): Promise<LearnedProductsPayload> {
-  const db = getDb();
-  const [alias] = await buildLearnedAliasByIdQuery(db, userId, aliasId);
-
-  if (!alias) {
-    throw missingLearnedProductError();
-  }
-
-  await buildLearnedAliasDeleteQuery(db, userId, alias.id);
-
-  return getLearnedProducts(userId);
-}
-
-function missingLearnedProductError() {
-  const message = "This learned product no longer exists. Refresh the page.";
-
-  return new ProductCorrectionRequestError(message, { form: [message] }, 404);
-}
-
 async function getExistingProductConcept(
   db: Database,
+  userId: string,
   productConceptId: string,
 ) {
   const [productConcept] = await buildProductConceptByIdQuery(
     db,
+    userId,
     productConceptId,
   );
 

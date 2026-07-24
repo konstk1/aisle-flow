@@ -60,7 +60,11 @@ Matching must prefer longer or more specific phrases and support exclusions so a
 
 When an item cannot be matched confidently, the app creates or selects a canonical shelf category and asks the user to assign its aisle section. The correction is persisted as an exact learned alias. For example, assigning `wild rice` to `rice` records `wild rice` -> `rice` for future lists.
 
-Manual corrections always take precedence. A correction writes two records with different owners: the learned alias belongs to the correcting user (personal vocabulary that follows the user across stores), while the category location belongs to the store. Matching prefers the user's own alias over global catalog aliases. Semantic embeddings and vector search are deferred from the MVP.
+Manual corrections always take precedence. Product concepts and aliases belong
+to the correcting user, while product locations belong to that user within a
+store. Personal vocabulary follows the user across stores, and users of the
+same store can choose different product granularity and locations. Semantic
+embeddings and vector search are deferred from the MVP.
 
 Submitted batches use a pinned OpenAI model through the Vercel AI SDK. The
 model separates optional free-text quantity from the displayed item name,
@@ -111,15 +115,23 @@ Aisle reference, one absolute path order, informational side, and label.
 
 ### `product_concepts`
 
-Canonical shelf-category name and matching metadata.
+Personal canonical product name, stable standard-seed identity when applicable,
+matching metadata, ownership, and soft-deletion state. Each user's catalog is
+initialized from the code-owned standard catalog without overwriting personal
+renames or restoring deleted products.
 
 ### `product_aliases`
 
-Normalized phrase, canonical product reference, scope, confidence, and correction metadata. Scope is `global` (seeded catalog vocabulary, no owner) or `user` (learned corrections owned by the user who made them). Aliases are store-independent: they follow the user across stores and survive store deletion; only `product_locations` are store-scoped.
+Display and normalized phrase, personal product reference, standard-seed
+identity when applicable, confidence, correction metadata, ownership, and
+soft-deletion state. Standard aliases are personal seeded copies; learned
+aliases remain personal vocabulary. Aliases follow the user across stores and
+survive store deletion.
 
 ### `product_locations`
 
-Store, canonical shelf category, aisle section, optional position within the section, confidence, and source.
+User, store, personal product, aisle section, optional position within the
+section, confidence, and source.
 
 ### `shopping_lists`
 

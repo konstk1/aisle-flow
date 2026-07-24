@@ -1,16 +1,11 @@
-import { and, asc, desc, eq, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, isNull, sql, type SQL } from "drizzle-orm";
 
 import type { Database } from "../create-client";
-import {
-  aisles,
-  aisleSections,
-  productAliases,
-  productConcepts,
-  productLocations,
-} from "../schema";
+import { productAliases, productConcepts, productLocations } from "../schema";
 import { productLocationStoreFilter } from "./shopping-lists";
 
 export interface ProductConceptCreateInput {
+  userId: string;
   canonicalName: string;
   normalizedName: string;
 }
@@ -18,12 +13,14 @@ export interface ProductConceptCreateInput {
 export interface ManualProductAliasCorrectionInput {
   userId: string;
   productConceptId: string | SQL;
+  displayText: string;
   normalizedText: string;
   confidence?: number;
   now?: Date;
 }
 
 export interface ManualProductLocationCorrectionInput {
+  userId: string;
   storeId: string;
   productConceptId: string | SQL;
   aisleSectionId: string;
@@ -34,6 +31,7 @@ export interface ManualProductLocationCorrectionInput {
 
 export function buildProductConceptListQuery(
   db: Database,
+  userId: string,
   storeId: string | null,
 ) {
   return db
@@ -46,7 +44,14 @@ export function buildProductConceptListQuery(
       productLocations,
       and(
         eq(productLocations.productConceptId, productConcepts.id),
+        eq(productLocations.userId, userId),
         productLocationStoreFilter(storeId),
+      ),
+    )
+    .where(
+      and(
+        eq(productConcepts.userId, userId),
+        isNull(productConcepts.deletedAt),
       ),
     )
     .orderBy(asc(productConcepts.normalizedName));
@@ -54,12 +59,19 @@ export function buildProductConceptListQuery(
 
 export function buildProductConceptByIdQuery(
   db: Database,
+  userId: string,
   productConceptId: string,
 ) {
   return db
     .select()
     .from(productConcepts)
-    .where(eq(productConcepts.id, productConceptId))
+    .where(
+      and(
+        eq(productConcepts.id, productConceptId),
+        eq(productConcepts.userId, userId),
+        isNull(productConcepts.deletedAt),
+      ),
+    )
     .limit(1);
 }
 
@@ -70,12 +82,14 @@ export function buildProductConceptCreateQuery(
   return db
     .insert(productConcepts)
     .values({
+      userId: input.userId,
       canonicalName: input.canonicalName,
       normalizedName: input.normalizedName,
       excludedTerms: [],
     })
     .onConflictDoUpdate({
-      target: productConcepts.normalizedName,
+      target: [productConcepts.userId, productConcepts.normalizedName],
+      targetWhere: isNull(productConcepts.deletedAt),
       set: {
         canonicalName: sql`${productConcepts.canonicalName}`,
       },
@@ -84,9 +98,14 @@ export function buildProductConceptCreateQuery(
 }
 
 export function productConceptIdByNormalizedName(
+  userId: string,
   normalizedName: string,
 ): SQL<string> {
-  return sql`(select ${productConcepts.id} from ${productConcepts} where ${productConcepts.normalizedName} = ${normalizedName} limit 1)`;
+  return sql`(select ${productConcepts.id} from ${productConcepts} where ${and(
+    eq(productConcepts.userId, userId),
+    eq(productConcepts.normalizedName, normalizedName),
+    isNull(productConcepts.deletedAt),
+  )} limit 1)`;
 }
 
 export function buildManualProductAliasCorrectionQuery(
@@ -100,6 +119,7 @@ export function buildManualProductAliasCorrectionQuery(
     .values({
       userId: input.userId,
       productConceptId: input.productConceptId,
+      displayText: input.displayText,
       normalizedText: input.normalizedText,
       scope: "user",
       confidence: input.confidence ?? 1,
@@ -109,103 +129,18 @@ export function buildManualProductAliasCorrectionQuery(
     })
     .onConflictDoUpdate({
       target: [productAliases.userId, productAliases.normalizedText],
-      targetWhere: sql`${productAliases.scope} = 'user'`,
+      targetWhere: isNull(productAliases.deletedAt),
       // Re-correcting an exact phrase is intentionally last-writer-wins for the
       // MVP; product_aliases has no version column yet.
       set: {
         productConceptId: sql.raw("excluded.product_concept_id"),
+        displayText: sql.raw("excluded.display_text"),
         confidence: sql.raw("excluded.confidence"),
         source: sql.raw("excluded.source"),
         isCorrection: sql.raw("excluded.is_correction"),
         updatedAt: now,
       },
     })
-    .returning();
-}
-
-// Aliases are the user's vocabulary across stores; the location column is
-// resolved against the given store, so it can be absent per row (or entirely
-// when the user has no store).
-export function buildLearnedAliasListQuery(
-  db: Database,
-  userId: string,
-  storeId: string | null,
-) {
-  return db
-    .select({
-      alias: productAliases,
-      productConcept: productConcepts,
-      location: productLocations,
-      aisleSection: aisleSections,
-      aisle: aisles,
-    })
-    .from(productAliases)
-    .innerJoin(
-      productConcepts,
-      eq(productAliases.productConceptId, productConcepts.id),
-    )
-    .leftJoin(
-      productLocations,
-      and(
-        productLocationStoreFilter(storeId),
-        eq(productLocations.productConceptId, productConcepts.id),
-      ),
-    )
-    .leftJoin(
-      aisleSections,
-      eq(productLocations.aisleSectionId, aisleSections.id),
-    )
-    .leftJoin(aisles, eq(aisleSections.aisleId, aisles.id))
-    .where(
-      and(
-        eq(productAliases.userId, userId),
-        eq(productAliases.source, "learned"),
-        eq(productAliases.isCorrection, true),
-      ),
-    )
-    .orderBy(
-      desc(productAliases.updatedAt),
-      asc(productAliases.normalizedText),
-    );
-}
-
-// Scoped to the owning user so callers cannot read another user's alias by id.
-export function buildLearnedAliasByIdQuery(
-  db: Database,
-  userId: string,
-  aliasId: string,
-) {
-  return db
-    .select()
-    .from(productAliases)
-    .where(
-      and(
-        eq(productAliases.id, aliasId),
-        eq(productAliases.userId, userId),
-        eq(productAliases.source, "learned"),
-        eq(productAliases.isCorrection, true),
-      ),
-    )
-    .limit(1);
-}
-
-// Scoped to the owning user so ownership is enforced in the query, not just by
-// the caller fetching via buildLearnedAliasByIdQuery first.
-export function buildLearnedAliasDeleteQuery(
-  db: Database,
-  userId: string,
-  aliasId: string,
-) {
-  return db
-    .delete(productAliases)
-    .where(
-      and(
-        eq(productAliases.id, aliasId),
-        eq(productAliases.userId, userId),
-        eq(productAliases.source, "learned"),
-        eq(productAliases.isCorrection, true),
-      ),
-    )
     .returning();
 }
 
@@ -218,6 +153,7 @@ export function buildManualProductLocationCorrectionQuery(
   return db
     .insert(productLocations)
     .values({
+      userId: input.userId,
       storeId: input.storeId,
       productConceptId: input.productConceptId,
       aisleSectionId: input.aisleSectionId,
@@ -227,7 +163,11 @@ export function buildManualProductLocationCorrectionQuery(
       updatedAt: now,
     })
     .onConflictDoUpdate({
-      target: [productLocations.storeId, productLocations.productConceptId],
+      target: [
+        productLocations.userId,
+        productLocations.storeId,
+        productLocations.productConceptId,
+      ],
       set: {
         aisleSectionId: sql.raw("excluded.aisle_section_id"),
         confidence: sql.raw("excluded.confidence"),

@@ -4,6 +4,16 @@ import {
   type ProductQualifierRule,
 } from "@/domain/product-matching";
 
+export const PRODUCT_CATALOG_SEED_VERSION = 1;
+
+export function productConceptSeedKey(canonicalName: string) {
+  return normalizeProductText(canonicalName);
+}
+
+export function productAliasSeedKey(productSeedKey: string, aliasText: string) {
+  return `${productSeedKey}:${normalizeProductText(aliasText)}`;
+}
+
 export interface CuratedProductConceptDefinition {
   canonicalName: string;
   terms: readonly string[];
@@ -212,11 +222,38 @@ export function resolveCuratedProductTerms(
 }
 
 export function resolveCuratedQualifierRules(
-  concepts: readonly { id: string; normalizedName: string }[],
+  concepts: readonly {
+    id: string;
+    normalizedName: string;
+    seedKey?: string | null;
+  }[],
+  seededAliases?: readonly {
+    seedKey: string | null;
+    displayText: string;
+    productConceptId?: string;
+  }[],
 ) {
   const conceptIdsByName = new Map(
-    concepts.map((concept) => [concept.normalizedName, concept.id]),
+    concepts.map((concept) => [
+      concept.seedKey ?? concept.normalizedName,
+      concept.id,
+    ]),
   );
+  const produceProductConceptId = conceptIdsByName.get(
+    productConceptSeedKey(produceConcept.canonicalName),
+  );
+  const aliasTextBySeedKey = seededAliases
+    ? new Map(
+        seededAliases.flatMap((alias) =>
+          alias.seedKey &&
+          (!alias.productConceptId ||
+            alias.productConceptId === produceProductConceptId)
+            ? [[alias.seedKey, alias.displayText]]
+            : [],
+        ),
+      )
+    : null;
+  const produceSeedKey = productConceptSeedKey(produceConcept.canonicalName);
 
   return curatedQualifierRules.flatMap((rule) => {
     const productConceptId = conceptIdsByName.get(
@@ -230,7 +267,14 @@ export function resolveCuratedQualifierRules(
     return [
       {
         qualifier: rule.qualifier,
-        productTerms: rule.productTerms,
+        productTerms: aliasTextBySeedKey
+          ? rule.productTerms.flatMap((term) => {
+              const aliasText = aliasTextBySeedKey.get(
+                productAliasSeedKey(produceSeedKey, term),
+              );
+              return aliasText ? [aliasText] : [];
+            })
+          : rule.productTerms,
         productConceptId,
       } satisfies ProductQualifierRule,
     ];

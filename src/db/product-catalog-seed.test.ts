@@ -3,28 +3,44 @@ import { describe, expect, it } from "vitest";
 import { curatedProductConcepts } from "@/services/product-catalog";
 
 import { createDatabase } from "./create-client";
-import { buildCuratedProductConceptSeedQuery } from "./product-catalog-seed";
+import {
+  buildCuratedProductAliasSeedQuery,
+  buildCuratedProductConceptSeedQuery,
+} from "./product-catalog-seed";
 
 const database = createDatabase(
   "postgresql://user:password@localhost:5432/aisle_flow",
 );
+const userId = "user-a";
 
-describe("curated product catalog seed queries", () => {
-  it("updates product concept metadata when the curated seed is rerun", () => {
-    const { sql: query } =
-      buildCuratedProductConceptSeedQuery(database).toSQL();
+describe("personal product catalog seed queries", () => {
+  it("inserts the complete code-owned catalog without overwriting personal changes", () => {
+    const { sql: query, params } = buildCuratedProductConceptSeedQuery(
+      database,
+      userId,
+    ).toSQL();
 
-    expect(query).toContain('on conflict ("normalized_name") do update set');
-    expect(query).toContain('"canonical_name" = excluded.canonical_name');
-    expect(query).toContain('"excluded_terms" = excluded.excluded_terms');
+    expect(query).toContain('insert into "product_concepts"');
+    expect(query).toContain("on conflict do nothing");
+    expect(params.filter((param) => param === userId)).toHaveLength(
+      curatedProductConcepts.length,
+    );
   });
 
-  it("contains the complete code-owned catalog and no alias writes", () => {
-    const { sql: query, params } =
-      buildCuratedProductConceptSeedQuery(database).toSQL();
+  it("materializes curated terms as user-owned seeded aliases", () => {
+    const { sql: query, params } = buildCuratedProductAliasSeedQuery(
+      database,
+      userId,
+    ).toSQL();
+    const termCount = curatedProductConcepts.reduce(
+      (total, concept) => total + concept.terms.length,
+      0,
+    );
 
-    expect(params).toHaveLength(curatedProductConcepts.length * 3 + 1);
-    expect(query).toContain('insert into "product_concepts"');
-    expect(query).not.toContain("product_aliases");
+    expect(query).toContain('insert into "product_aliases"');
+    expect(query).toContain("on conflict do nothing");
+    expect(
+      params.filter((param) => param === userId).length,
+    ).toBeGreaterThanOrEqual(termCount);
   });
 });

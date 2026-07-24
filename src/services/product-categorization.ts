@@ -89,7 +89,7 @@ export async function categorizeSubmittedProducts({
     ...new Set(items.map((item) => normalizeProductText(item.submittedText))),
   ];
   const [concepts, aliasRows] = await Promise.all([
-    loadProductConceptCatalog(db),
+    loadProductConceptCatalog(db, userId),
     normalizedTexts.length > 0
       ? buildExactProductAliasesLookupQuery(db, userId, normalizedTexts)
       : Promise.resolve([]),
