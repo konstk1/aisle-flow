@@ -1,5 +1,5 @@
 import type { ActiveShoppingListPayload } from "@/domain/active-shopping-list";
-import type { LearnedProductsPayload } from "@/domain/learned-products";
+import type { ManageProductsPayload } from "@/domain/manage-products";
 import type { StoreLayout } from "@/domain/store-layout";
 import { requirePageSession } from "@/auth/access";
 import {
@@ -8,8 +8,9 @@ import {
   getSnoozedShoppingListForStore,
   type CurrentStoreInput,
 } from "@/services/active-shopping-list";
-import { getLearnedProducts } from "@/services/product-corrections";
+import { getManageProducts } from "@/services/manage-products";
 import { getCurrentStoreLayout } from "@/services/store-layout";
+import { canManageStore } from "@/services/stores";
 
 import { withDataTimeout } from "./data-timeout";
 
@@ -88,29 +89,45 @@ async function loadShoppingItemsPageData<Key extends ShoppingListPageDataKey>({
   }
 }
 
-export async function loadLearnedProductsPageData(): Promise<{
+export async function loadManageProductsPageData(): Promise<{
   dataError: boolean;
-  learnedProducts: LearnedProductsPayload | null;
+  manageProducts: ManageProductsPayload | null;
 }> {
   const userId = await requirePageSession();
 
   try {
-    const learnedProducts = await withDataTimeout(
-      getLearnedProducts(userId),
+    const manageProducts = await withDataTimeout(
+      getManageProducts(userId),
       PAGE_DATA_TIMEOUT_MS,
     );
 
-    return { dataError: false, learnedProducts };
+    return { dataError: false, manageProducts };
   } catch (error) {
-    console.error("Learned products data could not be loaded.", error);
-    return { dataError: true, learnedProducts: null };
+    console.error("Manage products data could not be loaded.", error);
+    return { dataError: true, manageProducts: null };
   }
 }
 
 export async function loadStoreLayoutPageData(pageName = "Store route") {
   const userId = await requirePageSession();
 
-  return loadStoreLayoutData(userId, pageName);
+  try {
+    const layout = await withDataTimeout(
+      getCurrentStoreLayout(userId),
+      PAGE_DATA_TIMEOUT_MS,
+    );
+    const canManage = layout
+      ? await withDataTimeout(
+          canManageStore(layout.id, userId),
+          PAGE_DATA_TIMEOUT_MS,
+        )
+      : false;
+
+    return { canManage, dataError: false, layout };
+  } catch (error) {
+    console.error(`${pageName} data could not be loaded.`, error);
+    return { canManage: false, dataError: true, layout: null };
+  }
 }
 
 async function loadStoreLayoutData(userId: string, pageName: string) {

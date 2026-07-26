@@ -42,4 +42,30 @@ describe("migration journal", () => {
       expect(entry.when).toBeGreaterThan(entries[index - 1]!.when);
     }
   });
+
+  it("keeps the personal-catalog migration forward-only and data preserving", () => {
+    const path = fileURLToPath(
+      new URL("../../drizzle/0001_jittery_dust.sql", import.meta.url),
+    );
+    const migration = readFileSync(path, "utf8");
+
+    expect(migration).toContain(
+      'CREATE TABLE "_issue_41_product_concept_user_map"',
+    );
+    expect(migration).toContain(
+      'UPDATE "shopping_items"\nSET "product_concept_id"',
+    );
+    expect(migration).toContain(
+      'INSERT INTO "product_locations" (\n  "id", "user_id"',
+    );
+    expect(migration).toContain(
+      '"seed_key" = CASE\n    WHEN "product_aliases"."source" = \'curated\'',
+    );
+    expect(migration).toContain(
+      'DROP TABLE "_issue_41_product_concept_user_map"',
+    );
+    expect(migration).not.toContain(
+      'ALTER TABLE "product_concepts" DROP COLUMN',
+    );
+  });
 });

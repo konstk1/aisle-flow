@@ -68,6 +68,9 @@ export const user = pgTable(
     currentStoreId: uuid("current_store_id").references(() => stores.id, {
       onDelete: "set null",
     }),
+    productCatalogSeedVersion: integer("product_catalog_seed_version")
+      .default(0)
+      .notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -79,6 +82,10 @@ export const user = pgTable(
     unique("user_email_unique").on(table.email),
     check("user_name_not_blank", sql`length(btrim(${table.name})) > 0`),
     check("user_email_not_blank", sql`length(btrim(${table.email})) > 0`),
+    check(
+      "user_product_catalog_seed_version_non_negative",
+      sql`${table.productCatalogSeedVersion} >= 0`,
+    ),
   ],
 );
 
@@ -277,10 +284,15 @@ export const productConcepts = pgTable(
   "product_concepts",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    seedKey: text("seed_key"),
     canonicalName: text("canonical_name").notNull(),
     normalizedName: text("normalized_name").notNull(),
     excludedTerms: text("excluded_terms").array().notNull().default([]),
     version: integer("version").default(1).notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -289,7 +301,13 @@ export const productConcepts = pgTable(
       .notNull(),
   },
   (table) => [
-    unique("product_concepts_normalized_name_unique").on(table.normalizedName),
+    unique("product_concepts_user_id_id_unique").on(table.userId, table.id),
+    uniqueIndex("product_concepts_user_seed_key_unique")
+      .on(table.userId, table.seedKey)
+      .where(sql`${table.seedKey} IS NOT NULL`),
+    uniqueIndex("product_concepts_user_active_normalized_name_unique")
+      .on(table.userId, table.normalizedName)
+      .where(sql`${table.deletedAt} IS NULL`),
     check(
       "product_concepts_canonical_name_not_blank",
       sql`length(btrim(${table.canonicalName})) > 0`,
@@ -297,6 +315,10 @@ export const productConcepts = pgTable(
     check(
       "product_concepts_normalized_name_not_blank",
       sql`length(btrim(${table.normalizedName})) > 0`,
+    ),
+    check(
+      "product_concepts_seed_key_not_blank",
+      sql`${table.seedKey} IS NULL OR length(btrim(${table.seedKey})) > 0`,
     ),
     check("product_concepts_version_positive", sql`${table.version} > 0`),
   ],
@@ -306,19 +328,18 @@ export const productAliases = pgTable(
   "product_aliases",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    productConceptId: uuid("product_concept_id")
-      .notNull()
-      .references(() => productConcepts.id, { onDelete: "restrict" }),
+    productConceptId: uuid("product_concept_id").notNull(),
     // An alias is personal vocabulary, so learned entries follow the user
     // across stores; only locations stay store-scoped.
-    userId: text("user_id").references(() => user.id, {
-      onDelete: "cascade",
-    }),
+    userId: text("user_id").notNull(),
+    seedKey: text("seed_key"),
+    displayText: text("display_text").notNull(),
     normalizedText: text("normalized_text").notNull(),
-    scope: productAliasScope("scope").notNull(),
+    scope: productAliasScope("scope").default("user").notNull(),
     confidence: real("confidence").default(1).notNull(),
     source: productAliasSource("source").default("curated").notNull(),
     isCorrection: boolean("is_correction").default(false).notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -327,23 +348,36 @@ export const productAliases = pgTable(
       .notNull(),
   },
   (table) => [
-    uniqueIndex("product_aliases_global_normalized_text_unique")
-      .on(table.normalizedText)
-      .where(sql`${table.scope} = 'global'`),
-    uniqueIndex("product_aliases_user_normalized_text_unique")
+    uniqueIndex("product_aliases_user_seed_key_unique")
+      .on(table.userId, table.seedKey)
+      .where(sql`${table.seedKey} IS NOT NULL`),
+    uniqueIndex("product_aliases_user_active_normalized_text_unique")
       .on(table.userId, table.normalizedText)
-      .where(sql`${table.scope} = 'user'`),
+      .where(sql`${table.deletedAt} IS NULL`),
     index("product_aliases_lookup_index").on(
       table.normalizedText,
       table.userId,
     ),
+    foreignKey({
+      name: "product_aliases_user_product_concept_foreign_key",
+      columns: [table.userId, table.productConceptId],
+      foreignColumns: [productConcepts.userId, productConcepts.id],
+    }).onDelete("cascade"),
     check(
       "product_aliases_scope_user_consistency",
-      sql`(${table.scope} = 'global' AND ${table.userId} IS NULL) OR (${table.scope} = 'user' AND ${table.userId} IS NOT NULL)`,
+      sql`${table.scope} = 'user'`,
+    ),
+    check(
+      "product_aliases_display_text_not_blank",
+      sql`length(btrim(${table.displayText})) > 0`,
     ),
     check(
       "product_aliases_normalized_text_not_blank",
       sql`length(btrim(${table.normalizedText})) > 0`,
+    ),
+    check(
+      "product_aliases_seed_key_not_blank",
+      sql`${table.seedKey} IS NULL OR length(btrim(${table.seedKey})) > 0`,
     ),
     check(
       "product_aliases_confidence_in_range",
@@ -356,12 +390,11 @@ export const productLocations = pgTable(
   "product_locations",
   {
     id: uuid("id").defaultRandom().primaryKey(),
+    userId: text("user_id").notNull(),
     storeId: uuid("store_id")
       .notNull()
       .references(() => stores.id, { onDelete: "cascade" }),
-    productConceptId: uuid("product_concept_id")
-      .notNull()
-      .references(() => productConcepts.id, { onDelete: "restrict" }),
+    productConceptId: uuid("product_concept_id").notNull(),
     aisleSectionId: uuid("aisle_section_id").notNull(),
     positionWithinSection: integer("position_within_section"),
     confidence: real("confidence").default(1).notNull(),
@@ -375,8 +408,13 @@ export const productLocations = pgTable(
       .notNull(),
   },
   (table) => [
-    unique("product_locations_store_id_id_unique").on(table.storeId, table.id),
-    unique("product_locations_store_product_concept_unique").on(
+    unique("product_locations_user_store_id_id_unique").on(
+      table.userId,
+      table.storeId,
+      table.id,
+    ),
+    unique("product_locations_user_store_product_concept_unique").on(
+      table.userId,
       table.storeId,
       table.productConceptId,
     ),
@@ -384,6 +422,11 @@ export const productLocations = pgTable(
       table.aisleSectionId,
       table.positionWithinSection,
     ),
+    foreignKey({
+      name: "product_locations_user_product_concept_foreign_key",
+      columns: [table.userId, table.productConceptId],
+      foreignColumns: [productConcepts.userId, productConcepts.id],
+    }).onDelete("cascade"),
     foreignKey({
       name: "product_locations_store_section_foreign_key",
       columns: [table.storeId, table.aisleSectionId],

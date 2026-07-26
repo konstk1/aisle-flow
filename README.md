@@ -62,7 +62,7 @@ migrations run. Validation reports only invalid variable names, never values.
 | `pnpm test`                    | Run the Vitest unit tests.                                                |
 | `pnpm db:generate`             | Generate a new Drizzle SQL migration after changing the schema.           |
 | `pnpm db:migrate`              | Apply committed migrations to Neon.                                       |
-| `pnpm db:seed-product-catalog` | Upsert the code-owned product concepts; it does not seed aliases.         |
+| `pnpm db:seed-product-catalog` | Add missing standard products and aliases to each personal catalog.      |
 | `pnpm eval:llm`                | Compare the hard-coded shopping list across the hard-coded OpenAI models. |
 
 The categorization evaluation reads the current product-concept catalog from
@@ -91,10 +91,10 @@ For production, restore a verified Neon backup or deploy a separate, reviewed
 forward migration that restores the intended schema and data.
 
 The schema keeps route/layout data store-scoped, supports one active list per
-user/store, and prevents aliases from conflicting within either global or
-store-specific scope. The query layer returns only the signed-in user's list,
-product, and location data; source connection credentials and protected
-metadata remain server-side.
+user/store, and prevents products or aliases from conflicting within a user's
+active personal catalog. The query layer returns only the signed-in user's
+list, product, alias, and location data; source connection credentials and
+protected metadata remain server-side.
 
 See [the development store fixture](docs/development-store-fixture.md) for a
 small manually-created layout suitable for local or preview testing. It is

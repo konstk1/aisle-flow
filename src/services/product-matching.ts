@@ -1,5 +1,7 @@
 import "server-only";
 
+import { and, eq, isNull } from "drizzle-orm";
+
 import {
   normalizeProductText,
   prepareProductMatchingCatalog,
@@ -10,16 +12,14 @@ import {
 
 import { getDb } from "@/db/client";
 import type { Database } from "@/db/create-client";
+import { ensureUserProductCatalog } from "@/db/product-catalog-seed";
 import {
   findExactProductAlias,
   findProductLocation,
 } from "@/db/repositories/shopping-lists";
-import { productConcepts } from "@/db/schema";
+import { productAliases, productConcepts } from "@/db/schema";
 
-import {
-  resolveCuratedProductTerms,
-  resolveCuratedQualifierRules,
-} from "./product-catalog";
+import { resolveCuratedQualifierRules } from "./product-catalog";
 
 export interface ResolvedProductLocation {
   id: string;
@@ -50,7 +50,8 @@ export async function createStoreProductMatcher({
   userId: string;
   storeId: string | null;
 }): Promise<StoreProductMatcher> {
-  const catalog = await loadProductMatchingCatalog(db);
+  await ensureUserProductCatalog(db, userId);
+  const catalog = await loadProductMatchingCatalog(db, userId);
 
   return async (text) => {
     const learnedAlias = await findExactProductAlias(
@@ -65,6 +66,7 @@ export async function createStoreProductMatcher({
       learnedAlias,
       storeId,
       text,
+      userId,
     });
   };
 }
@@ -75,12 +77,14 @@ async function resolveProductMatchWithCatalog({
   learnedAlias,
   storeId,
   text,
+  userId,
 }: {
   catalog: PreparedProductMatchingCatalog;
   db: Database;
   learnedAlias: Awaited<ReturnType<typeof findExactProductAlias>>;
   storeId: string | null;
   text: string;
+  userId: string;
 }): Promise<StoreProductMatchResult> {
   const result = resolveProductMatch({
     text,
@@ -99,7 +103,7 @@ async function resolveProductMatchWithCatalog({
   }
 
   const match = storeId
-    ? await findProductLocation(db, storeId, result.productConcept.id)
+    ? await findProductLocation(db, userId, storeId, result.productConcept.id)
     : null;
 
   return {
@@ -118,12 +122,36 @@ async function resolveProductMatchWithCatalog({
 
 async function loadProductMatchingCatalog(
   db: Database,
+  userId: string,
 ): Promise<PreparedProductMatchingCatalog> {
-  const concepts = await db.select().from(productConcepts);
+  const [concepts, aliases] = await Promise.all([
+    db
+      .select()
+      .from(productConcepts)
+      .where(
+        and(
+          eq(productConcepts.userId, userId),
+          isNull(productConcepts.deletedAt),
+        ),
+      ),
+    db
+      .select()
+      .from(productAliases)
+      .where(
+        and(
+          eq(productAliases.userId, userId),
+          eq(productAliases.source, "curated"),
+          isNull(productAliases.deletedAt),
+        ),
+      ),
+  ]);
 
   return prepareProductMatchingCatalog({
     concepts,
-    curatedTerms: resolveCuratedProductTerms(concepts),
-    qualifierRules: resolveCuratedQualifierRules(concepts),
+    curatedTerms: aliases.map((alias) => ({
+      productConceptId: alias.productConceptId,
+      text: alias.displayText,
+    })),
+    qualifierRules: resolveCuratedQualifierRules(concepts, aliases),
   });
 }

@@ -1,6 +1,7 @@
 import { loadEnvConfig } from "@next/env";
 
 import { createDatabase } from "@/db/create-client";
+import { user } from "@/db/schema";
 import { parseDatabaseUrl, getValidatedOpenAiEnv } from "@/env/schema";
 import {
   EVALUATION_ITEMS,
@@ -16,7 +17,15 @@ async function run() {
   const databaseUrl = parseDatabaseUrl(process.env.DATABASE_URL);
   const { OPENAI_API_KEY } = getValidatedOpenAiEnv(process.env);
   const db = createDatabase(databaseUrl);
-  const concepts = await loadProductConceptCatalog(db);
+  const [evaluationUser] = await db.select({ id: user.id }).from(user).limit(1);
+
+  if (!evaluationUser) {
+    throw new Error(
+      "Create a user before running the categorization evaluation.",
+    );
+  }
+
+  const concepts = await loadProductConceptCatalog(db, evaluationUser.id);
   const evaluation = await runProductCategorizationEvaluation({
     concepts,
     items: EVALUATION_ITEMS,

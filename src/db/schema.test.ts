@@ -70,11 +70,11 @@ describe("data model constraints", () => {
     expect(aisleSections).not.toHaveProperty("sectionOrder");
   });
 
-  it("prevents conflicting aliases within global and user scopes", () => {
+  it("prevents conflicting active and seeded aliases within a user catalog", () => {
     expect(indexNames(productAliases)).toEqual(
       expect.arrayContaining([
-        "product_aliases_global_normalized_text_unique",
-        "product_aliases_user_normalized_text_unique",
+        "product_aliases_user_seed_key_unique",
+        "product_aliases_user_active_normalized_text_unique",
         "product_aliases_lookup_index",
       ]),
     );

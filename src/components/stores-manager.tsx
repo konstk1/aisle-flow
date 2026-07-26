@@ -149,7 +149,7 @@ export function StoresManager({
         Manage your stores.
       </h1>
       <p className="mt-3 max-w-2xl text-sm leading-6 text-ink-400">
-        Each store has its own route, learned products, and shopping lists.
+        Each store has its own route, product locations, and shopping lists.
         Switch between stores with the picker in the header.
       </p>
 
@@ -299,8 +299,9 @@ export function StoresManager({
                   <div className="mt-3">
                     <p className="text-sm text-danger">
                       Deleting {store.name} permanently removes its route and
-                      learned products for everyone who uses it. Shopping lists
-                      are kept. Type the store name to confirm.
+                      product locations for everyone who uses it. Personal
+                      product names and aliases are kept. Shopping lists are
+                      kept. Type the store name to confirm.
                     </p>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <label className="min-w-0 flex-1">

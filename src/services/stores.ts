@@ -52,14 +52,27 @@ export async function listStores(userId: string): Promise<StoreListItem[]> {
 
   return rows.map(({ createdBy, ...store }) => ({
     ...store,
-    isOwner: canManageStore(createdBy, userId),
+    isOwner: creatorCanManageStore(createdBy, userId),
   }));
 }
 
 // Stores created before ownership existed have no creator; everyone can
 // manage those.
-function canManageStore(createdBy: string | null, userId: string): boolean {
+function creatorCanManageStore(
+  createdBy: string | null,
+  userId: string,
+): boolean {
   return createdBy === null || createdBy === userId;
+}
+
+export async function canManageStore(storeId: string, userId: string) {
+  const db = getDb();
+  const [store] = await db
+    .select({ createdBy: stores.createdBy })
+    .from(stores)
+    .where(eq(stores.id, storeId));
+
+  return store ? creatorCanManageStore(store.createdBy, userId) : false;
 }
 
 export async function requireManageableStore(
@@ -76,7 +89,7 @@ export async function requireManageableStore(
     throw missingStoreError();
   }
 
-  if (!canManageStore(store.createdBy, userId)) {
+  if (!creatorCanManageStore(store.createdBy, userId)) {
     const message = "Only the user who created this store can change it.";
 
     throw new StoreRequestError(message, { storeId: [message] }, 403);

@@ -46,6 +46,7 @@ import {
 } from "@/domain/store-layout";
 
 type StoreLayoutEditorProps = {
+  canManage: boolean;
   initialLayout: StoreLayout;
 };
 
@@ -55,15 +56,20 @@ function createId() {
   return crypto.randomUUID();
 }
 
-export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
+export function StoreLayoutEditor({
+  canManage,
+  initialLayout,
+}: StoreLayoutEditorProps) {
   const router = useRouter();
   const [layout, setLayout] = useState<StoreLayout>(initialLayout);
   const [savedLayout, setSavedLayout] = useState<StoreLayout>(initialLayout);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [message, setMessage] = useState<string | null>(
-    initialLayout.aisles.length > 0
-      ? null
-      : "Create your first aisle, then save the route.",
+    !canManage
+      ? "This route is read-only because another user created the store."
+      : initialLayout.aisles.length > 0
+        ? null
+        : "Create your first aisle, then save the route.",
   );
   const [isSaving, setIsSaving] = useState(false);
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
@@ -285,6 +291,10 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
   }
 
   async function saveLayout() {
+    if (!canManage) {
+      return;
+    }
+
     setIsSaving(true);
     setMessage(null);
     setFieldErrors({});
@@ -359,9 +369,14 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
             <span className="hidden sm:inline">Copy to new store</span>
           </button>
           <button
-            className="from-accent to-accent-bright shadow-accent-glow inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-[14px] bg-gradient-to-br px-5 text-sm font-semibold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-60 sm:flex-none"
-            disabled={isSaving}
+            className="from-accent to-accent-bright shadow-accent-glow inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-[14px] bg-gradient-to-br px-5 text-sm font-semibold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:from-ink-200 disabled:to-ink-200 disabled:text-ink-500 disabled:opacity-100 disabled:shadow-none sm:flex-none"
+            disabled={isSaving || !canManage}
             onClick={saveLayout}
+            title={
+              canManage
+                ? "Save route"
+                : "Only the store creator can save this route"
+            }
             type="button"
           >
             <Save aria-hidden="true" className="size-4" />
@@ -375,9 +390,9 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
         assigned automatically; section side is informational only.
       </p>
       <p className="text-ink-400 mt-2 text-sm">
-        Editing{" "}
+        {canManage ? "Editing" : "Viewing"}{" "}
         <span className="text-ink-900 font-semibold">{layout.name}</span> —
-        rename this store on the{" "}
+        {canManage ? "rename this store on the" : "manage your stores on the"}{" "}
         <Link
           className="text-accent font-semibold underline-offset-4 hover:underline"
           href="/stores"
@@ -417,7 +432,8 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
                   Aisle
                   <input
                     aria-label="Aisle number"
-                    className="text-foreground focus:border-accent w-9 rounded-lg border border-transparent bg-transparent px-1 text-center text-base font-bold tabular-nums transition outline-none focus:bg-white"
+                    className="text-foreground focus:border-accent w-9 rounded-lg border border-transparent bg-transparent px-1 text-center text-base font-bold tabular-nums transition outline-none focus:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={!canManage}
                     onChange={(event) =>
                       updateAisle(aisle.id, { identifier: event.target.value })
                     }
@@ -426,7 +442,8 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
                 </label>
                 <input
                   aria-label="Aisle display name"
-                  className="text-ink-900 focus:border-accent min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 py-1 text-sm font-medium transition outline-none focus:bg-white"
+                  className="text-ink-900 focus:border-accent min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 py-1 text-sm font-medium transition outline-none focus:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={!canManage}
                   onChange={(event) =>
                     updateAisle(aisle.id, {
                       displayName: event.target.value || null,
@@ -444,7 +461,7 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
                   <button
                     aria-label="Move aisle earlier"
                     className="bg-ink-50 text-ink-500 hover:text-accent inline-flex size-8 items-center justify-center rounded-[10px] transition disabled:cursor-not-allowed disabled:opacity-30"
-                    disabled={aisleIndex === 0}
+                    disabled={!canManage || aisleIndex === 0}
                     onClick={() => moveAisle(aisle.id, -1)}
                     type="button"
                   >
@@ -453,14 +470,16 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
                   <button
                     aria-label="Move aisle later"
                     className="bg-ink-50 text-ink-500 hover:text-accent inline-flex size-8 items-center justify-center rounded-[10px] transition disabled:cursor-not-allowed disabled:opacity-30"
-                    disabled={aisleIndex === orderedAisles.length - 1}
+                    disabled={
+                      !canManage || aisleIndex === orderedAisles.length - 1
+                    }
                     onClick={() => moveAisle(aisle.id, 1)}
                     type="button"
                   >
                     <ArrowDown aria-hidden="true" className="size-3.5" />
                   </button>
                   <IconButton
-                    disabled={orderedAisles.length === 1}
+                    disabled={!canManage || orderedAisles.length === 1}
                     label="Delete aisle"
                     onClick={() => removeAisle(aisle.id)}
                   >
@@ -476,7 +495,7 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
                     id={`store-layout-aisle-${aisle.id}`}
                     onDragCancel={() => setActiveSectionId(null)}
                     onDragEnd={({ active, over }) => {
-                      if (over && active.id !== over.id) {
+                      if (canManage && over && active.id !== over.id) {
                         moveSection(
                           aisle.id,
                           String(active.id),
@@ -485,9 +504,11 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
                       }
                       setActiveSectionId(null);
                     }}
-                    onDragStart={({ active }) =>
-                      setActiveSectionId(String(active.id))
-                    }
+                    onDragStart={({ active }) => {
+                      if (canManage) {
+                        setActiveSectionId(String(active.id));
+                      }
+                    }}
                     sensors={sensors}
                   >
                     <SortableContext
@@ -501,7 +522,10 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
                             key={section.id}
                           >
                             <SortableSectionRow
-                              disabled={aisle.sections.length === 1}
+                              canManage={canManage}
+                              disabled={
+                                !canManage || aisle.sections.length === 1
+                              }
                               onDelete={() =>
                                 removeSection(aisle.id, section.id)
                               }
@@ -515,7 +539,8 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
                       </div>
                     </SortableContext>
                     <button
-                      className="border-divider-soft text-ink-500 hover:text-accent flex min-h-12 w-full items-center gap-2 border-t px-4 text-sm font-semibold transition"
+                      className="border-divider-soft text-ink-500 hover:text-accent flex min-h-12 w-full items-center gap-2 border-t px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40"
+                      disabled={!canManage}
                       onClick={() => addSection(aisle.id)}
                       type="button"
                     >
@@ -541,7 +566,8 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
       </div>
 
       <button
-        className="text-ink-900 shadow-card-sm hover:text-accent mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold transition"
+        className="text-ink-900 shadow-card-sm hover:text-accent mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40"
+        disabled={!canManage}
         onClick={addAisle}
         type="button"
       >
@@ -634,11 +660,13 @@ export function StoreLayoutEditor({ initialLayout }: StoreLayoutEditorProps) {
 }
 
 function SortableSectionRow({
+  canManage,
   disabled,
   onDelete,
   onUpdate,
   section,
 }: {
+  canManage: boolean;
   disabled: boolean;
   onDelete: () => void;
   onUpdate: (patch: Partial<Omit<StoreLayoutSection, "id">>) => void;
@@ -652,7 +680,7 @@ function SortableSectionRow({
     setNodeRef,
     transform,
     transition,
-  } = useSortable({ id: section.id });
+  } = useSortable({ disabled: !canManage, id: section.id });
   const style = {
     transform: transform
       ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
@@ -668,7 +696,8 @@ function SortableSectionRow({
     >
       <button
         aria-label={`Drag ${section.label || "section"}`}
-        className="text-ink-200 hover:text-accent inline-flex size-9 shrink-0 cursor-grab items-center justify-center rounded-[10px] transition active:cursor-grabbing"
+        className="text-ink-200 hover:text-accent inline-flex size-9 shrink-0 cursor-grab items-center justify-center rounded-[10px] transition active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-40"
+        disabled={!canManage}
         ref={setActivatorNodeRef}
         style={{ touchAction: "none" }}
         type="button"
@@ -682,14 +711,16 @@ function SortableSectionRow({
       </span>
       <input
         aria-label="Section label"
-        className="focus:border-accent min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 py-1.5 text-base transition outline-none focus:bg-white"
+        className="focus:border-accent min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 py-1.5 text-base transition outline-none focus:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+        disabled={!canManage}
         onChange={(event) => onUpdate({ label: event.target.value || null })}
         placeholder="Section label"
         value={section.label ?? ""}
       />
       <select
         aria-label="Section side"
-        className="text-ink-500 focus:border-accent h-8 w-20 shrink-0 rounded-lg border border-transparent bg-transparent px-1 text-sm font-medium transition outline-none sm:w-24"
+        className="text-ink-500 focus:border-accent h-8 w-20 shrink-0 rounded-lg border border-transparent bg-transparent px-1 text-sm font-medium transition outline-none disabled:cursor-not-allowed disabled:opacity-60 sm:w-24"
+        disabled={!canManage}
         onChange={(event) =>
           onUpdate({ side: event.target.value as StoreLayoutSection["side"] })
         }

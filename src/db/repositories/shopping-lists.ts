@@ -137,6 +137,7 @@ export interface AutomaticProductAliasInput {
   shoppingListId: string;
   sourceIdentifier: string;
   productConceptId: string;
+  displayText: string;
   normalizedText: string;
   now?: Date;
 }
@@ -438,6 +439,8 @@ export function buildAutomaticProductAliasInsertQuery(
         "product_concept_id",
       ),
       userId: sql<string>`${input.userId}`.as("user_id"),
+      seedKey: sql<null>`null`.as("seed_key"),
+      displayText: sql<string>`${input.displayText}`.as("display_text"),
       normalizedText: sql<string>`${input.normalizedText}`.as(
         "normalized_text",
       ),
@@ -445,6 +448,7 @@ export function buildAutomaticProductAliasInsertQuery(
       confidence: sql<number>`1`.as("confidence"),
       source: sql<"learned">`'learned'`.as("source"),
       isCorrection: sql<boolean>`false`.as("is_correction"),
+      deletedAt: sql<null>`null`.as("deleted_at"),
       createdAt: sql<Date>`${now}`.as("created_at"),
       updatedAt: sql<Date>`${now}`.as("updated_at"),
     })
@@ -466,7 +470,7 @@ export function buildAutomaticProductAliasInsertQuery(
     .select(persistedLlmCategorization)
     .onConflictDoNothing({
       target: [productAliases.userId, productAliases.normalizedText],
-      where: sql`${productAliases.scope} = 'user'`,
+      where: isNull(productAliases.deletedAt),
     })
     .returning();
 }
@@ -495,12 +499,12 @@ export function buildShoppingItemsByNormalizedTextQuery(
     );
 }
 
-// Which aliases are visible to a viewer: global aliases always, plus the
-// viewer's own learned vocabulary.
+// Product catalogs and aliases are personal, so only active aliases owned by
+// the viewer participate in exact matching.
 export function productAliasUserScopeFilter(userId: string): SQL {
-  return or(
-    eq(productAliases.scope, "global"),
-    and(eq(productAliases.scope, "user"), eq(productAliases.userId, userId)),
+  return and(
+    eq(productAliases.userId, userId),
+    isNull(productAliases.deletedAt),
   ) as SQL;
 }
 
@@ -529,15 +533,11 @@ export function buildExactProductAliasLookupQuery(
         gt(productAliases.confidence, 0),
         lte(productAliases.confidence, 1),
         productAliasUserScopeFilter(userId),
+        eq(productConcepts.userId, userId),
+        isNull(productConcepts.deletedAt),
       ),
     )
-    .orderBy(
-      desc(productAliases.isCorrection),
-      desc(
-        sql<number>`case when ${productAliases.scope} = 'user' then 1 else 0 end`,
-      ),
-      desc(productAliases.confidence),
-    )
+    .orderBy(desc(productAliases.isCorrection), desc(productAliases.confidence))
     .limit(1);
 }
 
@@ -566,13 +566,12 @@ export function buildExactProductAliasesLookupQuery(
         gt(productAliases.confidence, 0),
         lte(productAliases.confidence, 1),
         productAliasUserScopeFilter(userId),
+        eq(productConcepts.userId, userId),
+        isNull(productConcepts.deletedAt),
       ),
     )
     .orderBy(
       desc(productAliases.isCorrection),
-      desc(
-        sql<number>`case when ${productAliases.scope} = 'user' then 1 else 0 end`,
-      ),
       desc(productAliases.confidence),
     );
 }
@@ -593,6 +592,7 @@ export async function findExactProductAlias(
 
 export function buildProductLocationLookupQuery(
   db: Database,
+  userId: string,
   storeId: string,
   productConceptId: string,
 ) {
@@ -609,6 +609,7 @@ export function buildProductLocationLookupQuery(
     .where(
       and(
         eq(productLocations.storeId, storeId),
+        eq(productLocations.userId, userId),
         eq(productLocations.productConceptId, productConceptId),
       ),
     )
@@ -617,11 +618,13 @@ export function buildProductLocationLookupQuery(
 
 export async function findProductLocation(
   db: Database,
+  userId: string,
   storeId: string,
   productConceptId: string,
 ) {
   const [location] = await buildProductLocationLookupQuery(
     db,
+    userId,
     storeId,
     productConceptId,
   );

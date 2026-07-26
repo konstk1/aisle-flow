@@ -298,6 +298,7 @@ export async function importActiveShoppingListItems(
     item.source === "llm" && item.productConceptId
       ? [
           {
+            displayText: item.itemName,
             normalizedText: item.normalizedText,
             productConceptId: item.productConceptId,
             sourceIdentifier: item.sourceIdentifier,
@@ -716,6 +717,7 @@ async function executeImportWrites(
   upserts: ShoppingItemUpsertInput[],
   quantityUpdates: Array<{ itemId: string; quantityText: string | null }>,
   automaticAliases: Array<{
+    displayText: string;
     normalizedText: string;
     productConceptId: string;
     sourceIdentifier: string;
@@ -737,6 +739,7 @@ async function executeImportWrites(
         shoppingListId,
         sourceIdentifier: alias.sourceIdentifier,
         productConceptId: alias.productConceptId,
+        displayText: alias.displayText,
         normalizedText: alias.normalizedText,
         now,
       }),

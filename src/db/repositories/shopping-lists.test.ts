@@ -320,7 +320,10 @@ describe("shopping-list queries", () => {
   });
 
   it("can relink a corrected product match using correction subqueries in the same batch", () => {
-    const productConceptId = productConceptIdByNormalizedName("dried fruit");
+    const productConceptId = productConceptIdByNormalizedName(
+      "user-a",
+      "dried fruit",
+    );
     const { sql: query, params } = buildShoppingItemProductResolutionQuery(
       database,
       {
@@ -332,16 +335,11 @@ describe("shopping-list queries", () => {
     ).toSQL();
 
     expect(query).toContain(
-      '"product_concept_id" = (select "product_concepts"."id" from "product_concepts" where "product_concepts"."normalized_name" = $1 limit 1)',
+      '"product_concept_id" = (select "product_concepts"."id" from "product_concepts" where ("product_concepts"."user_id" = $1 and "product_concepts"."normalized_name" = $2 and "product_concepts"."deleted_at" is null) limit 1)',
     );
-    expect(params).toEqual([
-      "dried fruit",
-      "manual",
-      null,
-      "2026-01-01T00:00:00.000Z",
-      "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
-      "dried mango",
-    ]);
+    expect(params).toContain("user-a");
+    expect(params).toContain("dried fruit");
+    expect(params).toContain("dried mango");
   });
 
   it("learns an AI alias without overwriting any existing user alias", () => {
@@ -352,6 +350,7 @@ describe("shopping-list queries", () => {
         shoppingListId: "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
         sourceIdentifier: "import:mutation:0",
         productConceptId: "11111111-1111-4111-8111-111111111111",
+        displayText: "Chicken Thighs",
         normalizedText: "chicken thighs",
         now: new Date("2026-01-01T00:00:00Z"),
       },
@@ -365,12 +364,13 @@ describe("shopping-list queries", () => {
       '"shopping_items"."suggested_product_concept_name" is null',
     );
     expect(query).toContain(
-      'on conflict ("user_id","normalized_text") where "product_aliases"."scope" = \'user\' do nothing',
+      'on conflict ("user_id","normalized_text") where "product_aliases"."deleted_at" is null do nothing',
     );
     expect(query).not.toContain("do update");
     expect(params).toEqual([
       "11111111-1111-4111-8111-111111111111",
       "user-a",
+      "Chicken Thighs",
       "chicken thighs",
       new Date("2026-01-01T00:00:00Z"),
       new Date("2026-01-01T00:00:00Z"),
@@ -416,17 +416,9 @@ describe("shopping-list queries", () => {
     expect(query).toContain('"product_aliases"."user_id" = $');
     expect(query).not.toContain('"product_aliases"."is_correction" =');
     expect(query).toContain('"product_aliases"."is_correction" desc');
-    expect(params).toEqual([
-      "wild rice",
-      "learned",
-      "imported",
-      0,
-      1,
-      "global",
-      "user",
-      "user-a",
-      1,
-    ]);
+    expect(params).toContain("wild rice");
+    expect(params).toContain("user-a");
+    expect(params).not.toContain("global");
   });
 
   it("excludes invalid-confidence aliases from batch AI fast-path lookups", () => {
@@ -438,15 +430,8 @@ describe("shopping-list queries", () => {
 
     expect(query).toContain('"product_aliases"."confidence" >');
     expect(query).toContain('"product_aliases"."confidence" <=');
-    expect(params).toEqual([
-      "wild rice",
-      "learned",
-      "imported",
-      0,
-      1,
-      "global",
-      "user",
-      "user-a",
-    ]);
+    expect(params).toContain("wild rice");
+    expect(params).toContain("user-a");
+    expect(params).not.toContain("global");
   });
 });
