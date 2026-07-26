@@ -6,7 +6,6 @@ import {
   ShellProgressBar,
   ShellProgressProvider,
 } from "@/components/shell-progress";
-import { SignOutButton } from "@/components/sign-out-button";
 import { StorePicker } from "@/components/store-picker";
 
 export function AppShell({
@@ -26,7 +25,6 @@ export function AppShell({
             <AppNav />
             <div className="flex min-w-0 items-center gap-3 sm:gap-4">
               <StorePicker currentStoreId={currentStoreId} stores={stores} />
-              <SignOutButton />
             </div>
           </div>
           <ShellProgressBar />

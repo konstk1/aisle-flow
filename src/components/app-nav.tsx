@@ -12,6 +12,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import { SignOutButton } from "@/components/sign-out-button";
+
 const navItems = [
   { exact: true, href: "/", icon: ListChecks, label: "Shopping list" },
   { exact: false, href: "/route", icon: Route, label: "Store route" },
@@ -111,6 +113,8 @@ export function AppNav() {
               </Link>
             );
           })}
+          <div className="mx-3 my-1.5 h-px bg-divider" />
+          <SignOutButton />
         </nav>
       ) : null}
     </div>

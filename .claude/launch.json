@@ -5,6 +5,7 @@
       "name": "next-dev",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["dev"],
+      "env": { "ENABLE_DEV_LOGIN": "true" },
       "port": 3000,
       "autoPort": true
     }
