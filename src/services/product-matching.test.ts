@@ -58,6 +58,7 @@ describe("createStoreProductMatcher", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.findExactProductAlias.mockResolvedValue(null);
+    mocks.findProductLocation.mockReset();
   });
 
   it.each([
@@ -95,5 +96,56 @@ describe("createStoreProductMatcher", () => {
     });
     expect(mocks.findExactProductAlias).toHaveBeenCalledOnce();
     expect(from).toHaveBeenCalledTimes(2);
+  });
+
+  it("resolves an aisle-section location without intra-section position", async () => {
+    const where = vi
+      .fn()
+      .mockResolvedValueOnce(concepts)
+      .mockResolvedValueOnce([]);
+    const from = vi.fn(() => ({ where }));
+    const db = { select: vi.fn(() => ({ from })) } as never;
+    mocks.findProductLocation.mockResolvedValue({
+      location: {
+        id: "location-1",
+        userId: "user-a",
+        storeId: "store-1",
+        productConceptId: "rice",
+        aisleSectionId: "section-1",
+        confidence: 1,
+        source: "manual",
+        version: 1,
+        createdAt: new Date("2026-07-22T00:00:00.000Z"),
+        updatedAt: new Date("2026-07-22T00:00:00.000Z"),
+      },
+      aisleSection: {
+        id: "section-1",
+      },
+    });
+    const matchProduct = await createStoreProductMatcher({
+      db,
+      userId: "user-a",
+      storeId: "store-1",
+    });
+
+    const result = await matchProduct("rice");
+
+    expect(mocks.findProductLocation).toHaveBeenCalledWith(
+      db,
+      "user-a",
+      "store-1",
+      "rice",
+    );
+    expect(result).toMatchObject({
+      state: "matched",
+      location: {
+        id: "location-1",
+        aisleSectionId: "section-1",
+        source: "manual",
+      },
+    });
+    if (result.state === "matched") {
+      expect(result.location).not.toHaveProperty("positionWithinSection");
+    }
   });
 });

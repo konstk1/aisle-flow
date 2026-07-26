@@ -133,7 +133,6 @@ export interface ProductCorrectionResult {
   location: {
     id: string;
     aisleSectionId: string;
-    positionWithinSection: number | null;
     confidence: number;
     source: "manual";
     aisleSection: ProductCorrectionAisleSection;
@@ -262,7 +261,6 @@ export async function applyProductCorrection(
       storeId: layout.id,
       productConceptId,
       aisleSectionId: aisleSection.id,
-      positionWithinSection: null,
       now,
     });
     const relinkQuery = activeList
@@ -322,7 +320,6 @@ export async function applyProductCorrection(
     location: {
       id: location.id,
       aisleSectionId: location.aisleSectionId,
-      positionWithinSection: location.positionWithinSection,
       confidence: location.confidence,
       source: "manual",
       aisleSection,
@@ -409,7 +406,6 @@ function toCorrectionResolution({
     location: {
       id: location.id,
       aisleSectionId: location.aisleSectionId,
-      positionWithinSection: location.positionWithinSection,
       confidence: location.confidence,
       source: location.source,
     },

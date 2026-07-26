@@ -127,7 +127,6 @@ describe("product correction route", () => {
       location: {
         id: "location-1",
         aisleSectionId,
-        positionWithinSection: null,
         confidence: 1,
         source: "manual",
         aisleSection: {

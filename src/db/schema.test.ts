@@ -94,6 +94,16 @@ describe("data model constraints", () => {
     expect(shoppingItems).not.toHaveProperty("resolvedLocationId");
   });
 
+  it("models product locations at aisle-section granularity", () => {
+    expect(productLocations).not.toHaveProperty("positionWithinSection");
+    expect(indexNames(productLocations)).not.toContain(
+      "product_locations_section_position_index",
+    );
+    expect(checkNames(productLocations)).not.toContain(
+      "product_locations_position_non_negative",
+    );
+  });
+
   it("allows at most one active list per user and indexes its item reads", () => {
     expect(shoppingLists).toHaveProperty("userId");
     expect(shoppingLists).not.toHaveProperty("storeId");

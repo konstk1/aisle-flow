@@ -119,7 +119,7 @@ describe("product correction queries", () => {
     expect(params).toContain("Dried Mango");
   });
 
-  it("updates the one store-specific product location for a concept without clobbering existing section position", () => {
+  it("updates the one store-specific product location for a concept", () => {
     const { sql: query, params } = buildManualProductLocationCorrectionQuery(
       database,
       {
@@ -127,7 +127,6 @@ describe("product correction queries", () => {
         storeId,
         productConceptId,
         aisleSectionId,
-        positionWithinSection: 2,
         now,
       },
     ).toSQL();
@@ -137,9 +136,7 @@ describe("product correction queries", () => {
       'on conflict ("user_id","store_id","product_concept_id") do update set',
     );
     expect(query).toContain('"aisle_section_id" = excluded.aisle_section_id');
-    expect(query).not.toContain(
-      '"position_within_section" = excluded.position_within_section',
-    );
+    expect(query).not.toContain("position_within_section");
     expect(query).toContain('"source" = excluded.source');
     expect(query).toContain('"version" = "product_locations"."version" + 1');
     expect(query).toContain("returning");

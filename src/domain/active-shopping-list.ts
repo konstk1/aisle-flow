@@ -58,7 +58,6 @@ export interface ActiveShoppingItemPayload {
   location: {
     id: string;
     aisleSectionId: string;
-    positionWithinSection: number | null;
     confidence: number;
     source: "curated" | "manual" | "inferred" | "imported";
     aisleSection: {

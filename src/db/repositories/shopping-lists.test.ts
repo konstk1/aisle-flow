@@ -38,7 +38,7 @@ describe("shopping-list queries", () => {
     expect(params).toEqual(["user-a", "active", 1]);
   });
 
-  it("orders resolved items by route, section position, and user order", () => {
+  it("orders resolved items by route and stable item keys", () => {
     const { sql: query, params } = buildRouteOrderedShoppingItemsQuery(
       database,
       "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
@@ -66,8 +66,9 @@ describe("shopping-list queries", () => {
       '("shopping_items"."snoozed_until" is null or "shopping_items"."snoozed_until" <= $5)',
     );
     expect(query).toMatch(
-      /order by case when "aisle_sections"\."path_order" is null then 1 else 0 end asc, "aisle_sections"\."path_order" asc, coalesce\("product_locations"\."position_within_section", 2147483647\) asc, "shopping_items"\."order_key" asc/,
+      /order by case when "aisle_sections"\."path_order" is null then 1 else 0 end asc, "aisle_sections"\."path_order" asc, "shopping_items"\."order_key" asc, "shopping_items"\."created_at" asc, "shopping_items"\."id" asc/,
     );
+    expect(query).not.toContain("position_within_section");
     expect(params).toEqual([
       "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
       "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",

@@ -205,11 +205,9 @@ export function buildRouteOrderedShoppingItemsQuery(
         sql<number>`case when ${aisleSections.pathOrder} is null then 1 else 0 end`,
       ),
       asc(aisleSections.pathOrder),
-      asc(
-        sql<number>`coalesce(${productLocations.positionWithinSection}, 2147483647)`,
-      ),
       asc(shoppingItems.orderKey),
       asc(shoppingItems.createdAt),
+      asc(shoppingItems.id),
     );
 }
 

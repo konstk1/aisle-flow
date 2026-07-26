@@ -24,7 +24,6 @@ export interface ManualProductLocationCorrectionInput {
   storeId: string;
   productConceptId: string | SQL;
   aisleSectionId: string;
-  positionWithinSection: number | null;
   confidence?: number;
   now?: Date;
 }
@@ -157,7 +156,6 @@ export function buildManualProductLocationCorrectionQuery(
       storeId: input.storeId,
       productConceptId: input.productConceptId,
       aisleSectionId: input.aisleSectionId,
-      positionWithinSection: input.positionWithinSection,
       confidence: input.confidence ?? 1,
       source: "manual",
       updatedAt: now,

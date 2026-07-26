@@ -116,7 +116,6 @@ const matchedRice = {
   location: {
     id: "location-1",
     aisleSectionId: "section-1",
-    positionWithinSection: 2,
     confidence: 1,
     source: "curated" as const,
   },
@@ -226,7 +225,6 @@ describe("getActiveShoppingList", () => {
           storeId,
           productConceptId: "rice",
           aisleSectionId: "section-1",
-          positionWithinSection: 2,
           confidence: 1,
           source: "curated",
           version: 1,
@@ -275,6 +273,9 @@ describe("getActiveShoppingList", () => {
         },
       },
     });
+    expect(result.items[0]?.location).not.toHaveProperty(
+      "positionWithinSection",
+    );
   });
 });
 
