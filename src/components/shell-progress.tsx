@@ -59,6 +59,14 @@ export function useShellProgress(progress: ShellProgress | null) {
   }, [setProgress]);
 }
 
+// Reserves room below the sticky header for the count pill hanging off the
+// progress bar, so it does not overlap the first row of page content.
+export function ShellProgressSpacer() {
+  const progress = useContext(ShellProgressValueContext);
+
+  return progress ? <div aria-hidden="true" className="h-5" /> : null;
+}
+
 export function ShellProgressBar() {
   const progress = useContext(ShellProgressValueContext);
 
@@ -86,7 +94,7 @@ export function ShellProgressBar() {
           className="flex justify-end transition-[width] duration-300"
           style={{ minWidth: "fit-content", width: `${pct}%` }}
         >
-          <span className="rounded-b-full bg-accent px-2.5 pb-1 pt-0.5 text-xs font-bold text-white shadow-accent-glow">
+          <span className="rounded-b-lg bg-accent px-2.5 pb-1 pt-0.5 text-xs font-bold text-white shadow-accent-glow">
             {progress.totalCount - progress.checkedCount} / {progress.totalCount}
           </span>
         </div>

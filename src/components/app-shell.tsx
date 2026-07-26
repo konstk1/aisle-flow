@@ -5,6 +5,7 @@ import { FeedbackButton } from "@/components/feedback-button";
 import {
   ShellProgressBar,
   ShellProgressProvider,
+  ShellProgressSpacer,
 } from "@/components/shell-progress";
 import { StorePicker } from "@/components/store-picker";
 
@@ -29,6 +30,7 @@ export function AppShell({
           </div>
           <ShellProgressBar />
         </header>
+        <ShellProgressSpacer />
         {children}
         <FeedbackButton />
       </main>
