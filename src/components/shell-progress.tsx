@@ -75,6 +75,7 @@ export function ShellProgressBar() {
   }
 
   const pct = Math.round((progress.checkedCount / progress.totalCount) * 100);
+  const isComplete = progress.checkedCount >= progress.totalCount;
 
   return (
     <div
@@ -86,7 +87,11 @@ export function ShellProgressBar() {
       role="progressbar"
     >
       <div
-        className="h-full rounded-r-full bg-gradient-to-r from-accent to-accent-bright transition-[width] duration-300"
+        className={`h-full rounded-r-full bg-gradient-to-r transition-[width] duration-300 ${
+          isComplete
+            ? "from-success to-success-bright"
+            : "from-accent to-accent-bright"
+        }`}
         style={{ width: `${pct}%` }}
       />
       <div className="pointer-events-none absolute inset-x-0 top-full flex">
@@ -94,8 +99,14 @@ export function ShellProgressBar() {
           className="flex justify-end transition-[width] duration-300"
           style={{ minWidth: "fit-content", width: `${pct}%` }}
         >
-          <span className="rounded-b-lg bg-accent px-2.5 pb-1 pt-0.5 text-xs font-bold text-white shadow-accent-glow">
-            {progress.totalCount - progress.checkedCount} / {progress.totalCount}
+          <span
+            className={`rounded-b-lg px-2.5 pb-1 pt-0.5 text-xs font-bold text-white ${
+              isComplete
+                ? "bg-success shadow-success-glow"
+                : "bg-accent shadow-accent-glow"
+            }`}
+          >
+            {progress.checkedCount} / {progress.totalCount}
           </span>
         </div>
       </div>
