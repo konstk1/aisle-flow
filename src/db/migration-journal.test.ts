@@ -68,4 +68,31 @@ describe("migration journal", () => {
       'ALTER TABLE "product_concepts" DROP COLUMN',
     );
   });
+
+  it("removes section position without rewriting product locations", () => {
+    const migrationPath = fileURLToPath(
+      new URL("../../drizzle/0002_narrow_hedge_knight.sql", import.meta.url),
+    );
+    const snapshotPath = fileURLToPath(
+      new URL("../../drizzle/meta/0002_snapshot.json", import.meta.url),
+    );
+    const migration = readFileSync(migrationPath, "utf8");
+    const snapshot = readFileSync(snapshotPath, "utf8");
+
+    expect(migration).toContain(
+      'ALTER TABLE "product_locations" DROP CONSTRAINT "product_locations_position_non_negative"',
+    );
+    expect(migration).toContain(
+      'DROP INDEX "product_locations_section_position_index"',
+    );
+    expect(migration).toContain(
+      'ALTER TABLE "product_locations" DROP COLUMN "position_within_section"',
+    );
+    expect(migration).not.toMatch(
+      /(?:CREATE TABLE|DELETE FROM|DROP TABLE|UPDATE) "product_locations"/,
+    );
+    expect(snapshot).not.toContain("position_within_section");
+    expect(snapshot).not.toContain("product_locations_section_position_index");
+    expect(snapshot).not.toContain("product_locations_position_non_negative");
+  });
 });

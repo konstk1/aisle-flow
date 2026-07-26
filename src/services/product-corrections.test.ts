@@ -103,7 +103,6 @@ const location = {
   storeId,
   productConceptId: validConceptId,
   aisleSectionId: validSectionId,
-  positionWithinSection: null,
   confidence: 1,
   source: "manual" as const,
   version: 1,
@@ -291,7 +290,6 @@ describe("applyProductCorrection", () => {
         storeId,
         productConceptId: "concept-id-subquery",
         aisleSectionId: validSectionId,
-        positionWithinSection: null,
       }),
     );
     expect(result).toMatchObject({
@@ -310,7 +308,6 @@ describe("applyProductCorrection", () => {
       location: {
         id: "location-1",
         aisleSectionId: validSectionId,
-        positionWithinSection: null,
         source: "manual",
       },
       resolution: {
@@ -323,10 +320,16 @@ describe("applyProductCorrection", () => {
         location: {
           id: "location-1",
           aisleSectionId: validSectionId,
-          positionWithinSection: null,
         },
       },
     });
+    expect(result.location).not.toHaveProperty("positionWithinSection");
+    expect(result.resolution).toMatchObject({ state: "matched" });
+    if (result.resolution.state === "matched") {
+      expect(result.resolution.location).not.toHaveProperty(
+        "positionWithinSection",
+      );
+    }
     expect(mocks.buildActiveShoppingListQuery).toHaveBeenCalledWith(
       mocks.db,
       userId,

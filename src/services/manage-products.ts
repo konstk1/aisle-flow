@@ -242,7 +242,6 @@ export async function createManagedProduct(
           storeId: layout.id,
           productConceptId,
           aisleSectionId,
-          positionWithinSection: null,
           source: "manual",
         }),
       ]);
@@ -556,7 +555,6 @@ async function updateProductLocation(
       storeId: layout.id,
       productConceptId,
       aisleSectionId,
-      positionWithinSection: null,
       source: "manual",
     })
     .onConflictDoUpdate({

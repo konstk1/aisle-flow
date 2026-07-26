@@ -130,8 +130,7 @@ survive store deletion.
 
 ### `product_locations`
 
-User, store, personal product, aisle section, optional position within the
-section, confidence, and source.
+User, store, personal product, aisle section, confidence, and source.
 
 ### `shopping_lists`
 

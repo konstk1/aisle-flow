@@ -15,6 +15,13 @@
       "when": 1784815783432,
       "tag": "0001_jittery_dust",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1785027483416,
+      "tag": "0002_narrow_hedge_knight",
+      "breakpoints": true
     }
   ]
 }

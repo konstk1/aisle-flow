@@ -396,7 +396,6 @@ export const productLocations = pgTable(
       .references(() => stores.id, { onDelete: "cascade" }),
     productConceptId: uuid("product_concept_id").notNull(),
     aisleSectionId: uuid("aisle_section_id").notNull(),
-    positionWithinSection: integer("position_within_section"),
     confidence: real("confidence").default(1).notNull(),
     source: productLocationSource("source").default("curated").notNull(),
     version: integer("version").default(1).notNull(),
@@ -418,10 +417,6 @@ export const productLocations = pgTable(
       table.storeId,
       table.productConceptId,
     ),
-    index("product_locations_section_position_index").on(
-      table.aisleSectionId,
-      table.positionWithinSection,
-    ),
     foreignKey({
       name: "product_locations_user_product_concept_foreign_key",
       columns: [table.userId, table.productConceptId],
@@ -432,10 +427,6 @@ export const productLocations = pgTable(
       columns: [table.storeId, table.aisleSectionId],
       foreignColumns: [aisleSections.storeId, aisleSections.id],
     }).onDelete("restrict"),
-    check(
-      "product_locations_position_non_negative",
-      sql`${table.positionWithinSection} IS NULL OR ${table.positionWithinSection} >= 0`,
-    ),
     check(
       "product_locations_confidence_in_range",
       sql`${table.confidence} >= 0 AND ${table.confidence} <= 1`,

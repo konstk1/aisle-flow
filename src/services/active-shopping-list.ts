@@ -797,7 +797,6 @@ function toItemPayload({
       ? {
           id: productLocation.id,
           aisleSectionId: productLocation.aisleSectionId,
-          positionWithinSection: productLocation.positionWithinSection,
           confidence: productLocation.confidence,
           source: productLocation.source,
           aisleSection: {

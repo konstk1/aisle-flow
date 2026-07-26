@@ -24,7 +24,6 @@ import { resolveCuratedQualifierRules } from "./product-catalog";
 export interface ResolvedProductLocation {
   id: string;
   aisleSectionId: string;
-  positionWithinSection: number | null;
   confidence: number;
   source: "curated" | "manual" | "inferred" | "imported";
 }
@@ -112,7 +111,6 @@ async function resolveProductMatchWithCatalog({
       ? {
           id: match.location.id,
           aisleSectionId: match.location.aisleSectionId,
-          positionWithinSection: match.location.positionWithinSection,
           confidence: match.location.confidence,
           source: match.location.source,
         }
