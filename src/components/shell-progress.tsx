@@ -59,6 +59,16 @@ export function useShellProgress(progress: ShellProgress | null) {
   }, [setProgress]);
 }
 
+// Reserves room below the sticky header for the count pill hanging off the
+// progress bar, so it does not overlap the first row of page content. Pages
+// that publish progress render this above their content, keyed off SSR-known
+// page data — the progress context is only populated in a post-hydration
+// effect, so keying off it would shift the page down after first paint.
+// h-5 matches the pill height in ShellProgressBar.
+export function ShellProgressSpacer() {
+  return <div aria-hidden="true" className="h-5" />;
+}
+
 export function ShellProgressBar() {
   const progress = useContext(ShellProgressValueContext);
 
@@ -67,6 +77,7 @@ export function ShellProgressBar() {
   }
 
   const pct = Math.round((progress.checkedCount / progress.totalCount) * 100);
+  const isComplete = progress.checkedCount >= progress.totalCount;
 
   return (
     <div
@@ -78,9 +89,28 @@ export function ShellProgressBar() {
       role="progressbar"
     >
       <div
-        className="h-full rounded-r-full bg-gradient-to-r from-accent to-accent-bright transition-[width] duration-300"
+        className={`h-full rounded-r-full bg-gradient-to-r transition-[width] duration-300 ${
+          isComplete
+            ? "from-success to-success-bright"
+            : "from-accent to-accent-bright"
+        }`}
         style={{ width: `${pct}%` }}
       />
+      <div
+        className="pointer-events-none absolute left-0 top-full flex min-w-fit justify-end transition-[width] duration-300"
+        style={{ width: `${pct}%` }}
+      >
+        {/* h-5 matches ShellProgressSpacer, which reserves this pill's space. */}
+        <span
+          className={`flex h-5 items-center rounded-b-lg px-2.5 text-xs font-bold text-white ${
+            isComplete
+              ? "bg-success shadow-success-glow"
+              : "bg-accent shadow-accent-glow"
+          }`}
+        >
+          {progress.checkedCount} / {progress.totalCount}
+        </span>
+      </div>
     </div>
   );
 }

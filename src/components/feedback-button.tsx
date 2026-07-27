@@ -247,7 +247,7 @@ export function FeedbackButton() {
             {createdIssue ? (
               <p
                 aria-live="polite"
-                className="mt-4 flex gap-2 text-sm leading-6 text-emerald-700"
+                className="mt-4 flex gap-2 text-sm leading-6 text-success-700"
               >
                 <CheckCircle2
                   aria-hidden="true"

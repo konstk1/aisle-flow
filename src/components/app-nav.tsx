@@ -12,6 +12,9 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+import { menuItemClass } from "@/components/menu-item";
+import { SignOutButton } from "@/components/sign-out-button";
+
 const navItems = [
   { exact: true, href: "/", icon: ListChecks, label: "Shopping list" },
   { exact: false, href: "/route", icon: Route, label: "Store route" },
@@ -93,7 +96,7 @@ export function AppNav() {
             return (
               <Link
                 aria-current={isActive ? "page" : undefined}
-                className={`flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm font-semibold transition hover:bg-ink-50 ${
+                className={`${menuItemClass} ${
                   isActive ? "text-zinc-950" : "text-ink-700"
                 }`}
                 href={item.href}
@@ -111,6 +114,8 @@ export function AppNav() {
               </Link>
             );
           })}
+          <div className="mx-3 my-1.5 h-px bg-divider" />
+          <SignOutButton />
         </nav>
       ) : null}
     </div>

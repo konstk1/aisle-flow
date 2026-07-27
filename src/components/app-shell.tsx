@@ -6,7 +6,6 @@ import {
   ShellProgressBar,
   ShellProgressProvider,
 } from "@/components/shell-progress";
-import { SignOutButton } from "@/components/sign-out-button";
 import { StorePicker } from "@/components/store-picker";
 
 export function AppShell({
@@ -24,10 +23,7 @@ export function AppShell({
         <header className="sticky top-0 z-20 -mx-6 bg-background/80 px-6 py-4 backdrop-blur-md">
           <div className="flex items-center justify-between gap-3 sm:gap-4">
             <AppNav />
-            <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-              <StorePicker currentStoreId={currentStoreId} stores={stores} />
-              <SignOutButton />
-            </div>
+            <StorePicker currentStoreId={currentStoreId} stores={stores} />
           </div>
           <ShellProgressBar />
         </header>
