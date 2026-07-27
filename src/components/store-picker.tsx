@@ -7,6 +7,8 @@ import { useEffect, useRef, useState } from "react";
 
 import type { StoreSummary } from "@/domain/stores";
 
+import { menuItemClass, menuItemIconClass } from "@/components/menu-item";
+
 export function StorePicker({
   stores,
   currentStoreId,
@@ -115,7 +117,7 @@ export function StorePicker({
             return (
               <button
                 aria-current={isCurrent ? "true" : undefined}
-                className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm font-semibold transition hover:bg-ink-50 disabled:cursor-not-allowed disabled:opacity-60 ${
+                className={`${menuItemClass} w-full text-left disabled:cursor-not-allowed disabled:opacity-60 ${
                   isCurrent ? "text-zinc-950" : "text-ink-700"
                 }`}
                 disabled={pendingStoreId !== null}
@@ -143,12 +145,12 @@ export function StorePicker({
           ) : null}
           <Link
             aria-current={pathname === "/stores" ? "page" : undefined}
-            className="mt-1 flex min-h-11 items-center gap-3 rounded-xl border-t px-3 text-sm font-semibold text-ink-700 transition hover:bg-ink-50"
+            className={`${menuItemClass} mt-1 border-t text-ink-700`}
             href="/stores"
             onClick={() => setIsOpen(false)}
             role="menuitem"
           >
-            <Store aria-hidden="true" className="size-4 text-ink-350" />
+            <Store aria-hidden="true" className={menuItemIconClass} />
             Manage stores
           </Link>
         </div>

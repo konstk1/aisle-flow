@@ -60,11 +60,13 @@ export function useShellProgress(progress: ShellProgress | null) {
 }
 
 // Reserves room below the sticky header for the count pill hanging off the
-// progress bar, so it does not overlap the first row of page content.
+// progress bar, so it does not overlap the first row of page content. Pages
+// that publish progress render this above their content, keyed off SSR-known
+// page data — the progress context is only populated in a post-hydration
+// effect, so keying off it would shift the page down after first paint.
+// h-5 matches the pill height in ShellProgressBar.
 export function ShellProgressSpacer() {
-  const progress = useContext(ShellProgressValueContext);
-
-  return progress ? <div aria-hidden="true" className="h-5" /> : null;
+  return <div aria-hidden="true" className="h-5" />;
 }
 
 export function ShellProgressBar() {
@@ -94,21 +96,20 @@ export function ShellProgressBar() {
         }`}
         style={{ width: `${pct}%` }}
       />
-      <div className="pointer-events-none absolute inset-x-0 top-full flex">
-        <div
-          className="flex justify-end transition-[width] duration-300"
-          style={{ minWidth: "fit-content", width: `${pct}%` }}
+      <div
+        className="pointer-events-none absolute left-0 top-full flex min-w-fit justify-end transition-[width] duration-300"
+        style={{ width: `${pct}%` }}
+      >
+        {/* h-5 matches ShellProgressSpacer, which reserves this pill's space. */}
+        <span
+          className={`flex h-5 items-center rounded-b-lg px-2.5 text-xs font-bold text-white ${
+            isComplete
+              ? "bg-success shadow-success-glow"
+              : "bg-accent shadow-accent-glow"
+          }`}
         >
-          <span
-            className={`rounded-b-lg px-2.5 pb-1 pt-0.5 text-xs font-bold text-white ${
-              isComplete
-                ? "bg-success shadow-success-glow"
-                : "bg-accent shadow-accent-glow"
-            }`}
-          >
-            {progress.checkedCount} / {progress.totalCount}
-          </span>
-        </div>
+          {progress.checkedCount} / {progress.totalCount}
+        </span>
       </div>
     </div>
   );

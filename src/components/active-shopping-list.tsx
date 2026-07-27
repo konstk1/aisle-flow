@@ -27,7 +27,10 @@ import { formatAisleLabel, formatSectionLabel } from "@/domain/store-layout";
 import { formatShoppingItemTitle } from "@/domain/product-categorization";
 
 import { colorForKey } from "@/components/aisle-accents";
-import { useShellProgress } from "@/components/shell-progress";
+import {
+  ShellProgressSpacer,
+  useShellProgress,
+} from "@/components/shell-progress";
 
 import { AiCategorizingOverlay } from "./ai-categorizing-overlay";
 import { LocationChangeDialog } from "./location-change-dialog";
@@ -950,6 +953,10 @@ function ShoppingListView({
 
   return (
     <section className="pt-1 pb-12">
+      {/* Rendered here rather than in AppShell because this component knows
+          during SSR whether the progress pill will show — the shell's context
+          is only populated post-hydration, which would shift the page. */}
+      {isActiveMode && items.length > 0 ? <ShellProgressSpacer /> : null}
       {!isActiveMode ? (
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
           <Link
