@@ -85,7 +85,7 @@ describe("OpenAI product categorizer", () => {
     expect(mocks.generateText).toHaveBeenCalledWith(
       expect.objectContaining({
         system: PRODUCT_CATEGORIZATION_SYSTEM_PROMPT,
-        timeout: 10_000,
+        timeout: 30_000,
         providerOptions: {
           openai: { reasoningEffort: "none", store: false },
         },

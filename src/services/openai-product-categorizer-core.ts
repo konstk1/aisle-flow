@@ -13,7 +13,7 @@ import {
 } from "@/domain/product-categorization";
 
 export const PRODUCT_CATEGORIZATION_MODEL = "gpt-5-nano-2025-08-07" as const;
-export const PRODUCT_CATEGORIZATION_TIMEOUT_MS = 10_000;
+export const PRODUCT_CATEGORIZATION_TIMEOUT_MS = 30_000;
 
 export const PRODUCT_CATEGORIZATION_SYSTEM_PROMPT = [
   "You normalize and categorize grocery-store shopping-list items, including food, beverages, personal care, and household supplies.",
