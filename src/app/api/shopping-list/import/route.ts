@@ -10,6 +10,8 @@ import {
 } from "../../_lib/responses";
 import { activeShoppingListErrorResponse } from "../_lib/responses";
 
+export const maxDuration = 60;
+
 export async function POST(request: Request) {
   const userId = await requireSessionUserId();
 
