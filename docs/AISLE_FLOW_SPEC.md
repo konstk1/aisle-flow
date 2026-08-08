@@ -32,7 +32,9 @@ Each aisle section records:
 Shopping order follows the store-wide absolute path order. The editor keeps
 aisle groups in an explicit order so it can recalculate contiguous path numbers
 after a section is added, deleted, or moved. A section's side does not affect
-sorting.
+sorting. Within a section, items are ordered alphabetically by normalized text,
+with the ordering key as a tiebreaker; items without a resolved section retain
+insertion order.
 
 ## Product Matching
 
