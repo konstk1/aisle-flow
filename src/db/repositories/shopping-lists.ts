@@ -205,6 +205,12 @@ export function buildRouteOrderedShoppingItemsQuery(
         sql<number>`case when ${aisleSections.pathOrder} is null then 1 else 0 end`,
       ),
       asc(aisleSections.pathOrder),
+      // Within a section, items read alphabetically. Rows with no section
+      // (unlocated / needs-correction) collapse to NULL here so they fall through
+      // to the insertion-order keys below and keep their existing behavior.
+      asc(
+        sql<string>`case when ${aisleSections.pathOrder} is null then null else ${shoppingItems.normalizedText} end`,
+      ),
       asc(shoppingItems.orderKey),
       asc(shoppingItems.createdAt),
       asc(shoppingItems.id),
