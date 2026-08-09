@@ -32,8 +32,13 @@ export const openAiEnvSchema = z.object({
   OPENAI_API_KEY: z.string().min(20),
 });
 
+export const openRouterEnvSchema = z.object({
+  OPENROUTER_API_KEY: z.string().min(20),
+});
+
 export type GitHubIssuesEnv = z.infer<typeof githubIssuesEnvSchema>;
 export type OpenAiEnv = z.infer<typeof openAiEnvSchema>;
+export type OpenRouterEnv = z.infer<typeof openRouterEnvSchema>;
 
 export function parseDatabaseUrl(value: unknown): string {
   const result = databaseUrlSchema.safeParse(value);
@@ -96,7 +101,19 @@ export function getValidatedOpenAiEnv(input: unknown): OpenAiEnv {
 
   if (!result.success) {
     throw new Error(
-      "Invalid AI environment: OPENAI_API_KEY. Configure it before using AI categorization.",
+      "Invalid AI environment: OPENAI_API_KEY. Configure it before evaluating OpenAI models.",
+    );
+  }
+
+  return result.data;
+}
+
+export function getValidatedOpenRouterEnv(input: unknown): OpenRouterEnv {
+  const result = openRouterEnvSchema.safeParse(input);
+
+  if (!result.success) {
+    throw new Error(
+      "Invalid AI environment: OPENROUTER_API_KEY. Configure it before using AI categorization or evaluating OpenRouter models.",
     );
   }
 

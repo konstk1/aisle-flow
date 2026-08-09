@@ -53,6 +53,7 @@ export interface ProductCategorizationUsage {
   cachedInputTokens?: number | null;
   outputTokens: number | null;
   totalTokens: number | null;
+  costUsd?: number | null;
 }
 
 export interface ProductCategorizationBatchResult {

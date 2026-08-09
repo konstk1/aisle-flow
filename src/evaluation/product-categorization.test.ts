@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ProductCategorizationError } from "@/domain/product-categorization";
+import { PRODUCTION_PRODUCT_CATEGORIZATION_MODEL } from "@/services/product-categorization-model";
 
 import {
   calculateEvaluationCost,
+  EVALUATION_MODELS,
+  type EvaluationModel,
   runProductCategorizationEvaluation,
 } from "./product-categorization";
 
@@ -16,22 +19,38 @@ const concepts = [
   },
 ];
 
+function evaluationModel(
+  modelId: string,
+  provider: EvaluationModel["provider"] = "openai",
+): EvaluationModel {
+  return { displayName: modelId, modelId, provider };
+}
+
 describe("product categorization evaluation", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it("evaluates the OpenAI baselines and GPT-OSS 120B Nitro through OpenRouter", () => {
+    expect(EVALUATION_MODELS).toEqual([
+      evaluationModel("gpt-5-nano-2025-08-07"),
+      evaluationModel(PRODUCTION_PRODUCT_CATEGORIZATION_MODEL, "openrouter"),
+      evaluationModel("gpt-5.4-nano-2026-03-17"),
+      evaluationModel("gpt-4o-mini-2024-07-18"),
+    ]);
   });
 
   it("runs models sequentially, groups rows by submitted text, and continues after failure", async () => {
     vi.spyOn(console, "info").mockImplementation(() => undefined);
     vi.spyOn(console, "table").mockImplementation(() => undefined);
     let running = false;
-    const categorize = vi.fn(async ({ modelId }) => {
+    const categorize = vi.fn(async ({ model }) => {
       expect(running).toBe(false);
       running = true;
       await Promise.resolve();
       running = false;
 
-      if (modelId === "broken") {
+      if (model.modelId === "broken") {
         throw new Error("provider body should not be printed");
       }
 
@@ -53,13 +72,22 @@ describe("product categorization evaluation", () => {
       categorize,
       concepts,
       items: ["Bananas", "Apples 2"],
-      models: ["gpt-5.4-nano-2026-03-17", "broken", "gpt-4o-mini-2024-07-18"],
+      models: [
+        evaluationModel("gpt-5.4-nano-2026-03-17"),
+        evaluationModel("broken", "openrouter"),
+        evaluationModel("gpt-4o-mini-2024-07-18"),
+      ],
     });
 
-    expect(categorize.mock.calls.map(([input]) => input.modelId)).toEqual([
-      "gpt-5.4-nano-2026-03-17",
-      "broken",
-      "gpt-4o-mini-2024-07-18",
+    expect(
+      categorize.mock.calls.map(([input]) => [
+        input.model.provider,
+        input.model.modelId,
+      ]),
+    ).toEqual([
+      ["openai", "gpt-5.4-nano-2026-03-17"],
+      ["openrouter", "broken"],
+      ["openai", "gpt-4o-mini-2024-07-18"],
     ]);
     expect(evaluation.failed).toBe(true);
     expect(
@@ -77,6 +105,7 @@ describe("product categorization evaluation", () => {
       Quantity: "2",
     });
     expect(evaluation.resultRows[1]?.Error).toBe("Error");
+    expect(evaluation.resultRows[1]?.Provider).toBe("OpenRouter");
     expect(evaluation.summaryRows).toHaveLength(3);
     expect(evaluation.summaryRows[0]?.["Total cost"]).toBe("$0.00000825");
     expect(evaluation.summaryRows[1]?.["Total cost"]).toBe("—");
@@ -93,6 +122,14 @@ describe("product categorization evaluation", () => {
       }),
     ).toBeCloseTo(1.432);
     expect(
+      calculateEvaluationCost("openai/gpt-oss-120b:nitro", {
+        inputTokens: 10,
+        outputTokens: 5,
+        totalTokens: 15,
+        costUsd: 0.00042,
+      }),
+    ).toBe(0.00042);
+    expect(
       calculateEvaluationCost("unknown-model", {
         inputTokens: 10,
         outputTokens: 5,
@@ -108,7 +145,7 @@ describe("product categorization evaluation", () => {
     const evaluation = await runProductCategorizationEvaluation({
       concepts,
       items: ["Apples", "Bananas"],
-      models: ["partial-model"],
+      models: [evaluationModel("partial-model")],
       categorize: async () => ({
         results: [
           {
@@ -146,7 +183,7 @@ describe("product categorization evaluation", () => {
     const reconciliationFailure = await runProductCategorizationEvaluation({
       concepts,
       items: ["Apples"],
-      models: ["model"],
+      models: [evaluationModel("model")],
       categorize: async () => {
         throw new ProductCategorizationError("Unknown concept: invented-id.");
       },
@@ -154,7 +191,7 @@ describe("product categorization evaluation", () => {
     const providerFailure = await runProductCategorizationEvaluation({
       concepts,
       items: ["Apples"],
-      models: ["model"],
+      models: [evaluationModel("model")],
       categorize: async () => {
         throw new Error("provider body should stay private");
       },

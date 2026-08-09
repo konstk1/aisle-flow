@@ -15,7 +15,6 @@ vi.mock("ai", () => ({
 import {
   categorizeProductsWithOpenAI,
   openAIProviderOptionsForModel,
-  PRODUCT_CATEGORIZATION_MODEL,
   PRODUCT_CATEGORIZATION_SYSTEM_PROMPT,
 } from "./openai-product-categorizer-core";
 
@@ -112,10 +111,6 @@ describe("OpenAI product categorizer", () => {
         ],
       }).success,
     ).toBe(false);
-  });
-
-  it("uses GPT-5 nano as the production default", () => {
-    expect(PRODUCT_CATEGORIZATION_MODEL).toBe("gpt-5-nano-2025-08-07");
   });
 
   it("rejects incomplete structured results", async () => {

@@ -10,7 +10,7 @@ import type {
 import type { Database } from "@/db/create-client";
 import { buildExactProductAliasesLookupQuery } from "@/db/repositories/shopping-lists";
 
-import { categorizeProductsWithProductionModel } from "./openai-product-categorizer";
+import { categorizeProductsWithProductionModel } from "./product-categorizer";
 import { loadProductConceptCatalog } from "./product-concept-catalog";
 import { createStoreProductMatcher } from "./product-matching";
 
