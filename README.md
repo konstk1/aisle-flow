@@ -115,4 +115,6 @@ documentation only and is never applied automatically.
 
 `GET /api/health` is the unauthenticated health/readiness endpoint. Every
 other application page and API route requires a signed Better Auth session from
-an allowlisted Google account.
+an allowlisted Google account. Sessions last for 30 days; opening the
+authenticated app extends that window at most once per day, while 30 days of
+inactivity requires signing in again.
