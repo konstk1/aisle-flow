@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   getValidatedGitHubIssuesEnv,
   getValidatedOpenAiEnv,
+  getValidatedOpenRouterEnv,
   getValidatedServerEnv,
 } from "./schema";
 
@@ -48,10 +49,17 @@ describe("getValidatedServerEnv", () => {
     );
   });
 
-  it("validates the OpenAI key independently when AI is invoked", () => {
+  it("validates the OpenAI key independently for model evaluation", () => {
     expect(getValidatedOpenAiEnv({ OPENAI_API_KEY: "o".repeat(20) })).toEqual({
       OPENAI_API_KEY: "o".repeat(20),
     });
     expect(() => getValidatedOpenAiEnv({})).toThrow(/OPENAI_API_KEY/);
+  });
+
+  it("validates the OpenRouter key independently for categorization and evaluation", () => {
+    expect(
+      getValidatedOpenRouterEnv({ OPENROUTER_API_KEY: "r".repeat(20) }),
+    ).toEqual({ OPENROUTER_API_KEY: "r".repeat(20) });
+    expect(() => getValidatedOpenRouterEnv({})).toThrow(/OPENROUTER_API_KEY/);
   });
 });

@@ -68,8 +68,9 @@ store. Personal vocabulary follows the user across stores, and users of the
 same store can choose different product granularity and locations. Semantic
 embeddings and vector search are deferred from the MVP.
 
-Submitted batches use a pinned OpenAI model through the Vercel AI SDK. The
-model separates optional free-text quantity from the displayed item name,
+Submitted batches use the pinned OpenRouter-hosted
+`openai/gpt-oss-120b:nitro` model through the Vercel AI SDK. The model
+separates optional free-text quantity from the displayed item name,
 and chooses an existing product concept or suggests one. Every item returned
 directly by the model displays an AI indicator, including items assigned to an
 existing concept. An existing-concept result also records a user-scoped alias

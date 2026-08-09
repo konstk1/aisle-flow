@@ -1,15 +1,43 @@
+import { NoObjectGeneratedError } from "ai";
+
 import {
   ProductCategorizationError,
   type ProductCategorizationBatchResult,
   type ProductCategorizationConcept,
   type ProductCategorizationUsage,
 } from "@/domain/product-categorization";
+import { PRODUCTION_PRODUCT_CATEGORIZATION_MODEL } from "@/services/product-categorization-model";
+
+export type EvaluationProvider = "openai" | "openrouter";
+
+export interface EvaluationModel {
+  provider: EvaluationProvider;
+  modelId: string;
+  displayName: string;
+}
 
 export const EVALUATION_MODELS = [
-  "gpt-5.4-nano-2026-03-17",
-  "gpt-5-nano-2025-08-07",
-  "gpt-4o-mini-2024-07-18",
-] as const;
+  {
+    provider: "openai",
+    modelId: "gpt-5-nano-2025-08-07",
+    displayName: "gpt-5-nano-2025-08-07",
+  },
+  {
+    provider: "openrouter",
+    modelId: PRODUCTION_PRODUCT_CATEGORIZATION_MODEL,
+    displayName: PRODUCTION_PRODUCT_CATEGORIZATION_MODEL,
+  },
+  {
+    provider: "openai",
+    modelId: "gpt-5.4-nano-2026-03-17",
+    displayName: "gpt-5.4-nano-2026-03-17",
+  },
+  {
+    provider: "openai",
+    modelId: "gpt-4o-mini-2024-07-18",
+    displayName: "gpt-4o-mini-2024-07-18",
+  },
+] as const satisfies readonly EvaluationModel[];
 
 export const EVALUATION_ITEMS = [
   "Apples 2",
@@ -56,6 +84,10 @@ export function calculateEvaluationCost(
   modelId: string,
   usage: ProductCategorizationUsage,
 ): number | null {
+  if (usage.costUsd !== undefined && usage.costUsd !== null) {
+    return usage.costUsd;
+  }
+
   const pricing = EVALUATION_MODEL_PRICING_USD_PER_MILLION[modelId];
 
   if (!pricing || usage.inputTokens === null || usage.outputTokens === null) {
@@ -90,6 +122,7 @@ function formatEvaluationCost(cost: number | null): string {
 }
 
 export interface EvaluationResultRow {
+  Provider: "OpenAI" | "OpenRouter";
   Model: string;
   "Submitted text": string;
   "Returned item name": string;
@@ -99,6 +132,7 @@ export interface EvaluationResultRow {
 }
 
 export interface EvaluationSummaryRow {
+  Provider: "OpenAI" | "OpenRouter";
   Model: string;
   Status: "ok" | "failed";
   Duration: string;
@@ -116,13 +150,13 @@ export async function runProductCategorizationEvaluation({
   models = EVALUATION_MODELS,
 }: {
   categorize: (input: {
-    modelId: string;
+    model: EvaluationModel;
     items: readonly string[];
     concepts: readonly ProductCategorizationConcept[];
   }) => Promise<ProductCategorizationBatchResult>;
   concepts: readonly ProductCategorizationConcept[];
   items?: readonly string[];
-  models?: readonly string[];
+  models?: readonly EvaluationModel[];
 }) {
   const resultRows: EvaluationResultRow[] = [];
   const summaryRows: EvaluationSummaryRow[] = [];
@@ -136,11 +170,12 @@ export async function runProductCategorizationEvaluation({
       .join(", ")}`,
   );
 
-  for (const modelId of models) {
+  for (const model of models) {
     const startedAt = Date.now();
+    const provider = model.provider === "openai" ? "OpenAI" : "OpenRouter";
 
     try {
-      const batch = await categorize({ modelId, items, concepts });
+      const batch = await categorize({ model, items, concepts });
       const resultsByKey = new Map(
         batch.results.map((result) => [result.key, result]),
       );
@@ -153,7 +188,8 @@ export async function runProductCategorizationEvaluation({
         }
 
         return {
-          Model: modelId,
+          Provider: provider,
+          Model: model.displayName,
           "Submitted text": submittedText,
           "Returned item name": result.itemName,
           Quantity: result.quantityText ?? "—",
@@ -168,20 +204,34 @@ export async function runProductCategorizationEvaluation({
       resultRows.push(...modelResultRows);
 
       summaryRows.push({
-        Model: modelId,
+        Provider: provider,
+        Model: model.displayName,
         Status: "ok",
         Duration: `${Date.now() - startedAt} ms`,
         "Input tokens": batch.usage.inputTokens ?? "—",
         "Output tokens": batch.usage.outputTokens ?? "—",
         "Total tokens": batch.usage.totalTokens ?? "—",
         "Total cost": formatEvaluationCost(
-          calculateEvaluationCost(modelId, batch.usage),
+          calculateEvaluationCost(model.modelId, batch.usage),
         ),
         "Returned items": batch.results.length,
       });
     } catch (error) {
       const errorClass =
         error instanceof Error ? error.constructor.name : typeof error;
+      if (NoObjectGeneratedError.isInstance(error)) {
+        console.error("Model returned invalid structured output.", {
+          cause:
+            error.cause instanceof Error
+              ? error.cause.message
+              : typeof error.cause,
+          errorClass,
+          finishReason: error.finishReason,
+          modelId: model.modelId,
+          outputText: error.text,
+          provider: model.provider,
+        });
+      }
       const errorDescription =
         error instanceof ProductCategorizationError
           ? error.message
@@ -189,7 +239,8 @@ export async function runProductCategorizationEvaluation({
 
       for (const submittedText of items) {
         resultRows.push({
-          Model: modelId,
+          Provider: provider,
+          Model: model.displayName,
           "Submitted text": submittedText,
           "Returned item name": "—",
           Quantity: "—",
@@ -199,7 +250,8 @@ export async function runProductCategorizationEvaluation({
       }
 
       summaryRows.push({
-        Model: modelId,
+        Provider: provider,
+        Model: model.displayName,
         Status: "failed",
         Duration: `${Date.now() - startedAt} ms`,
         "Input tokens": "—",
@@ -211,14 +263,21 @@ export async function runProductCategorizationEvaluation({
     }
   }
 
-  const modelOrder = new Map(models.map((modelId, index) => [modelId, index]));
+  const modelOrder = new Map(
+    models.map((model, index) => [
+      `${model.provider}:${model.displayName}`,
+      index,
+    ]),
+  );
   resultRows.sort(
     (left, right) =>
       left["Submitted text"].localeCompare(right["Submitted text"], "en-US", {
         sensitivity: "base",
       }) ||
-      (modelOrder.get(left.Model) ?? Number.MAX_SAFE_INTEGER) -
-        (modelOrder.get(right.Model) ?? Number.MAX_SAFE_INTEGER),
+      (modelOrder.get(`${left.Provider.toLowerCase()}:${left.Model}`) ??
+        Number.MAX_SAFE_INTEGER) -
+        (modelOrder.get(`${right.Provider.toLowerCase()}:${right.Model}`) ??
+          Number.MAX_SAFE_INTEGER),
   );
 
   console.table(resultRows);

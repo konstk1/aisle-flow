@@ -2,13 +2,18 @@ import { loadEnvConfig } from "@next/env";
 
 import { createDatabase } from "@/db/create-client";
 import { user } from "@/db/schema";
-import { parseDatabaseUrl, getValidatedOpenAiEnv } from "@/env/schema";
+import {
+  getValidatedOpenAiEnv,
+  getValidatedOpenRouterEnv,
+  parseDatabaseUrl,
+} from "@/env/schema";
 import {
   EVALUATION_ITEMS,
   EVALUATION_MODELS,
   runProductCategorizationEvaluation,
 } from "@/evaluation/product-categorization";
 import { categorizeProductsWithOpenAI } from "@/services/openai-product-categorizer-core";
+import { categorizeProductsWithOpenRouter } from "@/services/openrouter-product-categorizer-core";
 import { loadProductConceptCatalog } from "@/services/product-concept-catalog";
 
 loadEnvConfig(process.cwd());
@@ -16,6 +21,7 @@ loadEnvConfig(process.cwd());
 async function run() {
   const databaseUrl = parseDatabaseUrl(process.env.DATABASE_URL);
   const { OPENAI_API_KEY } = getValidatedOpenAiEnv(process.env);
+  const { OPENROUTER_API_KEY } = getValidatedOpenRouterEnv(process.env);
   const db = createDatabase(databaseUrl);
   const [evaluationUser] = await db.select({ id: user.id }).from(user).limit(1);
 
@@ -30,18 +36,27 @@ async function run() {
     concepts,
     items: EVALUATION_ITEMS,
     models: EVALUATION_MODELS,
-    categorize: ({ concepts: catalog, items, modelId }) =>
-      categorizeProductsWithOpenAI({
-        apiKey: OPENAI_API_KEY,
-        modelId,
-        request: {
-          concepts: catalog,
-          items: items.map((submittedText, index) => ({
-            key: String(index),
-            submittedText,
-          })),
-        },
-      }),
+    categorize: ({ concepts: catalog, items, model }) => {
+      const request = {
+        concepts: catalog,
+        items: items.map((submittedText, index) => ({
+          key: String(index),
+          submittedText,
+        })),
+      };
+
+      return model.provider === "openai"
+        ? categorizeProductsWithOpenAI({
+            apiKey: OPENAI_API_KEY,
+            modelId: model.modelId,
+            request,
+          })
+        : categorizeProductsWithOpenRouter({
+            apiKey: OPENROUTER_API_KEY,
+            modelId: model.modelId,
+            request,
+          });
+    },
   });
 
   if (evaluation.failed) {

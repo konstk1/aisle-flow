@@ -55,7 +55,7 @@ vi.mock("@/db/repositories/shopping-lists", () => ({
 vi.mock("./product-matching", () => ({
   createStoreProductMatcher: mocks.createStoreProductMatcher,
 }));
-vi.mock("./openai-product-categorizer", () => ({
+vi.mock("./product-categorizer", () => ({
   categorizeProductsWithProductionModel:
     mocks.categorizeProductsWithProductionModel,
 }));
