@@ -53,6 +53,13 @@ export const auth = betterAuth({
     provider: "pg",
     schema,
   }),
+  session: {
+    // Better Auth defaults to seven days, which is easy to exceed between
+    // shopping trips. Keep active sessions sliding, but allow a month of
+    // inactivity before requiring Google sign-in again.
+    expiresIn: 60 * 60 * 24 * 30,
+    updateAge: 60 * 60 * 24,
+  },
   socialProviders: {
     google: {
       clientId: authEnv.GOOGLE_CLIENT_ID,

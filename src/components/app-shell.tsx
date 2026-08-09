@@ -6,6 +6,7 @@ import {
   ShellProgressBar,
   ShellProgressProvider,
 } from "@/components/shell-progress";
+import { SessionRefresher } from "@/components/session-refresher";
 import { StorePicker } from "@/components/store-picker";
 
 export function AppShell({
@@ -19,6 +20,7 @@ export function AppShell({
 }) {
   return (
     <ShellProgressProvider>
+      <SessionRefresher />
       <main className="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-6 pb-20">
         <header className="sticky top-0 z-20 -mx-6 bg-background/80 px-6 py-4 backdrop-blur-md">
           <div className="flex items-center justify-between gap-3 sm:gap-4">
