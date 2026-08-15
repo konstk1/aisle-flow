@@ -16,17 +16,16 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import {
-  closestCenter,
   DndContext,
   DragOverlay,
-  KeyboardSensor,
+  pointerWithin,
   PointerSensor,
+  useDroppable,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
 import {
   SortableContext,
-  sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
@@ -38,6 +37,7 @@ import {
   formatSectionLabel,
   getRouteSections,
   getNextAisleIdentifier,
+  moveSectionToTarget,
   orderAisles,
   renumberPathOrders,
   type StoreLayout,
@@ -85,9 +85,6 @@ export function StoreLayoutEditor({
   );
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
   );
 
   function errorFor(path: string) {
@@ -258,35 +255,42 @@ export function StoreLayoutEditor({
   }
 
   function moveSection(
-    aisleId: string,
     sectionId: string,
     targetSectionId: string,
+    placement: "before" | "after",
   ) {
+    setLayout((current) => ({
+      ...current,
+      aisles: moveSectionToTarget(
+        current.aisles,
+        sectionId,
+        targetSectionId,
+        placement,
+      ),
+    }));
+  }
+
+  function moveSectionByDirection(sectionId: string, direction: -1 | 1) {
     setLayout((current) => {
-      const aisles = current.aisles.map((aisle) => {
-        if (aisle.id !== aisleId || sectionId === targetSectionId) {
-          return aisle;
-        }
+      const sections = getRouteSections(current);
+      const sectionIndex = sections.findIndex(
+        ({ section }) => section.id === sectionId,
+      );
+      const target = sections[sectionIndex + direction];
 
-        const sourceIndex = aisle.sections.findIndex(
-          (section) => section.id === sectionId,
-        );
-        const targetIndex = aisle.sections.findIndex(
-          (section) => section.id === targetSectionId,
-        );
+      if (sectionIndex === -1 || !target) {
+        return current;
+      }
 
-        if (sourceIndex === -1 || targetIndex === -1) {
-          return aisle;
-        }
-
-        const sections = [...aisle.sections];
-        const [section] = sections.splice(sourceIndex, 1);
-        sections.splice(targetIndex, 0, section);
-
-        return { ...aisle, sections };
-      });
-
-      return { ...current, aisles: renumberPathOrders(aisles) };
+      return {
+        ...current,
+        aisles: moveSectionToTarget(
+          current.aisles,
+          sectionId,
+          target.section.id,
+          direction === -1 ? "before" : "after",
+        ),
+      };
     });
   }
 
@@ -369,7 +373,7 @@ export function StoreLayoutEditor({
             <span className="hidden sm:inline">Copy to new store</span>
           </button>
           <button
-            className="from-accent to-accent-bright shadow-accent-glow inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-[14px] bg-gradient-to-br px-5 text-sm font-semibold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:from-ink-200 disabled:to-ink-200 disabled:text-ink-500 disabled:opacity-100 disabled:shadow-none sm:flex-none"
+            className="from-accent to-accent-bright shadow-accent-glow disabled:from-ink-200 disabled:to-ink-200 disabled:text-ink-500 inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-[14px] bg-gradient-to-br px-5 text-sm font-semibold text-white transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-100 disabled:shadow-none sm:flex-none"
             disabled={isSaving || !canManage}
             onClick={saveLayout}
             title={
@@ -386,7 +390,8 @@ export function StoreLayoutEditor({
       </div>
 
       <p className="text-ink-400 mt-3 max-w-xl text-sm leading-6">
-        Add any aisles, then arrange their sections. The path numbers are
+        Add any aisles, then drag sections or use their arrow buttons to move
+        them along the route, including between aisles. The path numbers are
         assigned automatically; section side is informational only.
       </p>
       <p className="text-ink-400 mt-2 text-sm">
@@ -402,168 +407,222 @@ export function StoreLayoutEditor({
         page.
       </p>
 
-      <div className="mt-7 space-y-4">
-        {orderedAisles.map((aisle, aisleIndex) => {
-          const isCollapsed = collapsedAisleIds.has(aisle.id);
-          const accentColor = aisleAccentColor(aisle.id);
+      <DndContext
+        collisionDetection={pointerWithin}
+        id="store-layout-sections"
+        onDragCancel={() => setActiveSectionId(null)}
+        onDragEnd={({ active, over }) => {
+          if (canManage && over && active.id !== over.id) {
+            const activeId = String(active.id);
+            const overId = String(over.id);
+            const sourceAisle = layout.aisles.find((aisle) =>
+              aisle.sections.some((section) => section.id === activeId),
+            );
+            const targetAisleId = overId.startsWith("aisle:")
+              ? overId.slice("aisle:".length)
+              : null;
+            const targetAisle = layout.aisles.find(
+              (aisle) =>
+                aisle.id === targetAisleId ||
+                aisle.sections.some((section) => section.id === overId),
+            );
+            const targetSection = targetAisleId
+              ? targetAisle?.sections.at(-1)
+              : targetAisle?.sections.find((section) => section.id === overId);
+            const translatedRect = active.rect.current.translated;
+            const placement =
+              targetAisleId ||
+              (sourceAisle?.id !== targetAisle?.id &&
+                translatedRect &&
+                translatedRect.top > over.rect.top + over.rect.height / 2)
+                ? "after"
+                : "before";
 
-          return (
-            <article className="card overflow-hidden" key={aisle.id}>
-              <div className="flex min-h-14 items-center gap-1.5 py-2 pr-3 pl-2 sm:gap-2 sm:pr-4">
-                <button
-                  aria-expanded={!isCollapsed}
-                  aria-label={isCollapsed ? "Expand aisle" : "Collapse aisle"}
-                  className="text-ink-200 hover:text-accent inline-flex size-9 shrink-0 items-center justify-center rounded-[10px] transition"
-                  onClick={() => toggleAisle(aisle.id)}
-                  type="button"
-                >
-                  {isCollapsed ? (
-                    <ChevronRight aria-hidden="true" className="size-4" />
-                  ) : (
-                    <ChevronDown aria-hidden="true" className="size-4" />
-                  )}
-                </button>
-                <span
-                  aria-hidden="true"
-                  className="size-2.5 shrink-0 rounded-[4px]"
-                  style={{ background: accentColor }}
-                />
-                <label className="text-ink-400 flex shrink-0 items-baseline gap-1.5 text-sm font-medium">
-                  Aisle
-                  <input
-                    aria-label="Aisle number"
-                    className="text-foreground focus:border-accent w-9 rounded-lg border border-transparent bg-transparent px-1 text-center text-base font-bold tabular-nums transition outline-none focus:bg-white disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={!canManage}
-                    onChange={(event) =>
-                      updateAisle(aisle.id, { identifier: event.target.value })
-                    }
-                    value={aisle.identifier}
-                  />
-                </label>
-                <input
-                  aria-label="Aisle display name"
-                  className="text-ink-900 focus:border-accent min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 py-1 text-sm font-medium transition outline-none focus:bg-white disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={!canManage}
-                  onChange={(event) =>
-                    updateAisle(aisle.id, {
-                      displayName: event.target.value || null,
-                    })
-                  }
-                  placeholder="Name (optional)"
-                  value={aisle.displayName ?? ""}
-                />
-                {isCollapsed ? (
-                  <span className="bg-divider text-ink-250 shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold">
-                    {aisle.sections.length}
-                  </span>
-                ) : null}
-                <div className="flex shrink-0 items-center gap-1">
-                  <button
-                    aria-label="Move aisle earlier"
-                    className="bg-ink-50 text-ink-500 hover:text-accent inline-flex size-8 items-center justify-center rounded-[10px] transition disabled:cursor-not-allowed disabled:opacity-30"
-                    disabled={!canManage || aisleIndex === 0}
-                    onClick={() => moveAisle(aisle.id, -1)}
-                    type="button"
-                  >
-                    <ArrowUp aria-hidden="true" className="size-3.5" />
-                  </button>
-                  <button
-                    aria-label="Move aisle later"
-                    className="bg-ink-50 text-ink-500 hover:text-accent inline-flex size-8 items-center justify-center rounded-[10px] transition disabled:cursor-not-allowed disabled:opacity-30"
-                    disabled={
-                      !canManage || aisleIndex === orderedAisles.length - 1
-                    }
-                    onClick={() => moveAisle(aisle.id, 1)}
-                    type="button"
-                  >
-                    <ArrowDown aria-hidden="true" className="size-3.5" />
-                  </button>
-                  <IconButton
-                    disabled={!canManage || orderedAisles.length === 1}
-                    label="Delete aisle"
-                    onClick={() => removeAisle(aisle.id)}
-                  >
-                    <Trash2 aria-hidden="true" className="size-4" />
-                  </IconButton>
-                </div>
-              </div>
+            if (targetSection) {
+              moveSection(activeId, targetSection.id, placement);
+            }
+          }
+          setActiveSectionId(null);
+        }}
+        onDragStart={({ active }) => {
+          if (canManage) {
+            setActiveSectionId(String(active.id));
+          }
+        }}
+        sensors={sensors}
+      >
+        <div className="mt-7 space-y-4">
+          {orderedAisles.map((aisle, aisleIndex) => {
+            const isCollapsed = collapsedAisleIds.has(aisle.id);
+            const accentColor = aisleAccentColor(aisle.id);
 
-              {isCollapsed ? null : (
-                <div>
-                  <DndContext
-                    collisionDetection={closestCenter}
-                    id={`store-layout-aisle-${aisle.id}`}
-                    onDragCancel={() => setActiveSectionId(null)}
-                    onDragEnd={({ active, over }) => {
-                      if (canManage && over && active.id !== over.id) {
-                        moveSection(
-                          aisle.id,
-                          String(active.id),
-                          String(over.id),
-                        );
-                      }
-                      setActiveSectionId(null);
-                    }}
-                    onDragStart={({ active }) => {
-                      if (canManage) {
-                        setActiveSectionId(String(active.id));
-                      }
-                    }}
-                    sensors={sensors}
-                  >
-                    <SortableContext
-                      items={aisle.sections.map((section) => section.id)}
-                      strategy={verticalListSortingStrategy}
-                    >
-                      <div>
-                        {aisle.sections.map((section) => (
-                          <div
-                            className="border-divider-soft border-t"
-                            key={section.id}
-                          >
-                            <SortableSectionRow
-                              canManage={canManage}
-                              disabled={
-                                !canManage || aisle.sections.length === 1
-                              }
-                              onDelete={() =>
-                                removeSection(aisle.id, section.id)
-                              }
-                              onUpdate={(patch) =>
-                                updateSection(aisle.id, section.id, patch)
-                              }
-                              section={section}
-                            />
-                          </div>
-                        ))}
-                      </div>
-                    </SortableContext>
+            return (
+              <DroppableAisle
+                aisleId={aisle.id}
+                canManage={canManage}
+                isCollapsed={isCollapsed}
+                key={aisle.id}
+              >
+                <article className="card overflow-hidden">
+                  <div className="flex min-h-14 items-center gap-1.5 py-2 pr-3 pl-2 sm:gap-2 sm:pr-4">
                     <button
-                      className="border-divider-soft text-ink-500 hover:text-accent flex min-h-12 w-full items-center gap-2 border-t px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40"
-                      disabled={!canManage}
-                      onClick={() => addSection(aisle.id)}
+                      aria-expanded={!isCollapsed}
+                      aria-label={
+                        isCollapsed ? "Expand aisle" : "Collapse aisle"
+                      }
+                      className="text-ink-200 hover:text-accent inline-flex size-9 shrink-0 items-center justify-center rounded-[10px] transition"
+                      onClick={() => toggleAisle(aisle.id)}
                       type="button"
                     >
-                      <Plus aria-hidden="true" className="size-4" />
-                      Add section
+                      {isCollapsed ? (
+                        <ChevronRight aria-hidden="true" className="size-4" />
+                      ) : (
+                        <ChevronDown aria-hidden="true" className="size-4" />
+                      )}
                     </button>
-                    <DragOverlay>
-                      <SectionDragOverlay
-                        section={aisle.sections.find(
-                          (section) => section.id === activeSectionId,
-                        )}
+                    <span
+                      aria-hidden="true"
+                      className="size-2.5 shrink-0 rounded-[4px]"
+                      style={{ background: accentColor }}
+                    />
+                    <label className="text-ink-400 flex shrink-0 items-baseline gap-1.5 text-sm font-medium">
+                      Aisle
+                      <input
+                        aria-label="Aisle number"
+                        className="text-foreground focus:border-accent w-9 rounded-lg border border-transparent bg-transparent px-1 text-center text-base font-bold tabular-nums transition outline-none focus:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                        disabled={!canManage}
+                        onChange={(event) =>
+                          updateAisle(aisle.id, {
+                            identifier: event.target.value,
+                          })
+                        }
+                        value={aisle.identifier}
                       />
-                    </DragOverlay>
-                  </DndContext>
-                  <FieldError
-                    message={errorFor(`aisles.${aisleIndex}.identifier`)}
-                  />
-                </div>
-              )}
-            </article>
-          );
-        })}
-      </div>
+                    </label>
+                    <input
+                      aria-label="Aisle display name"
+                      className="text-ink-900 focus:border-accent min-w-0 flex-1 rounded-lg border border-transparent bg-transparent px-2 py-1 text-sm font-medium transition outline-none focus:bg-white disabled:cursor-not-allowed disabled:opacity-60"
+                      disabled={!canManage}
+                      onChange={(event) =>
+                        updateAisle(aisle.id, {
+                          displayName: event.target.value || null,
+                        })
+                      }
+                      placeholder="Name (optional)"
+                      value={aisle.displayName ?? ""}
+                    />
+                    {isCollapsed ? (
+                      <span className="bg-divider text-ink-250 shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold">
+                        {aisle.sections.length}
+                      </span>
+                    ) : null}
+                    <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        aria-label="Move aisle earlier"
+                        className="bg-ink-50 text-ink-500 hover:text-accent inline-flex size-8 items-center justify-center rounded-[10px] transition disabled:cursor-not-allowed disabled:opacity-30"
+                        disabled={!canManage || aisleIndex === 0}
+                        onClick={() => moveAisle(aisle.id, -1)}
+                        type="button"
+                      >
+                        <ArrowUp aria-hidden="true" className="size-3.5" />
+                      </button>
+                      <button
+                        aria-label="Move aisle later"
+                        className="bg-ink-50 text-ink-500 hover:text-accent inline-flex size-8 items-center justify-center rounded-[10px] transition disabled:cursor-not-allowed disabled:opacity-30"
+                        disabled={
+                          !canManage || aisleIndex === orderedAisles.length - 1
+                        }
+                        onClick={() => moveAisle(aisle.id, 1)}
+                        type="button"
+                      >
+                        <ArrowDown aria-hidden="true" className="size-3.5" />
+                      </button>
+                      <IconButton
+                        disabled={!canManage || orderedAisles.length === 1}
+                        label="Delete aisle"
+                        onClick={() => removeAisle(aisle.id)}
+                      >
+                        <Trash2 aria-hidden="true" className="size-4" />
+                      </IconButton>
+                    </div>
+                  </div>
+
+                  {isCollapsed ? null : (
+                    <div>
+                      <SortableContext
+                        items={aisle.sections.map((section) => section.id)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        <div>
+                          {aisle.sections.map((section) => (
+                            <div
+                              className="border-divider-soft border-t"
+                              key={section.id}
+                            >
+                              <SortableSectionRow
+                                canManage={canManage}
+                                canMoveEarlier={
+                                  routeSections.findIndex(
+                                    ({ section: routeSection }) =>
+                                      routeSection.id === section.id,
+                                  ) > 0 && aisle.sections.length > 1
+                                }
+                                canMoveLater={
+                                  routeSections.findIndex(
+                                    ({ section: routeSection }) =>
+                                      routeSection.id === section.id,
+                                  ) <
+                                    routeSections.length - 1 &&
+                                  aisle.sections.length > 1
+                                }
+                                disabled={
+                                  !canManage || aisle.sections.length === 1
+                                }
+                                onDelete={() =>
+                                  removeSection(aisle.id, section.id)
+                                }
+                                onMoveEarlier={() =>
+                                  moveSectionByDirection(section.id, -1)
+                                }
+                                onMoveLater={() =>
+                                  moveSectionByDirection(section.id, 1)
+                                }
+                                onUpdate={(patch) =>
+                                  updateSection(aisle.id, section.id, patch)
+                                }
+                                section={section}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </SortableContext>
+                      <button
+                        className="border-divider-soft text-ink-500 hover:text-accent flex min-h-12 w-full items-center gap-2 border-t px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40"
+                        disabled={!canManage}
+                        onClick={() => addSection(aisle.id)}
+                        type="button"
+                      >
+                        <Plus aria-hidden="true" className="size-4" />
+                        Add section
+                      </button>
+                      <FieldError
+                        message={errorFor(`aisles.${aisleIndex}.identifier`)}
+                      />
+                    </div>
+                  )}
+                </article>
+              </DroppableAisle>
+            );
+          })}
+        </div>
+        <DragOverlay>
+          <SectionDragOverlay
+            section={layout.aisles
+              .flatMap((aisle) => aisle.sections)
+              .find((section) => section.id === activeSectionId)}
+          />
+        </DragOverlay>
+      </DndContext>
 
       <button
         className="text-ink-900 shadow-card-sm hover:text-accent mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40"
@@ -659,28 +718,69 @@ export function StoreLayoutEditor({
   );
 }
 
+function DroppableAisle({
+  aisleId,
+  canManage,
+  children,
+  isCollapsed,
+}: {
+  aisleId: string;
+  canManage: boolean;
+  children: React.ReactNode;
+  isCollapsed: boolean;
+}) {
+  const { isOver, setNodeRef } = useDroppable({
+    disabled: !canManage || !isCollapsed,
+    id: `aisle:${aisleId}`,
+  });
+
+  return (
+    <div
+      className={isOver ? "ring-accent rounded-[20px] ring-2" : undefined}
+      ref={setNodeRef}
+    >
+      {children}
+    </div>
+  );
+}
+
 function SortableSectionRow({
   canManage,
+  canMoveEarlier,
+  canMoveLater,
   disabled,
   onDelete,
+  onMoveEarlier,
+  onMoveLater,
   onUpdate,
   section,
 }: {
   canManage: boolean;
+  canMoveEarlier: boolean;
+  canMoveLater: boolean;
   disabled: boolean;
   onDelete: () => void;
+  onMoveEarlier: () => void;
+  onMoveLater: () => void;
   onUpdate: (patch: Partial<Omit<StoreLayoutSection, "id">>) => void;
   section: StoreLayoutSection;
 }) {
   const {
     attributes,
     isDragging,
+    isOver,
     listeners,
     setActivatorNodeRef,
     setNodeRef,
     transform,
     transition,
-  } = useSortable({ disabled: !canManage, id: section.id });
+  } = useSortable({
+    disabled: {
+      draggable: !canManage || disabled,
+      droppable: !canManage,
+    },
+    id: section.id,
+  });
   const style = {
     transform: transform
       ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
@@ -690,19 +790,20 @@ function SortableSectionRow({
 
   return (
     <div
-      className={`flex min-h-12 items-center gap-1 py-1 pr-3 pl-2 sm:gap-1.5 sm:pr-4 ${isDragging ? "opacity-0" : ""}`}
+      className={`flex min-h-12 flex-wrap items-center gap-1 py-1 pr-3 pl-2 sm:flex-nowrap sm:gap-1.5 sm:pr-4 ${isDragging ? "opacity-0" : ""} ${isOver ? "bg-accent/5" : ""}`}
       ref={setNodeRef}
       style={style}
     >
       <button
         aria-label={`Drag ${section.label || "section"}`}
         className="text-ink-200 hover:text-accent inline-flex size-9 shrink-0 cursor-grab items-center justify-center rounded-[10px] transition active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-40"
-        disabled={!canManage}
+        disabled={!canManage || disabled}
         ref={setActivatorNodeRef}
         style={{ touchAction: "none" }}
         type="button"
         {...attributes}
         {...listeners}
+        tabIndex={-1}
       >
         <GripVertical aria-hidden="true" className="size-4" />
       </button>
@@ -731,15 +832,55 @@ function SortableSectionRow({
         <option value="center">Center</option>
         <option value="endcap">Endcap</option>
       </select>
-      <IconButton
-        compact
-        disabled={disabled}
-        label="Delete section"
-        onClick={onDelete}
-      >
-        <Trash2 aria-hidden="true" className="size-4" />
-      </IconButton>
+      <div className="flex w-full shrink-0 items-center justify-end gap-1 sm:w-auto">
+        <MoveSectionButton
+          disabled={!canManage || !canMoveEarlier}
+          label={`Move ${section.label || "section"} earlier`}
+          onClick={onMoveEarlier}
+        >
+          <ArrowUp aria-hidden="true" className="size-3.5" />
+        </MoveSectionButton>
+        <MoveSectionButton
+          disabled={!canManage || !canMoveLater}
+          label={`Move ${section.label || "section"} later`}
+          onClick={onMoveLater}
+        >
+          <ArrowDown aria-hidden="true" className="size-3.5" />
+        </MoveSectionButton>
+        <IconButton
+          compact
+          disabled={disabled}
+          label="Delete section"
+          onClick={onDelete}
+        >
+          <Trash2 aria-hidden="true" className="size-4" />
+        </IconButton>
+      </div>
     </div>
+  );
+}
+
+function MoveSectionButton({
+  children,
+  disabled,
+  label,
+  onClick,
+}: {
+  children: React.ReactNode;
+  disabled: boolean;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-label={label}
+      className="bg-ink-50 text-ink-500 hover:text-accent inline-flex size-8 items-center justify-center rounded-[10px] transition disabled:cursor-not-allowed disabled:opacity-30"
+      disabled={disabled}
+      onClick={onClick}
+      type="button"
+    >
+      {children}
+    </button>
   );
 }
 
