@@ -41,6 +41,70 @@ export function renumberPathOrders(aisles: StoreLayoutAisle[]) {
   }));
 }
 
+export function moveSectionToTarget(
+  aisles: StoreLayoutAisle[],
+  sectionId: string,
+  targetSectionId: string,
+  placement: "before" | "after" = "before",
+) {
+  if (sectionId === targetSectionId) {
+    return aisles;
+  }
+
+  const sourceAisle = aisles.find((aisle) =>
+    aisle.sections.some((section) => section.id === sectionId),
+  );
+  const targetAisle = aisles.find((aisle) =>
+    aisle.sections.some((section) => section.id === targetSectionId),
+  );
+
+  if (
+    !sourceAisle ||
+    !targetAisle ||
+    (sourceAisle.id !== targetAisle.id && sourceAisle.sections.length === 1)
+  ) {
+    return aisles;
+  }
+
+  const section = sourceAisle.sections.find(({ id }) => id === sectionId)!;
+  const sourceIndex = sourceAisle.sections.findIndex(
+    ({ id }) => id === sectionId,
+  );
+  const targetIndex = targetAisle.sections.findIndex(
+    ({ id }) => id === targetSectionId,
+  );
+
+  const movedAisles = aisles.map((aisle) => {
+    if (sourceAisle.id === targetAisle.id && aisle.id === sourceAisle.id) {
+      const sections = [...aisle.sections];
+      sections.splice(sourceIndex, 1);
+      sections.splice(targetIndex, 0, section);
+      return { ...aisle, sections };
+    }
+
+    if (aisle.id === sourceAisle.id) {
+      return {
+        ...aisle,
+        sections: aisle.sections.filter(({ id }) => id !== sectionId),
+      };
+    }
+
+    if (aisle.id === targetAisle.id) {
+      const sections = [...aisle.sections];
+      sections.splice(
+        targetIndex + (placement === "after" ? 1 : 0),
+        0,
+        section,
+      );
+      return { ...aisle, sections };
+    }
+
+    return aisle;
+  });
+
+  return renumberPathOrders(movedAisles);
+}
+
 export function orderAisles(aisles: StoreLayoutAisle[]) {
   return [...aisles].sort(
     (first, second) => first.displayOrder - second.displayOrder,

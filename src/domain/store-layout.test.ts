@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   getNextAisleIdentifier,
   getRouteSections,
+  moveSectionToTarget,
   renumberPathOrders,
   type StoreLayout,
 } from "./store-layout";
@@ -125,5 +126,74 @@ describe("getRouteSections", () => {
       ["bakery", 2],
       ["dairy", 3],
     ]);
+  });
+});
+
+describe("moveSectionToTarget", () => {
+  it("moves a section between aisles without changing its identity", () => {
+    const moved = moveSectionToTarget(layout.aisles, "produce-end", "dairy");
+
+    expect(moved[0].sections.map(({ id }) => id)).toEqual(["produce-start"]);
+    expect(moved[1].sections.map(({ id }) => id)).toEqual([
+      "produce-end",
+      "dairy",
+    ]);
+    expect(moved[1].sections[0]).toMatchObject({
+      ...layout.aisles[1].sections[1],
+      pathOrder: 1,
+    });
+    expect(
+      moved.flatMap((aisle) =>
+        aisle.sections.map((section) => section.pathOrder),
+      ),
+    ).toEqual([0, 1, 2]);
+  });
+
+  it("can place a moved section after the destination section", () => {
+    const moved = moveSectionToTarget(
+      layout.aisles,
+      "produce-end",
+      "dairy",
+      "after",
+    );
+
+    expect(moved[1].sections.map(({ id }) => id)).toEqual([
+      "dairy",
+      "produce-end",
+    ]);
+    expect(
+      moved.flatMap((aisle) =>
+        aisle.sections.map((section) => section.pathOrder),
+      ),
+    ).toEqual([0, 1, 2]);
+  });
+
+  it("reorders sections within an aisle", () => {
+    const moved = moveSectionToTarget(
+      layout.aisles,
+      "produce-start",
+      "produce-end",
+      "after",
+    );
+
+    expect(moved[0].sections.map(({ id }) => id)).toEqual([
+      "produce-end",
+      "produce-start",
+    ]);
+  });
+
+  it("ignores unknown section identifiers", () => {
+    expect(moveSectionToTarget(layout.aisles, "unknown", "produce-start")).toBe(
+      layout.aisles,
+    );
+    expect(moveSectionToTarget(layout.aisles, "produce-start", "unknown")).toBe(
+      layout.aisles,
+    );
+  });
+
+  it("keeps at least one section in every aisle", () => {
+    expect(moveSectionToTarget(layout.aisles, "dairy", "produce-start")).toBe(
+      layout.aisles,
+    );
   });
 });
