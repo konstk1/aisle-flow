@@ -148,6 +148,7 @@ function CreateProductForm({
             Product name
           </span>
           <input
+            autoCapitalize="none"
             autoFocus
             className="focus:border-accent mt-1 min-h-11 w-full rounded-xl border border-black/[0.08] bg-white px-3 text-sm outline-none"
             maxLength={80}
