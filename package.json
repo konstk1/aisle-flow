@@ -21,7 +21,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "db:seed-product-catalog": "tsx src/db/seed-product-catalog.ts",
-    "eval:llm": "tsx src/scripts/evaluate-product-categorization.ts"
+    "eval:llm": "tsx src/scripts/evaluate-product-categorization.ts",
+    "eval:jev": "tsx src/scripts/evaluate-jev.ts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.85",
