@@ -478,7 +478,6 @@ export const shoppingItems = pgTable(
       "categorization_source",
     ),
     suggestedProductConceptName: text("suggested_product_concept_name"),
-    isChecked: boolean("is_checked").default(false).notNull(),
     checkedAt: timestamp("checked_at", { withTimezone: true }),
     snoozedUntil: timestamp("snoozed_until", { withTimezone: true }),
     orderKey: text("order_key").notNull(),
@@ -502,7 +501,7 @@ export const shoppingItems = pgTable(
     ),
     index("shopping_items_active_list_read_index").on(
       table.shoppingListId,
-      table.isChecked,
+      table.checkedAt,
       table.orderKey,
     ),
     index("shopping_items_snoozed_index")
@@ -528,10 +527,6 @@ export const shoppingItems = pgTable(
     check(
       "shopping_items_order_key_not_blank",
       sql`length(btrim(${table.orderKey})) > 0`,
-    ),
-    check(
-      "shopping_items_checked_at_consistency",
-      sql`(${table.isChecked} = false AND ${table.checkedAt} IS NULL) OR (${table.isChecked} = true AND ${table.checkedAt} IS NOT NULL)`,
     ),
     check("shopping_items_version_positive", sql`${table.version} > 0`),
   ],

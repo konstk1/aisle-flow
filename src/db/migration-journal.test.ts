@@ -24,6 +24,33 @@ function readMigrationJournal(): MigrationJournal {
 }
 
 describe("migration journal", () => {
+  it("derives checked state from the preserved completion timestamps", () => {
+    const migration = readFileSync(
+      fileURLToPath(
+        new URL("../../drizzle/0003_cool_lizard.sql", import.meta.url),
+      ),
+      "utf8",
+    );
+    const snapshot = readFileSync(
+      fileURLToPath(
+        new URL("../../drizzle/meta/0003_snapshot.json", import.meta.url),
+      ),
+      "utf8",
+    );
+    expect(migration).toContain(
+      'DROP CONSTRAINT "shopping_items_checked_at_consistency"',
+    );
+    expect(migration).toContain('DROP COLUMN "is_checked"');
+    expect(migration).toContain(
+      '("shopping_list_id","checked_at","order_key")',
+    );
+    expect(migration).not.toMatch(
+      /(?:DROP TABLE|DELETE FROM|UPDATE) "shopping_items"/,
+    );
+    expect(migration).not.toContain('DROP COLUMN "checked_at"');
+    expect(snapshot).not.toContain('"is_checked"');
+  });
+
   it("preserves the baseline and retained development watermarks", () => {
     const { entries } = readMigrationJournal();
 

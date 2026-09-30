@@ -4,9 +4,8 @@ export { MAX_SHOPPING_ITEM_TEXT_LENGTH } from "./shopping-item-constants";
 import { MAX_SHOPPING_ITEM_TEXT_LENGTH } from "./shopping-item-constants";
 export const MAX_IMPORT_ITEM_COUNT = 50;
 
-// Checked items stay on the active list (struck through) for this long so a
-// mid-trip list keeps tallying what's already in the cart; only afterwards do
-// they surface in the completed view.
+// Fresh reads retain the trip's checked items for four hours. The active view
+// can hide them sooner with its local Archive completed action.
 export const CHECKED_ITEM_RETENTION_MS = 4 * 60 * 60 * 1000;
 
 export function checkedItemRetentionCutoff(now: Date) {

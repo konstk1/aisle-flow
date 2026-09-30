@@ -9,6 +9,19 @@ export type PendingTextMutation = {
   mutationId: string;
 };
 
+// Archiving changes only the visible view; refresh clears the local cutoff.
+export function visibleShoppingItems(
+  items: readonly ActiveShoppingItemPayload[],
+  archiveCutoff: number | null,
+) {
+  return items.filter(
+    (item) =>
+      archiveCutoff === null ||
+      item.checkedAt === null ||
+      Date.parse(item.checkedAt) > archiveCutoff,
+  );
+}
+
 export const ADD_PRODUCT_OPTION_VALUE = "__add_product__";
 
 // Distinct from ADD_PRODUCT_OPTION_VALUE so choosing it always fires a change
@@ -272,9 +285,7 @@ export function mergeVisibleListSnapshotAfterCheck({
   return {
     ...nextList,
     items: nextList.items.map((item) =>
-      heldItemIds.has(item.id)
-        ? (currentItemsById.get(item.id) ?? item)
-        : item,
+      heldItemIds.has(item.id) ? (currentItemsById.get(item.id) ?? item) : item,
     ),
   };
 }

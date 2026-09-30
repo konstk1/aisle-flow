@@ -19,7 +19,54 @@ import {
   replaceItemInActiveList,
   restoreItemInActiveList,
   shouldSaveProductCorrectionForEdit,
+  visibleShoppingItems,
 } from "./active-shopping-list-state";
+
+describe("manual completion archive", () => {
+  const cutoff = Date.parse("2026-01-01T00:00:00.000Z");
+
+  it("hides checks at or before the cutoff and preserves unchecked and newer items", () => {
+    const items = [
+      { ...itemWithState("old", true), checkedAt: "2025-12-31T23:59:59.999Z" },
+      itemWithState("equal", true),
+      { ...itemWithState("new", true), checkedAt: "2026-01-01T00:00:00.001Z" },
+      itemWithState("unchecked", false),
+    ];
+    expect(visibleShoppingItems(items, cutoff).map((item) => item.id)).toEqual([
+      "new",
+      "unchecked",
+    ]);
+    expect(items).toHaveLength(4);
+    // New server snapshots use the same cutoff until an explicit refresh.
+    expect(
+      visibleShoppingItems(
+        items.map((item) => ({ ...item })),
+        cutoff,
+      ).map((item) => item.id),
+    ).toEqual(["new", "unchecked"]);
+    expect(visibleShoppingItems(items, null)).toEqual(items);
+  });
+
+  it("keeps later checks visible until the user advances the cutoff", () => {
+    const checked = {
+      ...itemWithState("a", true),
+      checkedAt: "2026-01-01T00:01:00.000Z",
+    };
+    expect(visibleShoppingItems([checked], cutoff)).toEqual([checked]);
+    expect(visibleShoppingItems([checked], cutoff + 60_000)).toEqual([]);
+  });
+
+  it("shows an archived item again when unchecked or rechecked after the cutoff", () => {
+    expect(
+      visibleShoppingItems([itemWithState("a", false)], cutoff),
+    ).toHaveLength(1);
+    const rechecked = {
+      ...itemWithState("a", true),
+      checkedAt: "2026-01-02T00:00:00.000Z",
+    };
+    expect(visibleShoppingItems([rechecked], cutoff)).toEqual([rechecked]);
+  });
+});
 
 describe("formatAlreadyOnListMessage", () => {
   it("calls out duplicate items by name", () => {
