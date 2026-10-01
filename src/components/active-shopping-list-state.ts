@@ -3,11 +3,24 @@ import type {
   ActiveShoppingItemPayload,
   FieldErrors,
 } from "@/domain/active-shopping-list";
+import { CHECKED_ITEM_RETENTION_MS } from "@/domain/active-shopping-list";
 
 export type PendingTextMutation = {
   text: string;
   mutationId: string;
 };
+
+// Manual archives survive refreshes; older checks always age out after four hours.
+export function visibleShoppingItems(
+  items: readonly ActiveShoppingItemPayload[],
+  archiveCutoff: number | null,
+  now: number = Date.now(),
+) {
+  const cutoff = Math.max(archiveCutoff ?? 0, now - CHECKED_ITEM_RETENTION_MS);
+  return items.filter(
+    (item) => item.checkedAt === null || Date.parse(item.checkedAt) > cutoff,
+  );
+}
 
 export const ADD_PRODUCT_OPTION_VALUE = "__add_product__";
 
@@ -272,9 +285,7 @@ export function mergeVisibleListSnapshotAfterCheck({
   return {
     ...nextList,
     items: nextList.items.map((item) =>
-      heldItemIds.has(item.id)
-        ? (currentItemsById.get(item.id) ?? item)
-        : item,
+      heldItemIds.has(item.id) ? (currentItemsById.get(item.id) ?? item) : item,
     ),
   };
 }

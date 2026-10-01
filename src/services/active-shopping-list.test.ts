@@ -202,7 +202,6 @@ describe("getActiveShoppingList", () => {
           rawText: "Rice",
           normalizedText: "rice",
           productConceptId: "rice",
-          isChecked: false,
           checkedAt: null,
           orderKey: "1",
           sourceIdentifier: "manual:1",
@@ -300,7 +299,6 @@ describe("getCompletedShoppingList", () => {
           rawText: "Rice",
           normalizedText: "rice",
           productConceptId: null,
-          isChecked: true,
           checkedAt: completedAt,
           orderKey: "1",
           sourceIdentifier: "manual:1",
@@ -322,7 +320,6 @@ describe("getCompletedShoppingList", () => {
       mocks.db,
       storeId,
       listId,
-      expect.any(Date),
     );
     expect(mocks.buildRouteOrderedShoppingItemsQuery).not.toHaveBeenCalled();
     expect(result).not.toBeNull();
@@ -668,7 +665,6 @@ describe("setActiveShoppingItemChecked", () => {
       mocks.db,
       storeId,
       listId,
-      expect.any(Date),
     );
   });
 
@@ -769,7 +765,6 @@ describe("getSnoozedShoppingList", () => {
           rawText: "Rice",
           normalizedText: "rice",
           productConceptId: null,
-          isChecked: false,
           checkedAt: null,
           snoozedUntil,
           orderKey: "1",

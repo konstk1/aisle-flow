@@ -2,6 +2,7 @@
 
 import {
   AlertTriangle,
+  Archive,
   ArrowLeft,
   ArrowRight,
   Bot,
@@ -16,7 +17,13 @@ import {
   Trash2,
 } from "lucide-react";
 import Link from "next/link";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 import type {
   ActiveShoppingItemPayload,
@@ -35,6 +42,8 @@ import {
 import { AiCategorizingOverlay } from "./ai-categorizing-overlay";
 import { LocationChangeDialog } from "./location-change-dialog";
 import { NewProductDialog } from "./new-product-dialog";
+import { groupCompletedItemsByDay } from "./completed-item-groups";
+import { useShoppingListArchive } from "./shopping-list-archive";
 import {
   ADD_PRODUCT_OPTION_VALUE,
   NEW_PRODUCT_DIALOG_OPTION_VALUE,
@@ -50,6 +59,7 @@ import {
   removeItemFromActiveList,
   restoreItemInActiveList,
   shouldSaveProductCorrectionForEdit,
+  visibleShoppingItems,
   type LocationChangeWarning,
   type PendingTextMutation,
   type ProductCorrectionFormState,
@@ -137,9 +147,9 @@ type ProductCorrectionAisleSection = {
 type FieldErrorScope = "add";
 
 const EMPTY_ITEMS: ActiveShoppingItemPayload[] = [];
-const completedDateFormatter = new Intl.DateTimeFormat(undefined, {
-  dateStyle: "medium",
-});
+const subscribeToTimeZone = () => () => {};
+const browserTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
+const serverTimeZone = () => null;
 const SNOOZE_LONG_PRESS_MS = 500;
 const ADD_ITEMS_TEXTAREA_MIN_HEIGHT = 52;
 const ADD_ITEMS_TEXTAREA_MAX_HEIGHT = 172;
@@ -225,6 +235,9 @@ function ShoppingListView({
   mode,
 }: ShoppingListViewProps) {
   const [activeList, setActiveList] = useState(initialList);
+  const { cutoff: archiveCutoff, archiveCompleted } = useShoppingListArchive(
+    mode === "active" ? activeList?.list.id : undefined,
+  );
   const [itemText, setItemText] = useState("");
   const [addItemsMessage, setAddItemsMessage] = useState<string | null>(null);
   const [aiRecoveryAvailable, setAiRecoveryAvailable] = useState(false);
@@ -283,7 +296,23 @@ function ShoppingListView({
   const isActiveMode = mode === "active";
   const modeConfig = MODE_CONFIG[mode];
   const listEndpoint = modeConfig.listEndpoint;
-  const items = activeList?.items ?? EMPTY_ITEMS;
+  const timeZone = useSyncExternalStore(
+    subscribeToTimeZone,
+    browserTimeZone,
+    serverTimeZone,
+  );
+  // Both the local archive cutoff and timezone are known after hydration.
+  const listReady = isSnoozedMode || timeZone !== null;
+  const snapshotItems = activeList?.items ?? EMPTY_ITEMS;
+  const items = useMemo(
+    () =>
+      !listReady
+        ? EMPTY_ITEMS
+        : isActiveMode
+          ? visibleShoppingItems(snapshotItems, archiveCutoff)
+          : snapshotItems,
+    [listReady, isActiveMode, snapshotItems, archiveCutoff],
+  );
   const checkedCount = useMemo(
     () => items.reduce((count, item) => count + (item.isChecked ? 1 : 0), 0),
     [items],
@@ -294,12 +323,27 @@ function ShoppingListView({
   );
 
   const itemGroups = useMemo(() => groupShoppingItemsByAisle(items), [items]);
+  const completedGroups = useMemo(
+    () =>
+      isCompletedMode && timeZone !== null
+        ? groupCompletedItemsByDay(items, timeZone)
+        : [],
+    [isCompletedMode, items, timeZone],
+  );
   const editItem = items.find((item) => item.id === editItemId) ?? null;
   const editHasChanges = editItem
     ? editText !== editItem.rawText ||
       editQuantityText !== (editItem.quantityText ?? "") ||
       editLocationTouched
     : false;
+
+  const archiveDisabled =
+    checkedCount === 0 ||
+    pendingAction !== null ||
+    pendingRemovalItemIds.size > 0 ||
+    pendingDeleteItemIds.size > 0 ||
+    pendingEditItemId !== null ||
+    pendingCorrectionItemId !== null;
 
   useLayoutEffect(() => {
     const textarea = addItemsTextareaRef.current;
@@ -531,10 +575,7 @@ function ShoppingListView({
   }
 
   // In the active view, checking an item keeps it visible with a strikethrough
-  // so the trip's progress keeps tallying it. The server retains checked items
-  // on the active list for CHECKED_ITEM_RETENTION_MS before they move to the
-  // completed view, so refetches keep them too; we only hold the optimistic
-  // state locally while the PATCH is in flight.
+  // until Archive completed or a fresh read applies the retention window.
   async function toggleActiveCheck(itemId: string, isChecked: boolean) {
     const previousItemIndex =
       activeList?.items.findIndex((item) => item.id === itemId) ?? -1;
@@ -946,17 +987,16 @@ function ShoppingListView({
         pendingDelete={pendingDeleteItemIds.has(item.id)}
         pendingEdit={pendingEditItemId === item.id}
         saveDisabled={!editHasChanges}
-        showCompletedAt={isCompletedMode}
       />
     );
   }
 
   return (
     <section className="pt-1 pb-12">
-      {/* Rendered here rather than in AppShell because this component knows
-          during SSR whether the progress pill will show — the shell's context
-          is only populated post-hydration, which would shift the page. */}
-      {isActiveMode && items.length > 0 ? <ShellProgressSpacer /> : null}
+      {/* Reserve progress space while the browser's archive cutoff loads. */}
+      {isActiveMode && snapshotItems.length > 0 ? (
+        <ShellProgressSpacer />
+      ) : null}
       {!isActiveMode ? (
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
           <Link
@@ -1087,12 +1127,34 @@ function ShoppingListView({
         </p>
       ) : null}
 
-      <div className="mt-7 space-y-6">
-        {items.length === 0 ? (
+      <div aria-busy={!listReady} className="mt-7 space-y-6">
+        {!listReady ? (
+          <div className="card text-ink-400 p-6 text-sm" role="status">
+            Loading items…
+          </div>
+        ) : items.length === 0 ? (
           <div className="card text-ink-400 p-6 text-sm">
             {modeConfig.emptyText}
           </div>
-        ) : !isActiveMode ? (
+        ) : isCompletedMode ? (
+          completedGroups.map((group) => (
+            <section key={group.id}>
+              <h2 className="text-ink-500 mb-3 pl-0.5 text-[13px] font-bold tracking-[0.05em] uppercase">
+                {group.label}
+              </h2>
+              <div className="card overflow-hidden">
+                {group.items.map((item, index) => (
+                  <div
+                    className={index > 0 ? "border-divider-soft border-t" : ""}
+                    key={item.id}
+                  >
+                    {renderShoppingItemRow(item, itemAccentColor(item))}
+                  </div>
+                ))}
+              </div>
+            </section>
+          ))
+        ) : isSnoozedMode ? (
           <div className="card overflow-hidden">
             {items.map((item, index) => (
               <div
@@ -1164,6 +1226,19 @@ function ShoppingListView({
             Completed
             <ArrowRight aria-hidden="true" className="text-ink-200 size-4" />
           </Link>
+          <button
+            className="text-ink-900 shadow-card-sm hover:text-accent inline-flex min-h-11 items-center gap-2 rounded-xl bg-white px-4 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={archiveDisabled}
+            onClick={() => {
+              if (archiveDisabled) return;
+              archiveCompleted();
+              if (editItem?.checkedAt) closeEdit();
+            }}
+            type="button"
+          >
+            <Archive aria-hidden="true" className="text-ink-350 size-4" />
+            Archive completed
+          </button>
         </div>
       ) : null}
 
@@ -1216,7 +1291,6 @@ function ShoppingItemRow({
   pendingDelete,
   pendingEdit,
   saveDisabled,
-  showCompletedAt,
 }: {
   accentColor: string;
   correctionFieldErrors: FieldErrors;
@@ -1247,7 +1321,6 @@ function ShoppingItemRow({
   pendingDelete: boolean;
   pendingEdit: boolean;
   saveDisabled: boolean;
-  showCompletedAt: boolean;
 }) {
   const needsAttention =
     item.resolutionState !== "route-resolved" ||
@@ -1440,9 +1513,6 @@ function ShoppingItemRow({
                 />
               )}
               <span>{locationLabel(item)}</span>
-              {showCompletedAt && item.checkedAt ? (
-                <span>{formatCompletedAt(item.checkedAt)}</span>
-              ) : null}
               {isSnoozedRow && item.snoozedUntil ? (
                 <span>{formatSnoozedUntil(item.snoozedUntil)}</span>
               ) : null}
@@ -1718,16 +1788,6 @@ function formatImportResultMessage(
   ].filter((message): message is string => message !== null);
 
   return messages.join(" ") || null;
-}
-
-function formatCompletedAt(checkedAt: string) {
-  const completedAt = new Date(checkedAt);
-
-  if (Number.isNaN(completedAt.getTime())) {
-    return "Completed";
-  }
-
-  return `Completed ${completedDateFormatter.format(completedAt)}`;
 }
 
 function formatSnoozedUntil(snoozedUntil: string) {

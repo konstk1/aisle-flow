@@ -191,7 +191,7 @@ export function buildRouteOrderedShoppingItemsQuery(
         // Recently checked items stay visible (struck through) so the trip's
         // progress keeps tallying them; checkedAt is NULL while unchecked.
         or(
-          eq(shoppingItems.isChecked, false),
+          isNull(shoppingItems.checkedAt),
           gt(shoppingItems.checkedAt, checkedItemRetentionCutoff(now)),
         ),
         or(
@@ -221,16 +221,14 @@ export function buildCompletedShoppingItemsQuery(
   db: Database,
   storeId: string | null,
   shoppingListId: string,
-  now: Date,
 ) {
   return buildShoppingItemRouteRowsQuery(db, storeId)
     .where(
       and(
         eq(shoppingItems.shoppingListId, shoppingListId),
-        eq(shoppingItems.isChecked, true),
-        // Items checked within the retention window still live on the active
-        // list; they only move here once the window lapses.
-        lte(shoppingItems.checkedAt, checkedItemRetentionCutoff(now)),
+        // Completion history is immediately available, even while a checked
+        // item is still retained on the active screen for the current trip.
+        isNotNull(shoppingItems.checkedAt),
       ),
     )
     .orderBy(
@@ -250,7 +248,7 @@ export function buildSnoozedShoppingItemsQuery(
     .where(
       and(
         eq(shoppingItems.shoppingListId, shoppingListId),
-        eq(shoppingItems.isChecked, false),
+        isNull(shoppingItems.checkedAt),
         isNotNull(shoppingItems.snoozedUntil),
         gt(shoppingItems.snoozedUntil, now),
       ),
@@ -302,13 +300,12 @@ export function buildShoppingItemCheckStateQuery(
   return db
     .update(shoppingItems)
     .set({
-      isChecked: input.isChecked,
       checkedAt: input.isChecked
         ? sql`coalesce(${shoppingItems.checkedAt}, ${now})`
         : null,
-      snoozedUntil: sql`case when ${shoppingItems.isChecked} = ${input.isChecked} then ${shoppingItems.snoozedUntil} else null end`,
-      updatedAt: sql`case when ${shoppingItems.isChecked} = ${input.isChecked} then ${shoppingItems.updatedAt} else ${now} end`,
-      version: sql`case when ${shoppingItems.isChecked} = ${input.isChecked} then ${shoppingItems.version} else ${shoppingItems.version} + 1 end`,
+      snoozedUntil: sql`case when (${shoppingItems.checkedAt} is not null) = ${input.isChecked} then ${shoppingItems.snoozedUntil} else null end`,
+      updatedAt: sql`case when (${shoppingItems.checkedAt} is not null) = ${input.isChecked} then ${shoppingItems.updatedAt} else ${now} end`,
+      version: sql`case when (${shoppingItems.checkedAt} is not null) = ${input.isChecked} then ${shoppingItems.version} else ${shoppingItems.version} + 1 end`,
     })
     .where(
       and(
@@ -337,7 +334,7 @@ export function buildShoppingItemSnoozeStateQuery(
       and(
         eq(shoppingItems.shoppingListId, input.shoppingListId),
         eq(shoppingItems.id, input.itemId),
-        eq(shoppingItems.isChecked, false),
+        isNull(shoppingItems.checkedAt),
       ),
     )
     .returning();
@@ -497,7 +494,7 @@ export function buildShoppingItemsByNormalizedTextQuery(
     .where(
       and(
         eq(shoppingItems.shoppingListId, input.shoppingListId),
-        eq(shoppingItems.isChecked, false),
+        isNull(shoppingItems.checkedAt),
         inArray(shoppingItems.normalizedText, input.normalizedTexts),
       ),
     );

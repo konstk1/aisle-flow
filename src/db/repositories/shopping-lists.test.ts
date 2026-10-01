@@ -60,10 +60,10 @@ describe("shopping-list queries", () => {
       '"aisle_sections"."store_id" = "aisles"."store_id"',
     );
     expect(query).toContain(
-      '("shopping_items"."is_checked" = $3 or "shopping_items"."checked_at" > $4)',
+      '("shopping_items"."checked_at" is null or "shopping_items"."checked_at" > $3)',
     );
     expect(query).toContain(
-      '("shopping_items"."snoozed_until" is null or "shopping_items"."snoozed_until" <= $5)',
+      '("shopping_items"."snoozed_until" is null or "shopping_items"."snoozed_until" <= $4)',
     );
     expect(query).toMatch(
       /order by case when "aisle_sections"\."path_order" is null then 1 else 0 end asc, "aisle_sections"\."path_order" asc, case when "aisle_sections"\."path_order" is null then null else "shopping_items"\."normalized_text" end asc, "shopping_items"\."order_key" asc, "shopping_items"\."created_at" asc, "shopping_items"\."id" asc/,
@@ -72,7 +72,6 @@ describe("shopping-list queries", () => {
     expect(params).toEqual([
       "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
       "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
-      false,
       "2025-12-31T20:00:00.000Z",
       "2026-01-01T00:00:00.000Z",
     ]);
@@ -91,7 +90,6 @@ describe("shopping-list queries", () => {
     );
     expect(params).toEqual([
       "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
-      false,
       "2025-12-31T20:00:00.000Z",
       "2026-01-01T00:00:00.000Z",
     ]);
@@ -105,16 +103,15 @@ describe("shopping-list queries", () => {
       new Date("2026-01-01T00:00:00Z"),
     ).toSQL();
 
-    expect(query).toContain('"shopping_items"."is_checked" = $3');
+    expect(query).toContain('"shopping_items"."checked_at" is null');
     expect(query).toContain('"shopping_items"."snoozed_until" is not null');
-    expect(query).toContain('"shopping_items"."snoozed_until" > $4');
+    expect(query).toContain('"shopping_items"."snoozed_until" > $3');
     expect(query).toMatch(
       /order by "shopping_items"\."snoozed_until" asc, "shopping_items"\."order_key" asc, "shopping_items"\."created_at" asc/,
     );
     expect(params).toEqual([
       "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
       "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
-      false,
       "2026-01-01T00:00:00.000Z",
     ]);
   });
@@ -124,20 +121,18 @@ describe("shopping-list queries", () => {
       database,
       "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
       "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
-      new Date("2026-01-01T00:00:00Z"),
     ).toSQL();
 
     expect(query).toContain('left join "product_locations"');
-    expect(query).toContain('"shopping_items"."is_checked" = $3');
-    expect(query).toContain('"shopping_items"."checked_at" <= $4');
+    expect(query).not.toContain("is_checked");
+    expect(query).toContain('"shopping_items"."checked_at" is not null');
+    expect(query).not.toContain('"shopping_items"."checked_at" <=');
     expect(query).toMatch(
       /order by "shopping_items"\."checked_at" desc, "shopping_items"\."updated_at" desc, "shopping_items"\."created_at" desc/,
     );
     expect(params).toEqual([
       "fd3d8b7c-1d15-4f4e-b169-a4e36d8c5f50",
       "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
-      true,
-      "2025-12-31T20:00:00.000Z",
     ]);
   });
 
@@ -197,16 +192,15 @@ describe("shopping-list queries", () => {
     }).toSQL();
 
     expect(query).toContain('update "shopping_items"');
-    expect(query).toContain('coalesce("shopping_items"."checked_at", $2)');
+    expect(query).toContain('coalesce("shopping_items"."checked_at", $1)');
     expect(query).toContain(
-      'case when "shopping_items"."is_checked" = $3 then "shopping_items"."snoozed_until" else null end',
+      'case when ("shopping_items"."checked_at" is not null) = $2 then "shopping_items"."snoozed_until" else null end',
     );
     expect(query).toContain(
-      'case when "shopping_items"."is_checked" = $5 then "shopping_items"."updated_at" else $6 end',
+      'case when ("shopping_items"."checked_at" is not null) = $4 then "shopping_items"."updated_at" else $5 end',
     );
-    expect(query).toContain('"shopping_items"."shopping_list_id" = $7');
+    expect(query).toContain('"shopping_items"."shopping_list_id" = $6');
     expect(params).toEqual([
-      true,
       new Date("2026-01-01T00:00:00Z"),
       true,
       true,
@@ -228,13 +222,12 @@ describe("shopping-list queries", () => {
     expect(query).toContain('update "shopping_items"');
     expect(query).toContain('"snoozed_until" = $1');
     expect(query).toContain('"version" = "shopping_items"."version" + 1');
-    expect(query).toContain('"shopping_items"."is_checked" = $5');
+    expect(query).toContain('"shopping_items"."checked_at" is null');
     expect(params).toEqual([
       "2026-01-01T01:00:00.000Z",
       "2026-01-01T00:00:00.000Z",
       "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
       "33333333-3333-4333-8333-333333333333",
-      false,
     ]);
   });
 
@@ -395,11 +388,10 @@ describe("shopping-list queries", () => {
 
     expect(query).toContain('from "shopping_items"');
     expect(query).toContain('"shopping_items"."shopping_list_id" = $1');
-    expect(query).toContain('"shopping_items"."is_checked" = $2');
-    expect(query).toContain('"shopping_items"."normalized_text" in ($3, $4)');
+    expect(query).toContain('"shopping_items"."checked_at" is null');
+    expect(query).toContain('"shopping_items"."normalized_text" in ($2, $3)');
     expect(params).toEqual([
       "cae0be4e-fb86-41df-86e8-4ba1dfe9dfc4",
-      false,
       "oatly",
       "rice",
     ]);

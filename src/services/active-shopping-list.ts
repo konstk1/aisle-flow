@@ -765,7 +765,7 @@ async function readShoppingListPayload(
   const storeId = store?.id ?? null;
   const rows =
     view === "completed"
-      ? await buildCompletedShoppingItemsQuery(db, storeId, list.id, now)
+      ? await buildCompletedShoppingItemsQuery(db, storeId, list.id)
       : view === "snoozed"
         ? await buildSnoozedShoppingItemsQuery(db, storeId, list.id, now)
         : await buildRouteOrderedShoppingItemsQuery(db, storeId, list.id, now);
@@ -816,7 +816,7 @@ function toItemPayload({
     rawText: item.rawText,
     normalizedText: item.normalizedText,
     quantityText: item.quantityText,
-    isChecked: item.isChecked,
+    isChecked: item.checkedAt !== null,
     checkedAt: item.checkedAt?.toISOString() ?? null,
     snoozedUntil: item.snoozedUntil?.toISOString() ?? null,
     resolutionState: location

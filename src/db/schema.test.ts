@@ -92,6 +92,11 @@ describe("data model constraints", () => {
     );
     expect(shoppingItems).not.toHaveProperty("storeId");
     expect(shoppingItems).not.toHaveProperty("resolvedLocationId");
+    expect(shoppingItems).not.toHaveProperty("isChecked");
+    expect(shoppingItems).toHaveProperty("checkedAt");
+    expect(checkNames(shoppingItems)).not.toContain(
+      "shopping_items_checked_at_consistency",
+    );
   });
 
   it("models product locations at aisle-section granularity", () => {
