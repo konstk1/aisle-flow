@@ -32,19 +32,19 @@ describe("manual completion archive", () => {
       { ...itemWithState("new", true), checkedAt: "2026-01-01T00:00:00.001Z" },
       itemWithState("unchecked", false),
     ];
-    expect(visibleShoppingItems(items, cutoff).map((item) => item.id)).toEqual([
-      "new",
-      "unchecked",
-    ]);
+    expect(
+      visibleShoppingItems(items, cutoff, cutoff).map((item) => item.id),
+    ).toEqual(["new", "unchecked"]);
     expect(items).toHaveLength(4);
-    // New server snapshots use the same cutoff until an explicit refresh.
+    // Refreshed server snapshots still use the saved cutoff.
     expect(
       visibleShoppingItems(
         items.map((item) => ({ ...item })),
         cutoff,
+        cutoff,
       ).map((item) => item.id),
     ).toEqual(["new", "unchecked"]);
-    expect(visibleShoppingItems(items, null)).toEqual(items);
+    expect(visibleShoppingItems(items, null, cutoff)).toEqual(items);
   });
 
   it("keeps later checks visible until the user advances the cutoff", () => {
@@ -52,20 +52,48 @@ describe("manual completion archive", () => {
       ...itemWithState("a", true),
       checkedAt: "2026-01-01T00:01:00.000Z",
     };
-    expect(visibleShoppingItems([checked], cutoff)).toEqual([checked]);
-    expect(visibleShoppingItems([checked], cutoff + 60_000)).toEqual([]);
+    expect(visibleShoppingItems([checked], cutoff, cutoff)).toEqual([checked]);
+    expect(
+      visibleShoppingItems([checked], cutoff + 60_000, cutoff + 60_000),
+    ).toEqual([]);
   });
 
   it("shows an archived item again when unchecked or rechecked after the cutoff", () => {
     expect(
-      visibleShoppingItems([itemWithState("a", false)], cutoff),
+      visibleShoppingItems([itemWithState("a", false)], cutoff, cutoff),
     ).toHaveLength(1);
     const rechecked = {
       ...itemWithState("a", true),
       checkedAt: "2026-01-02T00:00:00.000Z",
     };
-    expect(visibleShoppingItems([rechecked], cutoff)).toEqual([rechecked]);
+    expect(
+      visibleShoppingItems([rechecked], cutoff, cutoff + 24 * 60 * 60 * 1000),
+    ).toEqual([rechecked]);
   });
+
+  it.each([null, cutoff - 5 * 60 * 60 * 1000])(
+    "uses the four-hour limit when the saved cutoff is %s",
+    (savedCutoff) => {
+      const items = [
+        {
+          ...itemWithState("old", true),
+          checkedAt: "2025-12-31T19:59:59.999Z",
+        },
+        {
+          ...itemWithState("equal", true),
+          checkedAt: "2025-12-31T20:00:00.000Z",
+        },
+        {
+          ...itemWithState("recent", true),
+          checkedAt: "2025-12-31T20:00:00.001Z",
+        },
+        itemWithState("unchecked", false),
+      ];
+      expect(
+        visibleShoppingItems(items, savedCutoff, cutoff).map((item) => item.id),
+      ).toEqual(["recent", "unchecked"]);
+    },
+  );
 });
 
 describe("formatAlreadyOnListMessage", () => {

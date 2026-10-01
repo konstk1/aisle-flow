@@ -3,22 +3,22 @@ import type {
   ActiveShoppingItemPayload,
   FieldErrors,
 } from "@/domain/active-shopping-list";
+import { CHECKED_ITEM_RETENTION_MS } from "@/domain/active-shopping-list";
 
 export type PendingTextMutation = {
   text: string;
   mutationId: string;
 };
 
-// Archiving changes only the visible view; refresh clears the local cutoff.
+// Manual archives survive refreshes; older checks always age out after four hours.
 export function visibleShoppingItems(
   items: readonly ActiveShoppingItemPayload[],
   archiveCutoff: number | null,
+  now: number = Date.now(),
 ) {
+  const cutoff = Math.max(archiveCutoff ?? 0, now - CHECKED_ITEM_RETENTION_MS);
   return items.filter(
-    (item) =>
-      archiveCutoff === null ||
-      item.checkedAt === null ||
-      Date.parse(item.checkedAt) > archiveCutoff,
+    (item) => item.checkedAt === null || Date.parse(item.checkedAt) > cutoff,
   );
 }
 

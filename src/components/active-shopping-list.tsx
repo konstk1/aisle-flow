@@ -43,6 +43,7 @@ import { AiCategorizingOverlay } from "./ai-categorizing-overlay";
 import { LocationChangeDialog } from "./location-change-dialog";
 import { NewProductDialog } from "./new-product-dialog";
 import { groupCompletedItemsByDay } from "./completed-item-groups";
+import { useShoppingListArchive } from "./shopping-list-archive";
 import {
   ADD_PRODUCT_OPTION_VALUE,
   NEW_PRODUCT_DIALOG_OPTION_VALUE,
@@ -148,7 +149,7 @@ type FieldErrorScope = "add";
 const EMPTY_ITEMS: ActiveShoppingItemPayload[] = [];
 const subscribeToTimeZone = () => () => {};
 const browserTimeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
-const serverTimeZone = () => "UTC";
+const serverTimeZone = () => null;
 const SNOOZE_LONG_PRESS_MS = 500;
 const ADD_ITEMS_TEXTAREA_MIN_HEIGHT = 52;
 const ADD_ITEMS_TEXTAREA_MAX_HEIGHT = 172;
@@ -234,7 +235,9 @@ function ShoppingListView({
   mode,
 }: ShoppingListViewProps) {
   const [activeList, setActiveList] = useState(initialList);
-  const [archiveCutoff, setArchiveCutoff] = useState<number | null>(null);
+  const { cutoff: archiveCutoff, archiveCompleted } = useShoppingListArchive(
+    mode === "active" ? activeList?.list.id : undefined,
+  );
   const [itemText, setItemText] = useState("");
   const [addItemsMessage, setAddItemsMessage] = useState<string | null>(null);
   const [aiRecoveryAvailable, setAiRecoveryAvailable] = useState(false);
@@ -293,13 +296,22 @@ function ShoppingListView({
   const isActiveMode = mode === "active";
   const modeConfig = MODE_CONFIG[mode];
   const listEndpoint = modeConfig.listEndpoint;
+  const timeZone = useSyncExternalStore(
+    subscribeToTimeZone,
+    browserTimeZone,
+    serverTimeZone,
+  );
+  // Both the local archive cutoff and timezone are known after hydration.
+  const listReady = isSnoozedMode || timeZone !== null;
   const snapshotItems = activeList?.items ?? EMPTY_ITEMS;
   const items = useMemo(
     () =>
-      isActiveMode
-        ? visibleShoppingItems(snapshotItems, archiveCutoff)
-        : snapshotItems,
-    [isActiveMode, snapshotItems, archiveCutoff],
+      !listReady
+        ? EMPTY_ITEMS
+        : isActiveMode
+          ? visibleShoppingItems(snapshotItems, archiveCutoff)
+          : snapshotItems,
+    [listReady, isActiveMode, snapshotItems, archiveCutoff],
   );
   const checkedCount = useMemo(
     () => items.reduce((count, item) => count + (item.isChecked ? 1 : 0), 0),
@@ -311,13 +323,11 @@ function ShoppingListView({
   );
 
   const itemGroups = useMemo(() => groupShoppingItemsByAisle(items), [items]);
-  const timeZone = useSyncExternalStore(
-    subscribeToTimeZone,
-    browserTimeZone,
-    serverTimeZone,
-  );
   const completedGroups = useMemo(
-    () => (isCompletedMode ? groupCompletedItemsByDay(items, timeZone) : []),
+    () =>
+      isCompletedMode && timeZone !== null
+        ? groupCompletedItemsByDay(items, timeZone)
+        : [],
     [isCompletedMode, items, timeZone],
   );
   const editItem = items.find((item) => item.id === editItemId) ?? null;
@@ -934,7 +944,7 @@ function ShoppingListView({
 
     try {
       const response = await fetch(listEndpoint);
-      if (await applyListResponse(response)) setArchiveCutoff(null);
+      await applyListResponse(response);
     } catch {
       setMessage("The shopping list could not be loaded.");
     } finally {
@@ -983,10 +993,10 @@ function ShoppingListView({
 
   return (
     <section className="pt-1 pb-12">
-      {/* Rendered here rather than in AppShell because this component knows
-          during SSR whether the progress pill will show — the shell's context
-          is only populated post-hydration, which would shift the page. */}
-      {isActiveMode && items.length > 0 ? <ShellProgressSpacer /> : null}
+      {/* Reserve progress space while the browser's archive cutoff loads. */}
+      {isActiveMode && snapshotItems.length > 0 ? (
+        <ShellProgressSpacer />
+      ) : null}
       {!isActiveMode ? (
         <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
           <Link
@@ -1117,8 +1127,12 @@ function ShoppingListView({
         </p>
       ) : null}
 
-      <div className="mt-7 space-y-6">
-        {items.length === 0 ? (
+      <div aria-busy={!listReady} className="mt-7 space-y-6">
+        {!listReady ? (
+          <div className="card text-ink-400 p-6 text-sm" role="status">
+            Loading items…
+          </div>
+        ) : items.length === 0 ? (
           <div className="card text-ink-400 p-6 text-sm">
             {modeConfig.emptyText}
           </div>
@@ -1217,7 +1231,7 @@ function ShoppingListView({
             disabled={archiveDisabled}
             onClick={() => {
               if (archiveDisabled) return;
-              setArchiveCutoff(Date.now());
+              archiveCompleted();
               if (editItem?.checkedAt) closeEdit();
             }}
             type="button"
