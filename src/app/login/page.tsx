@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getSafeRedirectPath } from "@/auth/redirect";
 import { getServerSession } from "@/auth/access";
 import { AppMark } from "@/components/app-mark";
+import { PasswordForm } from "@/components/password-form";
 import { GoogleSignInButton } from "@/components/google-sign-in-button";
 
 type LoginPageProps = {
@@ -20,7 +21,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const { error, next } = await searchParams;
   const message =
     error === "not-allowed" || error === "EMAIL_NOT_ALLOWED"
-      ? "That Google account is not on the guest list."
+      ? "That account is not on the guest list."
       : error
         ? "Unable to sign in with Google."
         : null;
@@ -32,14 +33,14 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         <AppMark />
 
         <div className="mt-8">
-          <p className="text-[13px] font-bold tracking-[0.05em] text-ink-500 uppercase">
+          <p className="text-ink-500 text-[13px] font-bold tracking-[0.05em] uppercase">
             Private workspace
           </p>
           <h1 className="mt-2 text-2xl font-bold tracking-tight sm:text-3xl">
             Sign in to Aisle Flow
           </h1>
-          <p className="mt-2 text-sm leading-6 text-ink-400">
-            Use your allowlisted Google account to continue.
+          <p className="text-ink-400 mt-2 text-sm leading-6">
+            Sign in with Google or your Aisle Flow password.
           </p>
         </div>
 
@@ -47,7 +48,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           {message ? (
             <p
               aria-live="polite"
-              className="rounded-xl bg-danger-50 px-4 py-3 text-sm font-medium text-danger"
+              className="bg-danger-50 text-danger rounded-xl px-4 py-3 text-sm font-medium"
               role="alert"
             >
               {message}
@@ -55,6 +56,18 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           ) : null}
 
           <GoogleSignInButton nextPath={nextPath} />
+          <details className="group">
+            <summary className="text-accent focus-visible:outline-accent cursor-pointer list-none text-center text-sm font-bold underline underline-offset-4 group-open:hidden [&::-webkit-details-marker]:hidden">
+              login w/ password
+            </summary>
+            <div className="mt-4 space-y-4">
+              <PasswordForm mode="login" nextPath={nextPath} />
+              <p className="text-ink-400 text-sm leading-6">
+                Need to set or reset your password? Sign in with Google, then
+                open Account.
+              </p>
+            </div>
+          </details>
         </div>
       </div>
     </main>

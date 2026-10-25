@@ -13,6 +13,11 @@ import { user } from "@/db/schema";
 import { emailIsAllowed } from "./allowlist";
 import { devLogin, devLoginEnabled } from "./dev-login";
 import { getAuthEnv } from "./env";
+import {
+  passwordLogin,
+  passwordSessionFields,
+  canManagePasswordFromLogin,
+} from "./password-login";
 
 async function userIdIsAllowed(userId: string) {
   const [matchedUser] = await getDb()
@@ -27,7 +32,7 @@ async function userIdIsAllowed(userId: string) {
 function notAllowedError() {
   return APIError.from("FORBIDDEN", {
     code: "EMAIL_NOT_ALLOWED",
-    message: "This Google account is not on the Aisle Flow guest list.",
+    message: "This account is not on the Aisle Flow guest list.",
   });
 }
 
@@ -53,7 +58,9 @@ export const auth = betterAuth({
     provider: "pg",
     schema,
   }),
+  emailAndPassword: { enabled: true, disableSignUp: true },
   session: {
+    additionalFields: passwordSessionFields,
     // Better Auth defaults to seven days, which is easy to exceed between
     // shopping trips. Keep active sessions sliding, but allow a month of
     // inactivity before requiring Google sign-in again.
@@ -90,15 +97,26 @@ export const auth = betterAuth({
     },
     session: {
       create: {
-        before: async (newSession) => {
+        before: async (newSession, ctx) => {
           if (!(await userIdIsAllowed(newSession.userId))) {
             throw notAllowedError();
           }
+          return {
+            data: {
+              ...newSession,
+              canManagePassword: canManagePasswordFromLogin(
+                ctx?.path,
+                ctx?.params?.id,
+                devLoginEnabled(),
+              ),
+            },
+          };
         },
       },
     },
   },
   plugins: [
+    passwordLogin(),
     oAuthProxy({
       // Google's callback is registered only for the production URL; preview
       // deployments proxy the OAuth handshake through it and get redirected
