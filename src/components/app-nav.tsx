@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  KeyRound,
   Check,
   ChevronDown,
   ListChecks,
@@ -25,6 +26,7 @@ const navItems = [
     label: "Manage products",
   },
   { exact: false, href: "/stores", icon: Store, label: "Manage stores" },
+  { exact: false, href: "/account", icon: KeyRound, label: "Account" },
 ] as const;
 
 export function AppNav() {
@@ -70,7 +72,7 @@ export function AppNav() {
         onClick={() => setIsOpen((current) => !current)}
         type="button"
       >
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-[11px] bg-gradient-to-br from-accent to-accent-bright text-white shadow-accent-glow">
+        <span className="from-accent to-accent-bright shadow-accent-glow flex size-9 shrink-0 items-center justify-center rounded-[11px] bg-gradient-to-br text-white">
           <ActiveIcon aria-hidden="true" className="size-5" />
         </span>
         <span className="truncate text-lg font-bold tracking-tight sm:text-xl">
@@ -78,7 +80,7 @@ export function AppNav() {
         </span>
         <ChevronDown
           aria-hidden="true"
-          className={`size-4 shrink-0 text-ink-300 transition ${
+          className={`text-ink-300 size-4 shrink-0 transition ${
             isOpen ? "rotate-180" : ""
           }`}
         />
@@ -87,7 +89,7 @@ export function AppNav() {
       {isOpen ? (
         <nav
           aria-label="App sections"
-          className="absolute top-full left-0 z-10 mt-2 w-60 rounded-2xl border-0 bg-white p-1.5 shadow-popover"
+          className="shadow-popover absolute top-full left-0 z-10 mt-2 w-60 rounded-2xl border-0 bg-white p-1.5"
         >
           {navItems.map((item) => {
             const Icon = item.icon;
@@ -109,12 +111,12 @@ export function AppNav() {
                 />
                 <span className="min-w-0 flex-1">{item.label}</span>
                 {isActive ? (
-                  <Check aria-hidden="true" className="size-4 text-accent" />
+                  <Check aria-hidden="true" className="text-accent size-4" />
                 ) : null}
               </Link>
             );
           })}
-          <div className="mx-3 my-1.5 h-px bg-divider" />
+          <div className="bg-divider mx-3 my-1.5 h-px" />
           <SignOutButton />
         </nav>
       ) : null}

@@ -41,7 +41,7 @@ them, and never commit real values.
 | `BETTER_AUTH_URL`      | Public app base URL used for OAuth callbacks, such as `http://localhost:3000` locally or the Vercel deployment URL in production. |
 | `GOOGLE_CLIENT_ID`     | Google OAuth client id for Sign in with Google.                                                                                   |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret for Sign in with Google.                                                                               |
-| `ALLOWED_EMAILS`       | Comma-separated allowlist of Google account emails that may sign in.                                                              |
+| `ALLOWED_EMAILS`       | Comma-separated allowlist of account emails that may sign in.                                                                     |
 | `GITHUB_ISSUES_TOKEN`  | Required only when in-app feedback is enabled; a fine-grained token restricted to `konstk1/aisle-flow` with `Issues: write` only. |
 | `OPENAI_API_KEY`       | Server-only OpenAI key used only by the local model evaluation command.                                                           |
 | `OPENROUTER_API_KEY`   | Server-only OpenRouter key used for batch shopping-item categorization and the local model evaluation command.                    |
@@ -119,3 +119,9 @@ other application page and API route requires a signed Better Auth session from
 an allowlisted Google account. Sessions last for 30 days; opening the
 authenticated app extends that window at most once per day, while 30 days of
 inactivity requires signing in again.
+
+### Password login
+
+Sign in with Google and open **Account** in the navigation menu to set an Aisle Flow password. The same action replaces an existing password without requiring the old password or signing out other sessions. Family members and browser assistants can then use the same email and the Aisle Flow password; they access the same lists without Google or inbox access. Password sessions cannot set or reset the password; sign in with Google for recovery. Public email/password signup is disabled.
+
+Apply the database migrations before deploying this feature. Existing sessions retain password-management access because they predate password login; new sessions record whether they were created through Google. The local development login simulates this access only when its existing development-only guards are enabled.
